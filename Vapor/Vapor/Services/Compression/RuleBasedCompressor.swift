@@ -3,45 +3,31 @@ import Foundation
 actor RuleBasedCompressor: Compressor {
     let name = "Rule-Based (Local)"
     let isAvailable = true
-    
+
     private let articles = Set(["a", "an", "the"])
     private let prepositions = Set(["in", "on", "at", "to", "for", "of", "with", "by", "from", "into", "onto", "upon", "about", "above", "across", "after", "against", "along", "among", "around", "before", "behind", "below", "beneath", "beside", "between", "beyond", "down", "during", "except", "inside", "near", "off", "out", "over", "through", "toward", "under", "until", "up", "within", "without"])
     private let auxiliaryVerbs = Set(["is", "are", "was", "were", "be", "been", "being", "have", "has", "had", "do", "does", "did", "will", "would", "shall", "should", "can", "could", "may", "might", "must"])
     private let pronouns = Set(["i", "you", "he", "she", "it", "we", "they", "me", "him", "her", "us", "them", "my", "your", "his", "its", "our", "their", "mine", "yours", "hers", "ours", "theirs", "this", "that", "these", "those"])
     private let conjunctions = Set(["and", "or", "but", "so", "yet", "for", "nor"])
     private let negations = Set(["not", "never", "dont", "don't", "won't", "wont", "can't", "cant", "no", "unless", "without"])
-    
+
     func compress(_ text: String) async throws -> CompressedResult {
         let words = text.lowercased().components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }
-        
+
         var result: [String] = []
-        var currentCompound = ""
-        
+
         for word in words {
             let cleanWord = word.trimmingCharacters(in: .punctuationCharacters)
-            
-            if shouldPreserve(cleanWord) || isExactValue(cleanWord) {
-                if !currentCompound.isEmpty {
-                    result.append(currentCompound)
-                    currentCompound = ""
-                }
-                result.append(cleanWord)
-            } else if shouldStrip(cleanWord) {
-                continue
-            } else {
-                currentCompound += cleanWord
-            }
+            guard !cleanWord.isEmpty else { continue }
+            if shouldStrip(cleanWord) { continue }
+            result.append(cleanWord)
         }
-        
-        if !currentCompound.isEmpty {
-            result.append(currentCompound)
-        }
-        
+
         let compressed = result.joined(separator: " ")
         let originalTokens = estimateTokens(text)
         let compressedTokens = estimateTokens(compressed)
         let ratio = originalTokens > 0 ? Double(compressedTokens) / Double(originalTokens) : 0.0
-        
+
         return CompressedResult(
             text: compressed,
             originalTokens: originalTokens,
@@ -50,7 +36,7 @@ actor RuleBasedCompressor: Compressor {
             compressorUsed: .ruleBased
         )
     }
-    
+
     private func shouldStrip(_ word: String) -> Bool {
         articles.contains(word) ||
         prepositions.contains(word) ||
@@ -58,27 +44,18 @@ actor RuleBasedCompressor: Compressor {
         pronouns.contains(word) ||
         conjunctions.contains(word)
     }
-    
-    private func shouldPreserve(_ word: String) -> Bool {
-        negations.contains(word)
-    }
-    
+
     private func isExactValue(_ word: String) -> Bool {
         let numberPattern = #"^\d+(\.\d+)?$"#
         let urlPattern = #"^https?://"#
         let pathPattern = #"^/[\w/\.]+$"#
         let apiPattern = #"/api/|/v\d+/"#
-        
+
         if word.range(of: numberPattern, options: .regularExpression) != nil { return true }
         if word.range(of: urlPattern, options: .regularExpression) != nil { return true }
         if word.range(of: pathPattern, options: .regularExpression) != nil { return true }
         if word.range(of: apiPattern, options: .regularExpression) != nil { return true }
-        
+
         return false
-    }
-    
-    private func estimateTokens(_ text: String) -> Int {
-        let wordCount = text.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }.count
-        return Int(Double(wordCount) * 1.3)
     }
 }

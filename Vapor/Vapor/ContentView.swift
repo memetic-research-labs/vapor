@@ -11,16 +11,20 @@ struct ContentView: View {
     @State private var showSettings = false
     @State private var showTestSidebar = false
     @State private var sidebarPrompt: String = ""
-    
+
     var body: some View {
         HStack(spacing: 0) {
             VStack(spacing: 0) {
                 ToolbarView(
                     viewModel: viewModel,
                     onCompressAndCopy: {
-                        await viewModel.compressAndCopy()
-                        if !viewModel.compressedContent.isEmpty {
-                            toastService.showSuccess("Compressed & copied (\(String(format: "%.2f", viewModel.compressionRatio)) ratio)")
+                        do {
+                            try await viewModel.compressAndCopy()
+                            if !viewModel.compressedContent.isEmpty {
+                                toastService.showSuccess("Compressed & copied (\(String(format: "%.2f", viewModel.compressionRatio)) ratio)")
+                            }
+                        } catch {
+                            toastService.showError("Compression failed: \(error.localizedDescription)")
                         }
                     },
                     onCopyOriginal: {
@@ -50,12 +54,12 @@ struct ContentView: View {
                         }
                     }
                 )
-                
+
                 Divider()
-                
+
                 NativeTextEditor(text: $viewModel.content)
                     .frame(maxHeight: .infinity)
-                
+
                 if viewModel.originalTokenCount > 0 {
                     Divider()
                     StatsBarView(
@@ -64,7 +68,7 @@ struct ContentView: View {
                         ratio: viewModel.compressionRatio
                     )
                 }
-                
+
                 if !viewModel.compressedContent.isEmpty {
                     Divider()
                     VStack(alignment: .leading, spacing: 4) {
@@ -72,7 +76,7 @@ struct ContentView: View {
                             .font(.system(size: 11, weight: .medium))
                             .foregroundColor(.secondary)
                             .padding(.horizontal, 12)
-                        
+
                         ScrollView {
                             Text(viewModel.compressedContent)
                                 .font(.system(size: 12, design: .monospaced))
@@ -87,7 +91,7 @@ struct ContentView: View {
             }
             .frame(minWidth: 400, minHeight: 300)
             .frame(maxWidth: showTestSidebar ? 600 : 800, maxHeight: 800)
-            
+
             if showTestSidebar {
                 Divider()
                 OpenRouterTestSidebar(
@@ -128,14 +132,12 @@ struct ContentView: View {
             )
         }
     }
-    
+
     private func setupDictation() {
-        print("[ContentView] Setting up dictation...")
-        
         FnDictationMonitor.shared.start { [weak viewModel, weak dictationService] isFnDown in
             Task { @MainActor in
                 guard let viewModel, let dictationService else { return }
-                
+
                 if isFnDown && !viewModel.isDictating {
                     viewModel.isDictating = true
                     dictationService.toggleDictation { text, isFinal in

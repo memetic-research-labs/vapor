@@ -1,6 +1,9 @@
 import Foundation
 import SwiftUI
 import Combine
+import OSLog
+
+private let logger = Logger(subsystem: "lol.mrl.app.Vapor", category: "Editor")
 
 @MainActor
 @Observable
@@ -16,63 +19,57 @@ final class EditorViewModel {
     var selectedCompressor: CompressorType = .ruleBased
     var isCompressing: Bool = false
     var lastSavedContent: String = ""
-    
+
     private let clipboardService = ClipboardService()
     private var compressionService: CompressionService?
     private var historyService: PromptHistoryService?
-    
+
     func setServices(compression: CompressionService, history: PromptHistoryService) {
         self.compressionService = compression
         self.historyService = history
         self.selectedCompressor = compression.selectedCompressor
     }
-    
+
     func copyOriginalToClipboard() {
         clipboardService.copy(content)
     }
-    
+
     func copyCompressedToClipboard() {
         clipboardService.copy(compressedContent)
     }
-    
-    func compressAndCopy() async {
+
+    func compressAndCopy() async throws {
         guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         guard let compressionService else { return }
-        
+
         isCompressing = true
         defer { isCompressing = false }
-        
-        do {
-            let result = try await compressionService.compress(content)
-            compressedContent = result.text
-            compressionRatio = result.ratio
-            originalTokenCount = result.originalTokens
-            compressedTokenCount = result.compressedTokens
-            selectedCompressor = result.compressorUsed
-            
-            clipboardService.copy(compressedContent)
-            print("[EditorViewModel] Compressed using: \(selectedCompressor.rawValue)")
-            print("[EditorViewModel] Original: \(content)")
-            print("[EditorViewModel] Compressed: \(compressedContent)")
-            print("[EditorViewModel] Ratio: \(String(format: "%.2f", compressionRatio))")
-            
-            if let historyService, content != lastSavedContent {
-                let record = PromptRecord(
-                    originalText: content,
-                    compressedText: compressedContent,
-                    originalTokenCount: originalTokenCount,
-                    compressedTokenCount: compressedTokenCount,
-                    compressionRatio: compressionRatio,
-                    compressorUsed: selectedCompressor
-                )
-                try? await historyService.save(record)
-                lastSavedContent = content
-            }
-        } catch {
-            print("Compression error: \(error)")
+
+        let result = try await compressionService.compress(content)
+        compressedContent = result.text
+        compressionRatio = result.ratio
+        originalTokenCount = result.originalTokens
+        compressedTokenCount = result.compressedTokens
+        selectedCompressor = result.compressorUsed
+
+        clipboardService.copy(compressedContent)
+        logger.info("Compressed using: \(self.selectedCompressor.rawValue)")
+        logger.debug("Ratio: \(String(format: "%.2f", self.compressionRatio))")
+
+        if let historyService, content != lastSavedContent {
+            let record = PromptRecord(
+                originalText: content,
+                compressedText: compressedContent,
+                originalTokenCount: originalTokenCount,
+                compressedTokenCount: compressedTokenCount,
+                compressionRatio: compressionRatio,
+                compressorUsed: selectedCompressor
+            )
+            try? historyService.save(record)
+            lastSavedContent = content
         }
     }
-    
+
     func clear() {
         content = ""
         compressedContent = ""
@@ -81,19 +78,19 @@ final class EditorViewModel {
         compressedTokenCount = 0
         isDirty = false
     }
-    
+
     func applyDictationTranscript(_ text: String, isFinal: Bool) {
         if activeDictationRange == nil {
             activeDictationRange = NSRange(location: (content as NSString).length, length: 0)
         }
-        
+
         guard let range = activeDictationRange else { return }
-        
+
         let nsString = content as NSString
         let newContent = nsString.replacingCharacters(in: range, with: text)
         content = newContent
         isDirty = true
-        
+
         if isFinal {
             activeDictationRange = nil
         } else {

@@ -1,18 +1,21 @@
 import Foundation
+import OSLog
 
 #if canImport(FoundationModels)
 import FoundationModels
 
+private let logger = Logger(subsystem: "lol.mrl.app.Vapor", category: "FoundationModels")
+
 @available(macOS 26, *)
 actor FoundationModelsCompressor: Compressor {
     let name = "Apple Foundation Models"
-    
+
     var isAvailable: Bool {
         get async {
             return SystemLanguageModel.default.isAvailable
         }
     }
-    
+
     func compress(_ text: String) async throws -> CompressedResult {
         let systemPrompt = """
         You are a prompt compression assistant. Compress text by removing filler words and fusing related concepts.
@@ -33,26 +36,26 @@ actor FoundationModelsCompressor: Compressor {
         
         Return ONLY the compressed text.
         """
-        
+
         let userPrompt = """
         Compress using prompt-cloud rules:
         
         \(text)
         """
-        
+
         let session = LanguageModelSession {
             systemPrompt
         }
-        
-        print("[FoundationModels] Sending to model: \(text)")
+
+        logger.debug("Sending to model: \(text)")
         let response = try await session.respond(to: Prompt { userPrompt })
         let compressed = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
-        print("[FoundationModels] Model response: \(compressed)")
-        
+        logger.debug("Model response: \(compressed)")
+
         let originalTokens = estimateTokens(text)
         let compressedTokens = estimateTokens(compressed)
         let ratio = originalTokens > 0 ? Double(compressedTokens) / Double(originalTokens) : 0.0
-        
+
         return CompressedResult(
             text: compressed,
             originalTokens: originalTokens,
@@ -60,11 +63,6 @@ actor FoundationModelsCompressor: Compressor {
             ratio: ratio,
             compressorUsed: .foundationModels
         )
-    }
-    
-    private func estimateTokens(_ text: String) -> Int {
-        let wordCount = text.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }.count
-        return Int(Double(wordCount) * 1.3)
     }
 }
 #endif
