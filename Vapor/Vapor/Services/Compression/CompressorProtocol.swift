@@ -11,6 +11,13 @@ struct CompressedResult {
 protocol Compressor {
     var name: String { get }
     var isAvailable: Bool { get async }
-    
+
     func compress(_ text: String) async throws -> CompressedResult
+}
+
+extension Compressor {
+    func estimateTokens(_ text: String) -> Int {
+        let wordCount = text.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }.count
+        return Int(Double(wordCount) * 1.3)
+    }
 }

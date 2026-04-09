@@ -429,7 +429,6 @@ Approximate token count using word count:
 - [Prompt-Cloud Compression](https://github.com/swbratcher/prompt-cloud)
 - [Apple Foundation Models](https://developer.apple.com/documentation/FoundationModels)
 - [OpenRouter API](https://openrouter.ai/docs)
-- [NativeEditor Reference](/Users/ddahl/code/memetic-research-labs-llc/prompt-audit/mac-app/PromptAuditServer/PromptAuditServer/NativeEditor)
 
 ---
 

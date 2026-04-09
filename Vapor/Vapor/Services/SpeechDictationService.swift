@@ -2,6 +2,9 @@ import Foundation
 import Speech
 import AVFoundation
 import AppKit
+import OSLog
+
+private let logger = Logger(subsystem: "lol.mrl.app.Vapor", category: "Dictation")
 
 @MainActor
 @Observable
@@ -13,12 +16,12 @@ final class SpeechDictationService {
         case dictating
         case error(String)
     }
-    
+
     private(set) var state: DictationState = .idle
     private(set) var isDictating: Bool = false
     private(set) var currentTranscript: String = ""
     private(set) var inputLevel: Float = 0.0
-    
+
     private let recognizer: SFSpeechRecognizer?
     private let audioEngine = AVAudioEngine()
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
@@ -26,28 +29,28 @@ final class SpeechDictationService {
     private var hasAudioTap: Bool = false
     private var hasDeliveredFinalResult: Bool = false
     private var isCancellationRequested: Bool = false
-    
+
     var onTextUpdate: ((String, Bool) -> Void)?
-    
+
     init(locale: Locale = .current) {
         recognizer = SFSpeechRecognizer(locale: locale)
         if recognizer?.isAvailable == true {
             state = .ready
         }
-        print("[SpeechDictation] Initialized for locale: \(recognizer?.locale.identifier ?? "default")")
+        logger.debug("Initialized for locale: \(self.recognizer?.locale.identifier ?? "default")")
     }
-    
+
     func toggleDictation(onTextUpdate: @escaping (String, Bool) -> Void) {
         switch isDictating {
         case true:
-            print("[SpeechDictation] Toggle OFF (stop dictation)")
+            logger.debug("Toggle OFF (stop dictation)")
             stopDictation(commit: true)
         case false:
-            print("[SpeechDictation] Toggle ON (start dictation)")
+            logger.debug("Toggle ON (start dictation)")
             startDictation(onTextUpdate: onTextUpdate)
         }
     }
-    
+
     func stopDictation(commit: Bool) {
         if commit, !currentTranscript.isEmpty {
             onTextUpdate?(currentTranscript, true)
@@ -57,46 +60,46 @@ final class SpeechDictationService {
         onTextUpdate = nil
         currentTranscript = ""
     }
-    
+
     private func startDictation(onTextUpdate: @escaping (String, Bool) -> Void) {
         Task { @MainActor in
             await startDictationInternal(onTextUpdate: onTextUpdate)
         }
     }
-    
+
     private func startDictationInternal(onTextUpdate: @escaping (String, Bool) -> Void) async {
         guard recognitionTask == nil else { return }
-        
+
         state = .idle
-        
+
         self.onTextUpdate = onTextUpdate
         currentTranscript = ""
         hasDeliveredFinalResult = false
         isCancellationRequested = false
-        
+
         await requestPermissionsIfNeeded()
         guard case .ready = state else {
-            print("[SpeechDictation] Permissions not ready; state=\(state)")
+            logger.warning("Permissions not ready; state=\(String(describing: self.state))")
             return
         }
-        
+
         guard let recognizer = recognizer, recognizer.isAvailable else {
-            print("[SpeechDictation] Recognizer not available")
+            logger.error("Recognizer not available")
             state = .error("Speech recognizer is not available on this Mac.")
             return
         }
-        
+
         teardownAudioSession(preserveErrorState: true)
-        
+
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
         recognitionRequest = request
-        
+
         let inputNode = audioEngine.inputNode
         let recordingFormat = inputNode.outputFormat(forBus: 0)
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { [weak self] buffer, _ in
             guard let self = self else { return }
-            
+
             let channelCount = Int(buffer.format.channelCount)
             let frameLength = Int(buffer.frameLength)
             if channelCount > 0, let floatChannelData = buffer.floatChannelData, frameLength > 0 {
@@ -107,41 +110,41 @@ final class SpeechDictationService {
                     sum += sample * sample
                 }
                 let rms = sqrtf(sum / Float(frameLength))
-                
+
                 let minDb: Float = -60.0
                 let clampedRms = max(rms, 1e-5)
                 let db = 20.0 * log10f(clampedRms)
                 let clampedDb = max(minDb, db)
                 let normalized = (clampedDb - minDb) / -minDb
-                
+
                 Task { @MainActor in
                     let smoothing: Float = 0.2
                     self.inputLevel = self.inputLevel * (1 - smoothing) + normalized * smoothing
                 }
             }
-            
+
             self.recognitionRequest?.append(buffer)
         }
         hasAudioTap = true
-        
+
         audioEngine.prepare()
         do {
             try audioEngine.start()
-            print("[SpeechDictation] Audio engine started")
+            logger.info("Audio engine started")
         } catch {
-            print("[SpeechDictation] Failed to start audio engine: \(error)")
+            logger.error("Failed to start audio engine: \(error)")
             state = .error("Failed to start audio engine: \(error.localizedDescription)")
             teardownAudioSession(preserveErrorState: true)
             return
         }
-        
+
         isDictating = true
         state = .dictating
-        print("[SpeechDictation] State = dictating")
-        
+        logger.debug("State = dictating")
+
         recognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, error in
             guard let self = self else { return }
-            
+
             if let result = result {
                 let transcript = result.bestTranscription.formattedString
                 Task { @MainActor in
@@ -154,12 +157,12 @@ final class SpeechDictationService {
                     }
                 }
             }
-            
+
             if let error = error {
-                print("[SpeechDictation] Recognizer error: \(error.localizedDescription)")
+                logger.error("Recognizer error: \(error.localizedDescription)")
                 Task { @MainActor in
                     if self.isCancellationRequested || self.hasDeliveredFinalResult {
-                        print("[SpeechDictation] Ignoring error after normal termination")
+                        logger.debug("Ignoring error after normal termination")
                     } else {
                         self.state = .error("Speech recognition failed: \(error.localizedDescription)")
                         self.teardownAudioSession(preserveErrorState: true)
@@ -169,10 +172,10 @@ final class SpeechDictationService {
             }
         }
     }
-    
+
     private func teardownAudioSession(preserveErrorState: Bool) {
         audioEngine.stop()
-        print("[SpeechDictation] Audio engine stopped")
+        logger.debug("Audio engine stopped")
         if hasAudioTap {
             audioEngine.inputNode.removeTap(onBus: 0)
             hasAudioTap = false
@@ -181,29 +184,29 @@ final class SpeechDictationService {
         recognitionRequest = nil
         recognitionTask?.cancel()
         recognitionTask = nil
-        
+
         isDictating = false
-        
+
         if !preserveErrorState {
             state = .ready
         }
     }
-    
+
     private func requestPermissionsIfNeeded() async {
         let speechStatus = SFSpeechRecognizer.authorizationStatus()
-        print("[SpeechDictation] Speech auth status: \(speechStatus.rawValue)")
-        
+        logger.debug("Speech auth status: \(speechStatus.rawValue)")
+
         switch speechStatus {
         case .notDetermined:
             state = .requestingPermission
             let requested = await requestSpeechAuthorization()
-            print("[SpeechDictation] Speech auth result: \(requested)")
+            logger.debug("Speech auth result: \(requested)")
             if !requested {
                 state = .error("Speech recognition permission denied. Enable it in System Settings > Privacy & Security > Speech Recognition.")
                 return
             }
         case .denied, .restricted:
-            print("[SpeechDictation] Speech auth denied or restricted")
+            logger.warning("Speech auth denied or restricted")
             state = .error("Speech recognition permission denied. Enable it in System Settings > Privacy & Security > Speech Recognition.")
             return
         case .authorized:
@@ -212,20 +215,20 @@ final class SpeechDictationService {
             state = .error("Speech recognition permission is in an unknown state.")
             return
         }
-        
+
         let micStatus = AVCaptureDevice.authorizationStatus(for: .audio)
-        print("[SpeechDictation] Mic auth status: \(micStatus.rawValue)")
-        
+        logger.debug("Mic auth status: \(micStatus.rawValue)")
+
         switch micStatus {
         case .notDetermined:
             let granted = await requestMicrophoneAuthorization()
-            print("[SpeechDictation] Mic auth result: \(granted)")
+            logger.debug("Mic auth result: \(granted)")
             if !granted {
                 state = .error("Microphone access denied. Enable it in System Settings > Privacy & Security > Microphone.")
                 return
             }
         case .denied, .restricted:
-            print("[SpeechDictation] Mic auth denied or restricted")
+            logger.warning("Mic auth denied or restricted")
             state = .error("Microphone access denied. Enable it in System Settings > Privacy & Security > Microphone.")
             return
         case .authorized:
@@ -234,18 +237,18 @@ final class SpeechDictationService {
             state = .error("Microphone permission is in an unknown state.")
             return
         }
-        
+
         if case .requestingPermission = state {
             state = .ready
         } else if case .idle = state {
             state = .ready
         }
     }
-    
+
     private func requestSpeechAuthorization() async -> Bool {
         await withCheckedContinuation { continuation in
             SFSpeechRecognizer.requestAuthorization { status in
-                print("[SpeechDictation] Speech auth callback: \(status.rawValue)")
+                logger.debug("Speech auth callback: \(status.rawValue)")
                 switch status {
                 case .authorized:
                     continuation.resume(returning: true)
@@ -255,11 +258,11 @@ final class SpeechDictationService {
             }
         }
     }
-    
+
     private func requestMicrophoneAuthorization() async -> Bool {
         await withCheckedContinuation { continuation in
             AVCaptureDevice.requestAccess(for: .audio) { granted in
-                print("[SpeechDictation] Mic auth callback: \(granted)")
+                logger.debug("Mic auth callback: \(granted)")
                 continuation.resume(returning: granted)
             }
         }
