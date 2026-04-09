@@ -1,0 +1,43 @@
+included:
+  - Vapor/Vapor
+  - Vapor/VaporTests
+  - Vapor/VaporUITests
+
+# Keep SwiftLint complementary to xcodebuild linting:
+# - Focus on a small set of semantic/safety rules.
+# - Avoid size/complexity/style noise from failing the build.
+#
+# Start from SwiftLint's defaults, then explicitly turn off rules that create
+# a lot of noise for this codebase.
+disabled_rules:
+  - line_length
+  - file_length
+  - type_body_length
+  - function_body_length
+  - cyclomatic_complexity
+  - nesting
+  - large_tuple
+  - trailing_whitespace
+  - trailing_newline
+  - static_over_final_class
+
+identifier_name:
+  min_length:
+    warning: 3
+    error: 2
+  max_length:
+    warning: 40
+    error: 60
+  excluded: [i, j, k, x, y, z, id, db, q, c, lhs, rhs, a, b, fm, u, ok, or]
+
+custom_rules:
+  no_double_escaped_interpolation:
+    included:
+      - Vapor/Vapor
+      - Vapor/VaporTests
+      - Vapor/VaporUITests
+    name: "No double-escaped interpolation"
+    # Match a literal "\\(" sequence; tuned to avoid flagging normal \(value) uses.
+    regex: '\\\\\('
+    message: 'String interpolation appears double-escaped; use \(value) instead of \\(value).'
+    severity: error

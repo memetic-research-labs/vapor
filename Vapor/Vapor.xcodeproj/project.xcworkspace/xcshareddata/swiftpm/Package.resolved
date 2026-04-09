@@ -1,0 +1,15 @@
+{
+  "originHash" : "84c38e0356347bb3b7e6c0c95c933b3bdaf9578e076578c2204726234b3f5d11",
+  "pins" : [
+    {
+      "identity" : "swift-llama-cpp",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/pgorzelany/swift-llama-cpp.git",
+      "state" : {
+        "revision" : "5496bc7c9820f04bba7268dc8a271235deae436d",
+        "version" : "1.2.0"
+      }
+    }
+  ],
+  "version" : 3
+}
