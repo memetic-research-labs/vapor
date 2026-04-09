@@ -3,6 +3,7 @@ import OSLog
 
 private let logger = Logger(subsystem: "lol.mrl.app.Vapor", category: "Compression")
 
+@MainActor
 private class DownloadDelegate: NSObject, URLSessionDownloadDelegate {
     var localURL: URL?
     var error: Error?
@@ -163,7 +164,7 @@ final class CompressionService {
         logger.info("Downloading from: \(url.absoluteString)")
 
         let delegate = DownloadDelegate()
-        let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
+        let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: OperationQueue.main)
 
         let task = session.downloadTask(with: url)
         task.resume()
@@ -195,13 +196,13 @@ final class CompressionService {
 
         UserDefaults.standard.set(modelURL, forKey: localLLMModelURLKey)
 
-        modelDownloadProgress = 1.0
-        downloadSuccess = true
-
         localLLMCompressor = LocalLLMCompressor(modelURL: modelURL)
         logger.info("Loading model...")
         try await localLLMCompressor?.loadModel()
         logger.info("Model loaded successfully!")
+
+        downloadSuccess = true
+        modelDownloadProgress = 1.0
 
         await checkAvailability()
     }
@@ -216,18 +217,19 @@ final class CompressionService {
                 }
             }
             #endif
+            return try await ruleBasedCompressor.compress(text)
         case .localLLM:
             if let localLLM = localLLMCompressor, await localLLM.isAvailable {
                 return try await localLLM.compress(text)
             }
+            return try await ruleBasedCompressor.compress(text)
         case .openRouter:
             if let openRouter = openRouterCompressor, await openRouter.isAvailable {
                 return try await openRouter.compress(text)
             }
+            return try await ruleBasedCompressor.compress(text)
         case .ruleBased:
             return try await ruleBasedCompressor.compress(text)
         }
-
-        return try await ruleBasedCompressor.compress(text)
     }
 }

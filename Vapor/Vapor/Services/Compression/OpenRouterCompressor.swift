@@ -72,7 +72,7 @@ actor OpenRouterCompressor: Compressor {
         var request = URLRequest(url: URL(string: "https://openrouter.ai/api/v1/chat/completions")!)
         request.httpMethod = "POST"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        request.setValue("https://github.com/memetic-research-labs/comp-tok-stt", forHTTPHeaderField: "HTTP-Referer")
+        request.setValue("https://github.com/memetic-research-labs-llc/comp-tok-stt", forHTTPHeaderField: "HTTP-Referer")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         return request
     }

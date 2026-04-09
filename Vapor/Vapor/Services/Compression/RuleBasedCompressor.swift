@@ -19,8 +19,13 @@ actor RuleBasedCompressor: Compressor {
         for word in words {
             let cleanWord = word.trimmingCharacters(in: .punctuationCharacters)
             guard !cleanWord.isEmpty else { continue }
-            if shouldStrip(cleanWord) { continue }
-            result.append(cleanWord)
+            if negations.contains(cleanWord) || isExactValue(cleanWord) {
+                result.append(cleanWord)
+            } else if shouldStrip(cleanWord) {
+                continue
+            } else {
+                result.append(cleanWord)
+            }
         }
 
         let compressed = result.joined(separator: " ")
