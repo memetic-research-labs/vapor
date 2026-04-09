@@ -33,49 +33,63 @@ The app must make this feel like one seamless gesture, not three steps.
 
 ## Core Workflow
 
+The primary flow is designed around three moments, activated entirely from the keyboard:
+
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                        PRIMARY FLOW                                 │
-│                                                                     │
-│   IDLE              LISTENING            READY TO SEND              │
-│                                                                     │
-│  ┌────────┐  Hold   ┌────────────┐  Release  ┌──────────────────┐  │
-│  │ 🎤     │  Fn ──► │ 🔴 Hearing │  Fn    ►  │ ⌘↩  Compress &  │  │
-│  │ Vapor  │         │ your voice │           │     Copy         │  │
-│  └────────┘         └────────────┘           └──────────────────┘  │
-│                                                        │            │
-│                                              ┌─────────▼─────────┐ │
-│                                              │ ✅ Compressed text │ │
-│                                              │    in clipboard    │ │
-│                                              └───────────────────┘ │
-│                                                        │            │
-│                                              ┌─────────▼─────────┐ │
-│                                              │  Paste anywhere   │ │
-│                                              │  ⌘V in terminal,  │ │
-│                                              │  chat, IDE...     │ │
-│                                              └───────────────────┘ │
-└─────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                          PRIMARY FLOW                                   │
+│                                                                         │
+│  MINIMIZED           ACTIVE / LISTENING        COMPRESS & PASTE         │
+│                                                                         │
+│  ┌──────────┐  Global  ┌───────────────────┐  ⌘↩   ┌────────────────┐ │
+│  │  · Vapor │  hotkey  │  🔴 [||||||||]     │  ──►  │ ✅ Compressed  │ │
+│  │  (pill)  │  ──────► │  (audio-reactive  │       │    in clipboard│ │
+│  └──────────┘          │   mic icon, live  │       └────────┬───────┘ │
+│                        │   transcript)     │                │         │
+│                        └───────────────────┘       ┌────────▼───────┐ │
+│                                                     │  ⌘V  anywhere  │ │
+│                                                     │  (terminal,    │ │
+│                                                     │   IDE, chat)   │ │
+│                                                     └────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### The Three Gestures
 
-1. **Hold Fn** — dictate (Fn key works system-wide; mic button is the alternative)
-2. **⌘↩ (Cmd + Return)** — compress & copy
-3. **⌘V** — paste compressed prompt wherever you need it
+1. **Global hotkey** (e.g., `⌃⌥Space`) — activates Vapor from any app, expands window from minimized pill
+2. **Speak** — the mic activates automatically; the icon turns red and responds visually to your voice level in real time
+3. **⌘↩** — compress & copy; return to your terminal/IDE/chat and paste with `⌘V`
 
-Everything else in the UI exists to support or explain this three-gesture flow.
+Everything else in the UI supports or explains this three-gesture flow. The mouse is never required.
 
 ---
 
-## Window Design
+## Window States
 
-### Layout
+Vapor has two window states. The transition between them is the activation gesture.
 
-Vapor is a **compact floating window** that stays above all other apps. It appears alongside — not over — whatever tool the user is prompting.
+### Minimized (Micro) State — default resting state
+
+When not actively in use, Vapor collapses to a compact **floating pill** in the corner of the screen. It is barely intrusive — just enough to confirm the app is running.
+
+```
+┌──────────────────┐
+│  · Vapor         │   ← Tiny pill, always on top, low opacity
+└──────────────────┘
+```
+
+- Size: ~120 × 28 px
+- Opacity: 60–70% (slightly transparent so it doesn't obscure content)
+- Position: Bottom-right or user-chosen corner; position is remembered
+- Click or global hotkey expands to the full window
+
+### Full / Active State — when composing or reviewing
+
+The full window opens when the user triggers the global hotkey or clicks the pill.
 
 ```
 ┌──────────────────────────────────────────────────────┐
-│  🎤 [Hold Fn]    [⚡ Compress & Copy  ⌘↩]  [⚙]  [🧪] │  ← Toolbar
+│  🔴 [||||||||]   [⚡ Compress & Copy  ⌘↩]  [⚙]  [🧪] │  ← Toolbar
 ├──────────────────────────────────────────────────────┤
 │                                                      │
 │   Type or speak your prompt here…                   │  ← Raw input
@@ -89,6 +103,16 @@ Vapor is a **compact floating window** that stays above all other apps. It appea
 └──────────────────────────────────────────────────────┘
 ```
 
+When the user presses `⌘↩` (compress & copy), the window can optionally auto-minimize back to the pill so the user can switch immediately to their target app and paste.
+
+---
+
+## Window Design
+
+### Layout
+
+Vapor's full window stays above all other apps. It appears alongside — not over — whatever tool the user is prompting. The wireframe above in **Window States** shows the full layout.
+
 **Window properties:**
 - Size: 500 × 340 (default), fully resizable
 - Level: Floating (`.floating` window level, always on top)
@@ -96,16 +120,31 @@ Vapor is a **compact floating window** that stays above all other apps. It appea
 - Title bar: Hidden (borderless, draggable via toolbar area)
 - Position: Remembered across sessions
 
+### Audio-Reactive Mic Icon
+
+The mic icon in the toolbar is the primary dictation signal. It has three distinct visual states:
+
+| State | Icon appearance |
+|---|---|
+| Idle | 🎤 Gray mic, static |
+| Listening — quiet | 🔴 Red mic + short bar `[|  ]` |
+| Listening — speaking | 🔴 Red mic + tall bars `[||||||||]` |
+| Listening — loud | 🔴 Red mic + overflowing bars `[||||||||||]` |
+
+The bar height is driven by the **real-time audio input level** captured from the microphone (already computed as `inputLevel` in `SpeechDictationService`). This gives users instant confirmation that their voice is being picked up — a critical feedback signal when using Vapor without looking at the screen.
+
+The bars should be rendered as a small inline waveform or VU-meter strip to the right of the mic icon, using the system red color.
+
 ### Toolbar (top strip)
 
 The toolbar is the command center. Left-to-right reading order matches task order.
 
 | Control | Label / Icon | Interaction | Shortcut |
 |---|---|---|---|
-| Dictation | 🎤 · "Hold Fn" (idle) → 🔴 "Listening…" (active) | Click to toggle; Fn key is global shortcut | `Fn` hold |
+| Dictation indicator | 🎤 / 🔴 [audio bars] | Read-only during Fn-key dictation; click to toggle manually | `Fn` hold or click |
 | Compress & Copy | ⚡ "Compress & Copy" | Primary action button, always prominent | `⌘↩` |
 | Clear | "Clear" | Resets editor and compressed preview | `⌘N` |
-| Settings | ⚙ | Opens settings sheet | — |
+| Settings | ⚙ | Opens settings sheet | `⌘,` |
 | Test sidebar | 🧪 | Reveals OpenRouter test panel | — |
 
 The **Copy** dropdown (original vs. compressed) is a secondary control accessed via the main Copy icon next to the Compress button for users who want to copy without compressing, or copy the original text.
@@ -116,14 +155,17 @@ The **Copy** dropdown (original vs. compressed) is a secondary control accessed 
 
 ### Dictation States
 
-| State | Mic button appearance | Editor hint |
+| State | Mic icon appearance | Editor behavior |
 |---|---|---|
-| Idle | 🎤 "Hold Fn" (gray, muted) | Placeholder: "Type or speak your prompt…" |
-| Listening | 🔴 "Listening…" (pulsing waveform icon, red) | Live transcript appears as you speak |
-| Processing | Spinner (brief, <0.5s) | Transcript finalizing |
-| Done | Returns to idle | Final text in editor; cursor at end |
+| Idle (window minimized) | Pill only: `· Vapor` | N/A — window is collapsed |
+| Idle (window open) | 🎤 Gray mic, static | Placeholder: "Type or speak your prompt…" |
+| Listening — quiet | 🔴 Red mic + `[|  ]` | Waiting for voice input |
+| Listening — active | 🔴 Red mic + `[||||||||]` | Live transcript appearing in editor |
+| Listening — loud | 🔴 Red mic + `[||||||||||]` | Live transcript, icon shows signal clipping |
+| Finalizing | Brief spinner | Transcript committing to editor |
+| Done | Returns to gray idle | Final text in editor; cursor at end |
 
-The **pulsing waveform icon** is the primary listening signal. It must be visible at a glance without reading text — agentic users keep focus on their primary tool, not Vapor.
+The audio-reactive bars give users **immediate physical confirmation** that the mic is capturing their voice, without needing to read any text. This matters most when Vapor is in a corner of the screen while focus is on a terminal or IDE.
 
 ### Compression States
 
@@ -151,10 +193,13 @@ Toasts appear at the top of the window, auto-dismiss after 2 seconds. They confi
 
 ### Dictation Flow (detailed)
 
-1. **Global trigger:** User holds `Fn`. Vapor's mic button turns red and pulses. No click needed — the key event is captured system-wide regardless of focus.
-2. **Live transcription:** Words appear in the editor as the user speaks. Partial results show in a slightly lighter color; final results are full opacity.
-3. **Stop:** User releases `Fn`. Speech recognition finalizes. Cursor moves to end of text.
-4. **Auto-compress option (configurable):** Optionally, releasing Fn can automatically trigger compress & copy — zero additional keystrokes for the most common flow.
+1. **Activate Vapor:** User presses the global hotkey (e.g., `⌃⌥Space`) from any app. Vapor expands from its minimized pill to the full window and immediately starts listening.
+2. **Audio-reactive feedback:** The mic icon turns red and the bar indicator responds in real time to the user's voice level, driven by the `inputLevel` reading from the audio engine. Users can confirm the mic is working without looking away from their primary app for more than a glance.
+3. **Live transcription:** Words appear in the editor as the user speaks. Partial results show in a slightly lighter color; final results are full opacity.
+4. **Stop speaking:** The user stops talking. The Fn key (or clicking the mic) can also stop dictation explicitly.
+5. **Compress & Copy:** User presses `⌘↩`. The compressed text lands in the clipboard.
+6. **Optional auto-minimize:** After compress & copy, Vapor can optionally shrink back to the pill, returning focus to the user's primary app.
+7. **Paste:** User presses `⌘V` in their terminal, IDE, or chat UI.
 
 ### Compression Flow (detailed)
 
@@ -229,8 +274,9 @@ First launch should take < 30 seconds and leave the user ready to dictate.
 
 1. **Microphone permission prompt** — triggered automatically; macOS system dialog
 2. **Speech recognition permission** — same; macOS system dialog
-3. **Backend auto-selection:** Default is Rule-Based (always works, no setup). A subtle one-line banner at the bottom: *"Using rule-based compression. Open Settings to enable better backends."*
-4. **First use tip:** After the first compress-and-copy, a one-time tooltip: *"Your compressed prompt is in the clipboard. Switch to your terminal or AI tool and press ⌘V."*
+3. **Global hotkey setup:** A one-time prompt: *"Vapor uses `⌃⌥Space` to activate from any app. You can change this in Settings."* — user acknowledges, hotkey is registered.
+4. **Backend auto-selection:** Default is Rule-Based (always works, no setup). A subtle one-line note in the expanded window: *"Using rule-based compression — open Settings to enable better backends."*
+5. **First use tip:** After the first compress-and-copy, a one-time toast: *"Compressed prompt copied. Switch to your terminal or AI tool and press ⌘V."*
 
 No onboarding wizard. The app explains itself through its state and labels.
 
@@ -244,30 +290,34 @@ Every primary action has a keyboard shortcut. Users should never need to touch t
 
 | Action | Shortcut |
 |---|---|
-| Start / stop dictation | `Fn` (hold) |
+| Activate Vapor (show / expand from pill) | `⌃⌥Space` (configurable global hotkey) |
+| Minimize Vapor (collapse to pill) | `⌘H` or `Escape` |
+| Start / stop dictation manually | `Fn` (hold) or click mic icon |
 | Compress & Copy | `⌘↩` |
 | Copy original | `⌘⇧C` |
 | Clear editor | `⌘N` |
 | Open Settings | `⌘,` |
-| Close / Hide window | `⌘W` or `⌘H` |
+| Close window | `⌘W` |
 
 ### Auto-Compress Mode (power user preference)
 
 Configurable in Settings: **"Auto-compress when dictation ends"**
 
 When enabled:
-- Releasing `Fn` automatically triggers compress & copy
-- The entire flow becomes: Hold Fn → Speak → Release Fn → Paste
-- A green checkmark badge appears on the mic icon to signal auto-mode is on
+- Dictation ending (silence detected or Fn released) automatically triggers compress & copy
+- The window optionally auto-minimizes back to the pill
+- The entire flow becomes: `⌃⌥Space` → Speak → (silence) → `⌘V` — two keystrokes total
+- A small lightning bolt badge on the mic icon signals auto-mode is active
 
 This is the highest-efficiency mode for users who trust the compression backend.
 
 ### Window Management
 
-- Vapor can be hidden with `⌘H` (standard macOS hide) or `⌘W`
-- It reappears via Dock, menu bar, or a configurable global hotkey
-- It always re-opens in the same position
-- It does not appear in Mission Control's full-screen Space layouts (`.canJoinAllSpaces` behavior)
+- Vapor runs as a **menu bar app** (no Dock icon by default) so it does not clutter the taskbar
+- The minimized pill is the primary persistent presence; it can be repositioned by dragging
+- The global hotkey (`⌃⌥Space` by default, user-configurable) activates from any context including full-screen apps
+- Vapor always re-opens in the same position and state as when it was last minimized
+- It joins all Spaces (`.canJoinAllSpaces`), so it appears regardless of which desktop the user is on
 
 ---
 
@@ -354,7 +404,8 @@ The **fallback chain** (Foundation Models → OpenRouter → Rule-Based) handles
 A successful UX means:
 
 1. **A new user** can speak, compress, and paste a prompt in under 30 seconds with no explanation
-2. **A power user** can do the entire flow (Fn → speak → release → ⌘V in terminal) without ever moving the mouse
-3. **The compression output** is clearly distinguished from the original — no confusion about what is in the clipboard
-4. **Errors** are explained in plain language and offer a clear path to resolution
-5. **The window** never gets in the way — it floats, it's compact, and it disappears cleanly when not needed
+2. **A power user** can do the entire flow (`⌃⌥Space` → speak → `⌘↩` → `⌘V` in terminal) without ever moving the mouse or switching focus deliberately
+3. **The audio-reactive mic icon** gives immediate physical confirmation that voice is being captured, visible even at the edge of peripheral vision
+4. **The compression output** is clearly distinguished from the original — no confusion about what is in the clipboard
+5. **Errors** are explained in plain language and offer a clear path to resolution
+6. **The minimized pill** means Vapor is always one hotkey away but never in the way
