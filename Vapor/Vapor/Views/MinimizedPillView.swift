@@ -158,9 +158,9 @@ struct MinimizedPillView: View {
     private var statusLabel: some View {
         switch status {
         case .idle:
-            Text("Vapor")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(.primary.opacity(0.8))
+            Text("Ready")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(.secondary)
         case .modelLoading:
             Text("Loading model…")
                 .font(.system(size: 11, weight: .medium))
