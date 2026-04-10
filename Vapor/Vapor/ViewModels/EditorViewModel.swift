@@ -87,22 +87,75 @@ final class EditorViewModel {
         clear()
     }
 
+    /// Auto-saves the current content (if any), then replaces with the restored record's original text.
+    func restoreFromHistory(_ record: PromptRecord) {
+        // Auto-save current content before replacing
+        if !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           content != lastSavedContent,
+           let historyService,
+           let compressionService {
+            let autoSaveRecord = PromptRecord(
+                originalText: content,
+                compressedText: compressedContent,
+                originalTokenCount: originalTokenCount,
+                compressedTokenCount: compressedTokenCount,
+                compressionRatio: compressionRatio,
+                compressorUsed: selectedCompressor
+            )
+            try? historyService.save(autoSaveRecord)
+        }
+
+        // Replace editor content with restored text
+        content = record.originalText
+        compressedContent = record.compressedText
+        originalTokenCount = record.originalTokenCount
+        compressedTokenCount = record.compressedTokenCount
+        compressionRatio = record.compressionRatio
+        isDirty = false
+        lastSavedContent = record.originalText
+    }
+
+    /// Whether the next dictation segment should have its first letter lowercased.
+    /// True when we're continuing mid-sentence (existing content doesn't end with sentence-ending punctuation).
+    private var shouldLowercaseNextSegment = false
+
     func applyDictationTranscript(_ text: String, isFinal: Bool) {
         if activeDictationRange == nil {
+            // Insert a space separator if the existing content doesn't end with whitespace
+            if !content.isEmpty, let lastChar = content.last, !lastChar.isWhitespace {
+                content.append(" ")
+            }
+
+            // Determine if we should lowercase the first character of this new segment.
+            // If content is empty or ends with sentence-ending punctuation, keep original case.
+            // Otherwise, lowercase to continue mid-sentence naturally.
+            let trimmed = content.trimmingCharacters(in: .whitespaces)
+            let sentenceEnders: Set<Character> = [".", "!", "?", ":", "\n"]
+            shouldLowercaseNextSegment = !trimmed.isEmpty && !sentenceEnders.contains(trimmed.last ?? ".")
+
             activeDictationRange = NSRange(location: (content as NSString).length, length: 0)
         }
 
         guard let range = activeDictationRange else { return }
 
+        // Adjust case of the first character if continuing mid-sentence
+        let adjustedText: String
+        if shouldLowercaseNextSegment, let first = text.first, first.isUppercase {
+            adjustedText = first.lowercased() + text.dropFirst()
+        } else {
+            adjustedText = text
+        }
+
         let nsString = content as NSString
-        let newContent = nsString.replacingCharacters(in: range, with: text)
+        let newContent = nsString.replacingCharacters(in: range, with: adjustedText)
         content = newContent
         isDirty = true
 
         if isFinal {
             activeDictationRange = nil
+            shouldLowercaseNextSegment = false
         } else {
-            activeDictationRange = NSRange(location: range.location, length: (text as NSString).length)
+            activeDictationRange = NSRange(location: range.location, length: (adjustedText as NSString).length)
         }
     }
 }

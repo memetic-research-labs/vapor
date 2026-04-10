@@ -44,6 +44,9 @@ struct ContentView: View {
                     onClear: {
                         viewModel.copyAndClear()
                     },
+                    onShowHistory: {
+                        openWindow(id: "prompt-history")
+                    },
                     text: viewModel.content,
                     isDictating: viewModel.isDictating,
                     isCompressing: viewModel.isCompressing,
@@ -84,6 +87,13 @@ struct ContentView: View {
         .onChange(of: viewModel.isDictating) { _, isDictating in
             if !isDictating, preferences.autoCompressEnabled, !viewModel.content.isEmpty {
                 Task { await performAutoCompress() }
+            }
+        }
+        .onChange(of: HistoryStore.shared.pendingRestore) { _, record in
+            if let record {
+                viewModel.restoreFromHistory(record)
+                HistoryStore.shared.pendingRestore = nil
+                toastService.showSuccess("Restored from history")
             }
         }
         .onDisappear {
@@ -188,6 +198,13 @@ struct ContentView: View {
             windowManager.minimize()
             return .handled
         }
+        .background {
+            Button("") {
+                openWindow(id: "prompt-history")
+            }
+            .keyboardShortcut("y", modifiers: .command)
+            .hidden()
+        }
     }
 
     private func checkPermissions() {
@@ -235,26 +252,7 @@ struct ContentView: View {
     }
 
     private func toggleDictation() {
-        if hasPermissionIssue {
-            toastService.showError("Microphone or Speech Recognition access required — grant permissions above")
-            return
-        }
-        if dictationService.isDictating {
-            dictationService.pauseDictation()
-            viewModel.isDictating = false
-            EditorTextViewRegistry.refocus()
-        } else {
-            viewModel.isDictating = true
-            dictationService.startDictation(onTextUpdate: { [weak viewModel] text, isFinal in
-                Task { @MainActor in
-                    guard let viewModel else { return }
-                    viewModel.applyDictationTranscript(text, isFinal: isFinal)
-                    if isFinal {
-                        viewModel.isDictating = false
-                    }
-                }
-            })
-        }
+        toastService.showInfo("Hold the Fn key to dictate, release to stop")
     }
 
     private func startDictationOnExpand() {

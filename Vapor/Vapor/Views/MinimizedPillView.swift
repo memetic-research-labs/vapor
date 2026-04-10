@@ -14,6 +14,7 @@ struct MinimizedPillView: View {
     let onCompressAndCopy: () -> Void
     let onCopyOriginal: () -> Void
     let onClear: () -> Void
+    let onShowHistory: () -> Void
 
     // State
     var text: String = ""
@@ -100,6 +101,11 @@ struct MinimizedPillView: View {
                     if hasContent { onCopyOriginal() }
                 }
                 .keyboardShortcut("c", modifiers: [.command, .shift])
+
+                Button("") {
+                    onShowHistory()
+                }
+                .keyboardShortcut("y", modifiers: .command)
             }
             .hidden()
         }

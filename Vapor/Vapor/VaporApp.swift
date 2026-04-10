@@ -63,6 +63,14 @@ struct VaporApp: App {
         .defaultSize(width: 320, height: 240)
         .defaultPosition(.trailing)
 
+        Window("Prompt History", id: "prompt-history") {
+            PromptHistoryView()
+        }
+        .modelContainer(sharedModelContainer)
+        .windowStyle(.titleBar)
+        .defaultSize(width: 400, height: 500)
+        .defaultPosition(.center)
+
         MenuBarExtra("Vapor", systemImage: "waveform.circle") {
             MenuBarView()
         }
