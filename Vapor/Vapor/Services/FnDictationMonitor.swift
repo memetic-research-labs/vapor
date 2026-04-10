@@ -7,7 +7,7 @@ private let logger = Logger(subsystem: "lol.mrl.app.Vapor", category: "Dictation
 final class FnDictationMonitor {
     static let shared = FnDictationMonitor()
 
-    private var monitor: Any?
+    private var localMonitor: Any?
     private var callback: ((Bool) -> Void)?
     private var lastFnState = false
 
@@ -16,27 +16,30 @@ final class FnDictationMonitor {
     func start(callback: @escaping (Bool) -> Void) {
         self.callback = callback
 
-        monitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
-            let isFnDown = event.modifierFlags.contains(.function)
-
-            if let self, isFnDown != self.lastFnState {
-                self.lastFnState = isFnDown
-                logger.debug("Fn key \(isFnDown ? "pressed" : "released")")
-                self.callback?(isFnDown)
-            }
-
+        localMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
+            self?.handleEvent(event)
             return event
         }
 
-        logger.debug("Started monitoring")
+        logger.debug("Started monitoring (local only — sandbox-compatible)")
     }
 
     func stop() {
-        if let monitor {
-            NSEvent.removeMonitor(monitor)
-            self.monitor = nil
+        if let localMonitor {
+            NSEvent.removeMonitor(localMonitor)
+            self.localMonitor = nil
         }
         callback = nil
         logger.debug("Stopped monitoring")
+    }
+
+    private func handleEvent(_ event: NSEvent) {
+        let isFnDown = event.modifierFlags.contains(.function)
+
+        if isFnDown != lastFnState {
+            lastFnState = isFnDown
+            logger.debug("Fn key \(isFnDown ? "pressed" : "released")")
+            callback?(isFnDown)
+        }
     }
 }

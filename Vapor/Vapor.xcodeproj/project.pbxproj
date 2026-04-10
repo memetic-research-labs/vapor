@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		50849C8E2F874B8B008E324C /* SwiftLlama in Frameworks */ = {isa = PBXBuildFile; productRef = 508498662F86F966008E324C /* SwiftLlama */; };
+		50849C902F874B8B008E324D /* KeyboardShortcuts in Frameworks */ = {isa = PBXBuildFile; productRef = 50849C912F874B8B008E324D /* KeyboardShortcuts */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -57,6 +58,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				50849C8E2F874B8B008E324C /* SwiftLlama in Frameworks */,
+				50849C902F874B8B008E324D /* KeyboardShortcuts in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -118,6 +120,7 @@
 			name = Vapor;
 			packageProductDependencies = (
 				508498662F86F966008E324C /* SwiftLlama */,
+				50849C912F874B8B008E324D /* KeyboardShortcuts */,
 			);
 			productName = Vapor;
 			productReference = 508498392F86F964008E324C /* Vapor.app */;
@@ -203,6 +206,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				508498652F86F966008E324C /* XCRemoteSwiftPackageReference "swift-llama-cpp" */,
+				50849C922F874B8B008E324E /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 5084983A2F86F964008E324C /* Products */;
@@ -420,6 +424,9 @@
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = lol.mrl.app.Vapor;
+				INFOPLIST_FILE = Vapor/Info.plist;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Vapor needs microphone access to capture your voice for text dictation.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Vapor uses speech recognition to capture text via voice dictation.";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -453,6 +460,9 @@
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = lol.mrl.app.Vapor;
+				INFOPLIST_FILE = Vapor/Info.plist;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Vapor needs microphone access to capture your voice for text dictation.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Vapor uses speech recognition to capture text via voice dictation.";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -594,6 +604,14 @@
 				minimumVersion = 1.2.0;
 			};
 		};
+		50849C922F874B8B008E324E /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sindresorhus/KeyboardShortcuts";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.0.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -601,6 +619,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 508498652F86F966008E324C /* XCRemoteSwiftPackageReference "swift-llama-cpp" */;
 			productName = SwiftLlama;
+		};
+		50849C912F874B8B008E324D /* KeyboardShortcuts */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 50849C922F874B8B008E324E /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */;
+			productName = KeyboardShortcuts;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

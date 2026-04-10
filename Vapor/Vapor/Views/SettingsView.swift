@@ -1,4 +1,5 @@
 import SwiftUI
+import KeyboardShortcuts
 import OSLog
 
 private let logger = Logger(subsystem: "lol.mrl.app.Vapor", category: "Settings")
@@ -6,6 +7,7 @@ private let logger = Logger(subsystem: "lol.mrl.app.Vapor", category: "Settings"
 struct SettingsView: View {
     let compressionService: CompressionService
     @Binding var selectedCompressor: CompressorType
+    let preferences: UserPreferences
     @State private var openRouterApiKey: String = ""
     @State private var openRouterModel: String = "glm-5"
     @State private var isLocalLLMAvailable: Bool = false
@@ -151,6 +153,51 @@ struct SettingsView: View {
                     }
                     .padding(8)
                 }
+            }
+
+            GroupBox("Power User") {
+                VStack(alignment: .leading, spacing: 12) {
+                    Toggle("Auto-compress when dictation ends", isOn: Binding(
+                        get: { preferences.autoCompressEnabled },
+                        set: { preferences.autoCompressEnabled = $0 }
+                    ))
+                    .font(.system(size: 13))
+
+                    Text("Automatically compress & copy when you stop speaking.")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+
+                    Toggle("Auto-minimize after compress & copy", isOn: Binding(
+                        get: { preferences.autoMinimizeEnabled },
+                        set: { preferences.autoMinimizeEnabled = $0 }
+                    ))
+                    .font(.system(size: 13))
+
+                    Text("Collapse window to pill after copying, so you can paste immediately.")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+                .padding(8)
+            }
+
+            GroupBox("Global Hotkey") {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Activate Vapor from any app:")
+                            .font(.system(size: 13))
+                        KeyboardShortcuts.Recorder(for: .toggleVapor)
+                            .frame(width: 150)
+                    }
+
+                    Text("Default: \u{2303}\u{2325}Space (Control+Option+Space). You can change it by clicking the recorder.")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+
+                    Text("When you first set a hotkey, macOS will ask for Input Monitoring permission. Grant it to enable the global shortcut.")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+                .padding(8)
             }
 
             HStack {

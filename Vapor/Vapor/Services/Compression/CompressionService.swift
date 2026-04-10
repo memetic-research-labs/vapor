@@ -5,14 +5,30 @@ private let logger = Logger(subsystem: "lol.mrl.app.Vapor", category: "Compressi
 
 @MainActor
 private class DownloadDelegate: NSObject, URLSessionDownloadDelegate {
-    var localURL: URL?
+    var destinationURL: URL?
+    var didCopySuccessfully = false
     var error: Error?
     var isFinished = false
     var bytesWritten: Int64 = 0
     var totalBytesExpected: Int64?
 
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
-        localURL = location
+        guard let destination = destinationURL else {
+            logger.error("No destination URL set for download")
+            return
+        }
+
+        do {
+            if FileManager.default.fileExists(atPath: destination.path) {
+                try FileManager.default.removeItem(at: destination)
+            }
+            try FileManager.default.copyItem(at: location, to: destination)
+            didCopySuccessfully = true
+            logger.info("Model copied to: \(destination.path)")
+        } catch {
+            logger.error("Failed to copy downloaded file: \(error)")
+            self.error = error
+        }
     }
 
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
@@ -55,7 +71,6 @@ final class CompressionService {
     }
 
     private func loadSavedSettings() {
-        // Load model name first so the compressor is created with the correct model.
         if let savedModel = UserDefaults.standard.string(forKey: "openRouterModel"),
            !savedModel.isEmpty {
             openRouterModel = savedModel
@@ -145,8 +160,8 @@ final class CompressionService {
             }
         }
 
-        let documentsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let modelsDir = documentsDir.appendingPathComponent("Models", isDirectory: true)
+        let appContainer = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let modelsDir = appContainer.appendingPathComponent("Vapor/Models", isDirectory: true)
 
         logger.debug("Models directory: \(modelsDir.path)")
 
@@ -164,6 +179,7 @@ final class CompressionService {
         logger.info("Downloading from: \(url.absoluteString)")
 
         let delegate = DownloadDelegate()
+        delegate.destinationURL = modelURL
         let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: OperationQueue.main)
 
         let task = session.downloadTask(with: url)
@@ -180,17 +196,10 @@ final class CompressionService {
             throw error
         }
 
-        guard let localURL = delegate.localURL else {
+        guard delegate.didCopySuccessfully else {
+            logger.error("Download completed but file was not copied to destination")
             throw CompressionError.unavailable
         }
-
-        logger.info("Download completed. Temporary file: \(localURL.path)")
-
-        if FileManager.default.fileExists(atPath: modelURL.path) {
-            try FileManager.default.removeItem(at: modelURL)
-        }
-
-        try FileManager.default.moveItem(at: localURL, to: modelURL)
 
         logger.info("Model saved to: \(modelURL.path)")
 

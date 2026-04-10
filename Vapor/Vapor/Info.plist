@@ -6,5 +6,7 @@
 	<string>Vapor uses speech recognition to capture text via voice dictation.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Vapor needs microphone access to capture your voice for text dictation.</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.productivity</string>
 </dict>
 </plist>

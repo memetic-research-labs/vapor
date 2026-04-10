@@ -1,11 +1,16 @@
 import SwiftUI
 import SwiftData
+import KeyboardShortcuts
 import OSLog
 
 private let logger = Logger(subsystem: "lol.mrl.app.Vapor", category: "App")
 
 @main
 struct VaporApp: App {
+    @State private var windowManager = WindowManager.shared
+    @State private var preferences = UserPreferences()
+    @Environment(\.openWindow) private var openWindow
+
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             PromptRecord.self
@@ -14,8 +19,6 @@ struct VaporApp: App {
             let persistentConfig = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
             return try ModelContainer(for: schema, configurations: [persistentConfig])
         } catch {
-            // Persistent storage failed; fall back to in-memory so the app remains usable.
-            // Prompt history will not persist across sessions.
             logger.error("Could not create persistent ModelContainer (\(error)); falling back to in-memory storage.")
             let inMemoryConfig = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
             do {
@@ -27,15 +30,33 @@ struct VaporApp: App {
     }()
 
     var body: some Scene {
-        WindowGroup {
+        Window("Vapor", id: "main") {
             ContentView()
+                .environment(windowManager)
+                .environment(preferences)
+                .onAppear {
+                    KeyboardShortcuts.onKeyUp(for: .toggleVapor) {
+                        windowManager.toggleState()
+                    }
+                    windowManager.setupWindowOnAppear()
+                }
         }
         .modelContainer(sharedModelContainer)
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 500, height: 400)
+        .defaultPosition(.topLeading)
         .commands {
             CommandGroup(replacing: .newItem) { }
+            CommandMenu("Window") {
+                Button("Minimize to Pill") {
+                    windowManager.minimize()
+                }
+                .keyboardShortcut("H", modifiers: .command)
+            }
+        }
+
+        MenuBarExtra("Vapor", systemImage: "waveform.circle") {
+            MenuBarView()
         }
     }
 }
-
