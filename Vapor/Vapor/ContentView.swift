@@ -176,7 +176,7 @@ struct ContentView: View {
                         isDictating: viewModel.isDictating,
                         inputLevel: dictationService.inputLevel
                     )
-                    .padding(6)
+                    .padding(EdgeInsets(top: 6, leading: 6, bottom: 12, trailing: 6))
                     .frame(maxHeight: .infinity)
 
                 if viewModel.originalTokenCount > 0 {
