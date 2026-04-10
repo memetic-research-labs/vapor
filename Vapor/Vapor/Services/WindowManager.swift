@@ -30,19 +30,14 @@ final class WindowManager {
         window.level = .floating
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         window.isMovableByWindowBackground = true
-
-        // Eliminate the title bar border:
-        // 1. Make title bar transparent so it blends with content
+        // Transparent title bar blends with content — title text still visible
         window.titlebarAppearsTransparent = true
-        window.titleVisibility = .hidden
-        // 2. Content extends under the title bar area
+        window.titleVisibility = .visible
+        // Content extends under the title bar area
         window.styleMask.insert(.fullSizeContentView)
-        // 3. Remove the title bar chrome entirely — no more border artifact on resize
-        window.styleMask.remove(.titled)
-        // 4. Restore resizable (removing titled can drop it)
-        window.styleMask.insert(.resizable)
-
-        window.backgroundColor = .clear
+        // Near-transparent background eliminates shadow/border artifact on resize
+        // Using .clear causes rendering bugs; 0.00001 alpha avoids them
+        window.backgroundColor = NSColor.white.withAlphaComponent(0.00001)
         window.isOpaque = false
     }
 

@@ -42,7 +42,6 @@ struct VaporApp: App {
                 }
         }
         .modelContainer(sharedModelContainer)
-        .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 500, height: 400)
         .commands {
             CommandGroup(replacing: .newItem) { }
