@@ -27,7 +27,6 @@ struct MinimizedPillView: View {
 
     @State private var glowPulse = false
     @State private var showCopied = false
-    @State private var textSelection = TextSelection?.none
 
     private var hasContent: Bool {
         !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -93,28 +92,7 @@ struct MinimizedPillView: View {
     // MARK: - Text Area
 
     private var textArea: some View {
-        ZStack(alignment: .topLeading) {
-            TextEditor(text: $text, selection: $textSelection)
-                .font(.system(size: 13, design: .default))
-                .scrollContentBackground(.hidden)
-                .padding(6)
-                .onChange(of: text) { _, newValue in
-                    // Move cursor to end so TextEditor scrolls to show latest text
-                    if isDictating {
-                        let endIndex = newValue.endIndex
-                        textSelection = .init(insertionPoint: endIndex)
-                    }
-                }
-
-            if !hasContent {
-                Text("Hold Fn to dictate or type here…")
-                    .font(.system(size: 13))
-                    .foregroundColor(.secondary.opacity(0.6))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 14)
-                    .allowsHitTesting(false)
-            }
-        }
+        PillTextEditor(text: $text, isDictating: isDictating)
     }
 
     // MARK: - Status Bar
