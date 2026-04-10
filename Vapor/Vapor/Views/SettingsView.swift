@@ -218,6 +218,18 @@ struct SettingsView: View {
                     Text("Collapse window to pill after copying, so you can paste immediately.")
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
+
+                    Divider()
+
+                    Toggle("Show experiments button in toolbar", isOn: Binding(
+                        get: { preferences.showExperimentsButton },
+                        set: { preferences.showExperimentsButton = $0 }
+                    ))
+                    .font(.system(size: 13))
+
+                    Text("Show the OpenRouter test sidebar button in the expanded toolbar.")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
                 }
                 .padding(8)
             }

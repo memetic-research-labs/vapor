@@ -12,11 +12,15 @@ final class UserPreferences {
     var autoMinimizeEnabled: Bool {
         didSet { UserDefaults.standard.set(autoMinimizeEnabled, forKey: Keys.autoMinimize) }
     }
+    var showExperimentsButton: Bool {
+        didSet { UserDefaults.standard.set(showExperimentsButton, forKey: Keys.showExperiments) }
+    }
 
     struct Keys {
         static let windowExpanded = "windowExpanded"
         static let autoCompress = "autoCompressEnabled"
         static let autoMinimize = "autoMinimizeEnabled"
+        static let showExperiments = "showExperimentsButton"
         static let windowPositionX = "windowPositionX"
         static let windowPositionY = "windowPositionY"
     }
@@ -26,6 +30,7 @@ final class UserPreferences {
         self.windowState = hasPreference ? (UserDefaults.standard.bool(forKey: Keys.windowExpanded) ? .expanded : .minimized) : .expanded
         self.autoCompressEnabled = UserDefaults.standard.object(forKey: Keys.autoCompress) as? Bool ?? false
         self.autoMinimizeEnabled = UserDefaults.standard.object(forKey: Keys.autoMinimize) as? Bool ?? false
+        self.showExperimentsButton = UserDefaults.standard.object(forKey: Keys.showExperiments) as? Bool ?? false
     }
 
     func saveWindowPosition(_ point: CGPoint) {

@@ -70,14 +70,16 @@ struct ToolbarView: View {
             .buttonStyle(.plain)
             .keyboardShortcut(",", modifiers: .command)
 
-            Button {
-                onToggleTest()
-            } label: {
-                Image(systemName: "flask")
-                    .foregroundColor(.primary)
+            if preferences.showExperimentsButton {
+                Button {
+                    onToggleTest()
+                } label: {
+                    Image(systemName: "flask")
+                        .foregroundColor(.primary)
+                }
+                .buttonStyle(.plain)
+                .help("OpenRouter Test")
             }
-            .buttonStyle(.plain)
-            .help("OpenRouter Test")
 
             Button {
                 onMinimize()
