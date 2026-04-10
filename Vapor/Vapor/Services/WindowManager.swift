@@ -30,11 +30,20 @@ final class WindowManager {
         window.level = .floating
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         window.isMovableByWindowBackground = true
+
+        // Eliminate the title bar border:
+        // 1. Make title bar transparent so it blends with content
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
-        window.backgroundColor = .windowBackgroundColor
-        window.isOpaque = false
+        // 2. Content extends under the title bar area
         window.styleMask.insert(.fullSizeContentView)
+        // 3. Remove the title bar chrome entirely — no more border artifact on resize
+        window.styleMask.remove(.titled)
+        // 4. Restore resizable (removing titled can drop it)
+        window.styleMask.insert(.resizable)
+
+        window.backgroundColor = .clear
+        window.isOpaque = false
     }
 
     func expand() {

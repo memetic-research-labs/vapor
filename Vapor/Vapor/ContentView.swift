@@ -68,6 +68,7 @@ struct ContentView: View {
                 }
             }
         }
+        .background(Color(nsColor: .windowBackgroundColor))
         .onAppear {
             historyService.setModelContext(modelContext)
             viewModel.setServices(compression: compressionService, history: historyService)
