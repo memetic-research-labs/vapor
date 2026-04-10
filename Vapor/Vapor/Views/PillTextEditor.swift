@@ -59,11 +59,18 @@ struct PillTextEditor: NSViewRepresentable {
         if textView.string != text {
             let wasAtEnd = isScrolledToBottom(scrollView)
 
-            // Use shouldChangeText/didChangeText to register with the undo manager
+            // Use shouldChangeText/didChangeText to register with the undo manager.
+            // Use NSAttributedString with explicit font + color so text doesn't
+            // revert to black when the text storage applies default attributes.
             let fullRange = NSRange(location: 0, length: (textView.string as NSString).length)
+            let attrs: [NSAttributedString.Key: Any] = [
+                .font: textView.font ?? NSFont.monospacedSystemFont(ofSize: 13, weight: .regular),
+                .foregroundColor: NSColor.labelColor
+            ]
+            let attributed = NSAttributedString(string: text, attributes: attrs)
             context.coordinator.isUpdating = true
             if textView.shouldChangeText(in: fullRange, replacementString: text) {
-                textView.textStorage?.replaceCharacters(in: fullRange, with: text)
+                textView.textStorage?.replaceCharacters(in: fullRange, with: attributed)
                 textView.didChangeText()
             }
             context.coordinator.isUpdating = false
