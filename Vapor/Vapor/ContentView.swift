@@ -225,7 +225,7 @@ struct ContentView: View {
             windowManager.minimize()
             return .handled
         }
-        // Keyboard shortcuts (⌘K, ⌘C, ⌘Y, ⌘/, ⌘↩) handled at app level via menu commands.
+        // Keyboard shortcuts (⌘K, ⇧⌘C, ⌘Y, ⌘/, ⌘↩) handled at app level via menu commands.
     }
 
     private func checkPermissions() {

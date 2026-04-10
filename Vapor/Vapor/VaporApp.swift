@@ -59,10 +59,15 @@ struct VaporApp: App {
             }
 
             CommandGroup(replacing: .pasteboard) {
+                Button("Copy") {
+                    NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: nil)
+                }
+                .keyboardShortcut("c", modifiers: .command)
+
                 Button("Copy Original") {
                     NotificationCenter.default.post(name: .vaporCopyOriginal, object: nil)
                 }
-                .keyboardShortcut("c", modifiers: .command)
+                .keyboardShortcut("c", modifiers: [.command, .shift])
 
                 Button("Paste") {
                     NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: nil)

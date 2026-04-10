@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 
 /// A custom text editor for the pill view that:
-/// - Intercepts ⌘K, ⌘C (no selection), ⌘↩, ⌘Y, ⌘/ before NSTextView processes them
+/// - Intercepts ⌘K, ⇧⌘C, ⌘↩, ⌘Y, ⌘/ before NSTextView processes them
 /// - Auto-scrolls to bottom during dictation
 /// - Two-way text binding
 /// - Transparent background to match pill material
@@ -208,15 +208,13 @@ class InterceptingTextView: NSTextView {
             return true
 
         case "c":
-            // ⌘C — if text is selected, use normal copy; otherwise copy full original
-            if let selectedRange = selectedRanges.first as? NSValue {
-                let range = selectedRange.rangeValue
-                if range.length > 0 {
-                    return super.performKeyEquivalent(with: event)
-                }
+            if event.modifierFlags.contains(.shift) {
+                // ⇧⌘C — Copy full original text
+                NotificationCenter.default.post(name: .vaporCopyOriginal, object: nil)
+                return true
             }
-            NotificationCenter.default.post(name: .vaporCopyOriginal, object: nil)
-            return true
+            // ⌘C — standard copy (respects selection)
+            return super.performKeyEquivalent(with: event)
 
         case "\r":
             // ⌘↩ — Compress & Copy

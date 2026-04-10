@@ -202,7 +202,7 @@ struct MinimizedPillView: View {
             .buttonStyle(.bordered)
             .controlSize(.small)
             .disabled(!hasContent)
-            .help("Copy Original ( ⌘ C )")
+            .help("Copy Original ( ⇧⌘ C )")
 
             // Clear (copy + clear)
             Button(action: onClear) {
