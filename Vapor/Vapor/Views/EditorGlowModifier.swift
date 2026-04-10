@@ -1,14 +1,14 @@
 import SwiftUI
 import Combine
 
-/// Colors extracted from the Vapor app icon's vapor/smoke gradient.
+/// Colors extracted from the Vapor app icon's vapor/smoke gradient, brightened for visibility.
 enum VaporColors {
-    static let deepBlue = Color(red: 0.10, green: 0.23, blue: 0.42)
-    static let cyanBlue = Color(red: 0.29, green: 0.66, blue: 1.00)
-    static let purple   = Color(red: 0.53, green: 0.33, blue: 0.80)
-    static let magenta  = Color(red: 0.80, green: 0.33, blue: 1.00)
+    static let blue    = Color(red: 0.25, green: 0.50, blue: 1.00)
+    static let cyan    = Color(red: 0.30, green: 0.75, blue: 1.00)
+    static let purple  = Color(red: 0.60, green: 0.40, blue: 1.00)
+    static let magenta = Color(red: 0.85, green: 0.40, blue: 1.00)
 
-    static let all: [Color] = [deepBlue, cyanBlue, purple, magenta]
+    static let all: [Color] = [blue, cyan, purple, magenta]
 }
 
 /// A glow effect for the text editor that:
@@ -34,7 +34,7 @@ struct EditorGlowModifier: ViewModifier {
                     .allowsHitTesting(false)
             )
             .onReceive(cycleTimer) { _ in
-                guard isFocused, !isDictating else { return }
+                guard isFocused else { return }
                 withAnimation(.easeInOut(duration: 1.0)) {
                     colorIndex = (colorIndex + 1) % VaporColors.all.count
                 }
@@ -58,9 +58,9 @@ struct EditorGlowModifier: ViewModifier {
         if !isFocused { return 0 }
         if isDictating {
             // VU meter: throbs with audio level
-            return 0.4 + Double(smoothedLevel) * 0.5
+            return 0.5 + Double(smoothedLevel) * 0.4
         }
-        return 0.35
+        return 0.5
     }
 
     private var borderWidth: CGFloat {
@@ -78,7 +78,7 @@ struct EditorGlowModifier: ViewModifier {
             // No shadow during dictation — clean solid border only
             return 0
         }
-        return 0.25
+        return 0.35
     }
 
     private var shadowRadius: CGFloat {

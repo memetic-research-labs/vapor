@@ -55,11 +55,6 @@ struct PillTextEditor: NSViewRepresentable {
         textView.string = text
         context.coordinator.updatePlaceholder()
 
-        // Auto-focus the text view so the glow appears immediately
-        DispatchQueue.main.async {
-            scrollView.window?.makeFirstResponder(textView)
-        }
-
         return scrollView
     }
 
@@ -167,6 +162,11 @@ class InterceptingTextView: NSTextView {
             self, selector: #selector(windowKeyChanged),
             name: NSWindow.didResignKeyNotification, object: window
         )
+        // Auto-focus when first added to window so glow appears immediately
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.window?.makeFirstResponder(self)
+        }
     }
 
     @objc private func windowKeyChanged() {
