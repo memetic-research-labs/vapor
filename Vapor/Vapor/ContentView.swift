@@ -15,6 +15,7 @@ struct ContentView: View {
     @State private var dictationService = SpeechDictationService()
     @State private var showSettings = false
     @State private var showTestSidebar = false
+    @State private var isEditorFocused = false
     @State private var sidebarPrompt: String = ""
     @State private var speechAuthStatus: SFSpeechRecognizerAuthorizationStatus = .notDetermined
     @State private var micAuthStatus: AVAuthorizationStatus = .notDetermined
@@ -169,8 +170,13 @@ struct ContentView: View {
                     }
                 )
 
-                NativeTextEditor(text: $viewModel.content)
+                NativeTextEditor(text: $viewModel.content, isFocused: $isEditorFocused)
                     .frame(maxHeight: .infinity)
+                    .editorGlow(
+                        isFocused: isEditorFocused,
+                        isDictating: viewModel.isDictating,
+                        inputLevel: dictationService.inputLevel
+                    )
 
                 if viewModel.originalTokenCount > 0 {
                     Divider()

@@ -8,6 +8,7 @@ import AppKit
 /// - Transparent background to match pill material
 struct PillTextEditor: NSViewRepresentable {
     @Binding var text: String
+    @Binding var isFocused: Bool
     var isDictating: Bool
     var placeholder: String = "Hold Fn to dictate or type here…"
 
@@ -41,6 +42,11 @@ struct PillTextEditor: NSViewRepresentable {
         textView.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
 
         textView.delegate = context.coordinator
+        textView.onFocusChange = { focused in
+            DispatchQueue.main.async {
+                context.coordinator.parent.isFocused = focused
+            }
+        }
         context.coordinator.textView = textView
 
         scrollView.documentView = textView
@@ -128,6 +134,43 @@ class InterceptingTextView: NSTextView {
     /// Placeholder text shown when the text view is empty.
     var placeholderString: String? {
         didSet { needsDisplay = true }
+    }
+
+    /// Callback for focus state changes.
+    var onFocusChange: ((Bool) -> Void)?
+
+    override func becomeFirstResponder() -> Bool {
+        let result = super.becomeFirstResponder()
+        if result { updateFocusState() }
+        return result
+    }
+
+    override func resignFirstResponder() -> Bool {
+        let result = super.resignFirstResponder()
+        if result { onFocusChange?(false) }
+        return result
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard let window else { return }
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(windowKeyChanged),
+            name: NSWindow.didBecomeKeyNotification, object: window
+        )
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(windowKeyChanged),
+            name: NSWindow.didResignKeyNotification, object: window
+        )
+    }
+
+    @objc private func windowKeyChanged() {
+        updateFocusState()
+    }
+
+    private func updateFocusState() {
+        let focused = (window?.isKeyWindow == true) && (window?.firstResponder == self)
+        onFocusChange?(focused)
     }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {

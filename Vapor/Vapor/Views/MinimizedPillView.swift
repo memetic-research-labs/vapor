@@ -27,6 +27,7 @@ struct MinimizedPillView: View {
 
     @State private var glowPulse = false
     @State private var showCopied = false
+    @State private var isEditorFocused = false
 
     private var hasContent: Bool {
         !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -92,7 +93,12 @@ struct MinimizedPillView: View {
     // MARK: - Text Area
 
     private var textArea: some View {
-        PillTextEditor(text: $text, isDictating: isDictating)
+        PillTextEditor(text: $text, isFocused: $isEditorFocused, isDictating: isDictating)
+            .editorGlow(
+                isFocused: isEditorFocused,
+                isDictating: isDictating,
+                inputLevel: inputLevel
+            )
     }
 
     // MARK: - Status Bar

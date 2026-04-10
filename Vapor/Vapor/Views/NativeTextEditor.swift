@@ -3,14 +3,11 @@ import SwiftUI
 
 struct NativeTextEditor: NSViewRepresentable {
     @Binding var text: String
+    @Binding var isFocused: Bool
     var onTextChange: ((String) -> Void)?
     var font: NSFont = .monospacedSystemFont(ofSize: 13, weight: .regular)
 
     func makeNSView(context: Context) -> NSScrollView {
-        // Build NSScrollView + NSTextView manually instead of using
-        // NSTextView.scrollableTextView() factory, which applies its own
-        // border/background settings that can resurface during resize.
-
         let textContainer = NSTextContainer()
         textContainer.widthTracksTextView = true
         textContainer.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
@@ -21,7 +18,7 @@ struct NativeTextEditor: NSViewRepresentable {
         let textStorage = NSTextStorage()
         textStorage.addLayoutManager(layoutManager)
 
-        let textView = NSTextView(frame: .zero, textContainer: textContainer)
+        let textView = FocusTrackingTextView(frame: .zero, textContainer: textContainer)
         textView.delegate = context.coordinator
         textView.font = font
         textView.isEditable = true
@@ -39,6 +36,11 @@ struct NativeTextEditor: NSViewRepresentable {
         textView.autoresizingMask = [.width]
         textView.minSize = NSSize(width: 0, height: 0)
         textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        textView.onFocusChange = { focused in
+            DispatchQueue.main.async {
+                context.coordinator.parent.isFocused = focused
+            }
+        }
 
         let scrollView = NSScrollView()
         scrollView.documentView = textView
@@ -83,6 +85,49 @@ struct NativeTextEditor: NSViewRepresentable {
             parent.text = newText
             parent.onTextChange?(newText)
         }
+    }
+}
+
+/// NSTextView subclass that tracks first responder status and window key status.
+class FocusTrackingTextView: NSTextView {
+    var onFocusChange: ((Bool) -> Void)?
+
+    override func becomeFirstResponder() -> Bool {
+        let result = super.becomeFirstResponder()
+        if result { updateFocusState() }
+        return result
+    }
+
+    override func resignFirstResponder() -> Bool {
+        let result = super.resignFirstResponder()
+        if result { onFocusChange?(false) }
+        return result
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard let window else { return }
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(windowKeyChanged),
+            name: NSWindow.didBecomeKeyNotification, object: window
+        )
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(windowKeyChanged),
+            name: NSWindow.didResignKeyNotification, object: window
+        )
+    }
+
+    @objc private func windowKeyChanged() {
+        updateFocusState()
+    }
+
+    private func updateFocusState() {
+        let focused = (window?.isKeyWindow == true) && (window?.firstResponder == self)
+        onFocusChange?(focused)
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
     }
 }
 
