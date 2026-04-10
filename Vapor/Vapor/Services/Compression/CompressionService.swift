@@ -61,7 +61,7 @@ final class CompressionService {
     private let openRouterApiKeyKey = "openRouterApiKey"
     private let localLLMModelURLKey = "localLLMModelURL"
 
-    private let defaultModelURL = "https://huggingface.co/bartowski/Qwen2.5-3B-Instruct-GGUF/resolve/main/Qwen2.5-3B-Instruct-Q4_K_M.gguf"
+    private let defaultModelURL = "https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-GGUF/resolve/main/Qwen2.5-7B-Instruct-Q4_K_M.gguf"
 
     init() {
         loadSavedSettings()
@@ -167,7 +167,7 @@ final class CompressionService {
 
         try FileManager.default.createDirectory(at: modelsDir, withIntermediateDirectories: true)
 
-        let modelURL = modelsDir.appendingPathComponent("Qwen2.5-3B-Instruct-Q4_K_M.gguf")
+        let modelURL = modelsDir.appendingPathComponent("Qwen2.5-7B-Instruct-Q4_K_M.gguf")
 
         logger.debug("Model will be saved to: \(modelURL.path)")
 
@@ -214,6 +214,17 @@ final class CompressionService {
         modelDownloadProgress = 1.0
 
         await checkAvailability()
+    }
+
+    func deleteLocalLLMModel() {
+        if let savedModelPath = UserDefaults.standard.url(forKey: localLLMModelURLKey) {
+            try? FileManager.default.removeItem(at: savedModelPath)
+            logger.info("Deleted model at: \(savedModelPath.path)")
+        }
+        UserDefaults.standard.removeObject(forKey: localLLMModelURLKey)
+        localLLMCompressor = nil
+        availableCompressors[.localLLM] = false
+        modelDownloadProgress = 0
     }
 
     func compress(_ text: String) async throws -> CompressedResult {

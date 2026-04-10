@@ -29,8 +29,8 @@ actor RuleBasedCompressor: Compressor {
         }
 
         let compressed = result.joined(separator: " ")
-        let originalTokens = estimateTokens(text)
-        let compressedTokens = estimateTokens(compressed)
+        let originalTokens = await countTokens(text)
+        let compressedTokens = await countTokens(compressed)
         let ratio = originalTokens > 0 ? Double(compressedTokens) / Double(originalTokens) : 0.0
 
         return CompressedResult(

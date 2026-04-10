@@ -74,7 +74,7 @@ struct SettingsView: View {
                                     .foregroundColor(.green)
                                     .font(.system(size: 12))
                                 Spacer()
-                                Text("Qwen2.5-3B (~2.1 GB)")
+                                Text("Qwen2.5-7B Q4_K_M (~4.7 GB)")
                                     .font(.system(size: 11))
                                     .foregroundColor(.secondary)
                             } else {
@@ -85,7 +85,49 @@ struct SettingsView: View {
                             }
                         }
 
-                        if !isLocalLLMAvailable {
+                        if isLocalLLMAvailable {
+                            Divider()
+
+                            HStack(spacing: 8) {
+                                Button("Re-download Model") {
+                                    compressionService.deleteLocalLLMModel()
+                                    isLocalLLMAvailable = false
+                                    Task {
+                                        do {
+                                            try await compressionService.downloadLocalLLMModel()
+                                            isLocalLLMAvailable = true
+                                        } catch {
+                                            logger.error("Failed to download model: \(error)")
+                                        }
+                                    }
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+
+                                Button("Delete Model") {
+                                    compressionService.deleteLocalLLMModel()
+                                    isLocalLLMAvailable = false
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                                .foregroundColor(.red)
+                            }
+
+                            if compressionService.isDownloading {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    ProgressView(value: compressionService.modelDownloadProgress, total: 1.0)
+                                        .progressViewStyle(.linear)
+
+                                    Text("\(Int(compressionService.modelDownloadProgress * 100))% - \(formatBytes(Int(Double(4_900_000_000) * compressionService.modelDownloadProgress))) / 4.7 GB")
+                                        .font(.system(size: 10))
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+
+                            Text("Re-download to update to the latest model version.")
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
+                        } else {
                             Divider()
 
                             VStack(alignment: .leading, spacing: 8) {
@@ -97,12 +139,12 @@ struct SettingsView: View {
                                         ProgressView(value: compressionService.modelDownloadProgress, total: 1.0)
                                             .progressViewStyle(.linear)
 
-                                        Text("\(Int(compressionService.modelDownloadProgress * 100))% - \(formatBytes(Int(Double(2147483648) * compressionService.modelDownloadProgress))) / 2.1 GB")
+                                        Text("\(Int(compressionService.modelDownloadProgress * 100))% - \(formatBytes(Int(Double(4_900_000_000) * compressionService.modelDownloadProgress))) / 4.7 GB")
                                             .font(.system(size: 10))
                                             .foregroundColor(.secondary)
                                     }
                                 } else {
-                                    Button("Download Qwen2.5-3B (2.1 GB)") {
+                                    Button("Download Qwen2.5-7B (4.7 GB)") {
                                         Task {
                                             do {
                                                 try await compressionService.downloadLocalLLMModel()
@@ -115,7 +157,7 @@ struct SettingsView: View {
                                     .buttonStyle(.borderedProminent)
                                     .controlSize(.small)
 
-                                    Text("Recommended for best quality. Requires ~2GB storage.")
+                                    Text("Recommended for best quality. Requires ~5GB storage.")
                                         .font(.system(size: 10))
                                         .foregroundColor(.secondary)
                                 }

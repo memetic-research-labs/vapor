@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		50849C8E2F874B8B008E324C /* SwiftLlama in Frameworks */ = {isa = PBXBuildFile; productRef = 508498662F86F966008E324C /* SwiftLlama */; };
 		50849C902F874B8B008E324D /* KeyboardShortcuts in Frameworks */ = {isa = PBXBuildFile; productRef = 50849C912F874B8B008E324D /* KeyboardShortcuts */; };
+		50849C942F874B8B008E324F /* Tiktoken in Frameworks */ = {isa = PBXBuildFile; productRef = 50849C952F874B8B008E324F /* Tiktoken */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -59,6 +60,7 @@
 			files = (
 				50849C8E2F874B8B008E324C /* SwiftLlama in Frameworks */,
 				50849C902F874B8B008E324D /* KeyboardShortcuts in Frameworks */,
+				50849C942F874B8B008E324F /* Tiktoken in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -121,6 +123,7 @@
 			packageProductDependencies = (
 				508498662F86F966008E324C /* SwiftLlama */,
 				50849C912F874B8B008E324D /* KeyboardShortcuts */,
+				50849C952F874B8B008E324F /* Tiktoken */,
 			);
 			productName = Vapor;
 			productReference = 508498392F86F964008E324C /* Vapor.app */;
@@ -207,6 +210,7 @@
 			packageReferences = (
 				508498652F86F966008E324C /* XCRemoteSwiftPackageReference "swift-llama-cpp" */,
 				50849C922F874B8B008E324E /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */,
+				50849C962F874B8B008E3250 /* XCRemoteSwiftPackageReference "Tiktoken" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 5084983A2F86F964008E324C /* Products */;
@@ -612,6 +616,14 @@
 				minimumVersion = 2.0.0;
 			};
 		};
+		50849C962F874B8B008E3250 /* XCRemoteSwiftPackageReference "Tiktoken" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/aespinilla/Tiktoken";
+			requirement = {
+				kind = branch;
+				branch = main;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -624,6 +636,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 50849C922F874B8B008E324E /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */;
 			productName = KeyboardShortcuts;
+		};
+		50849C952F874B8B008E324F /* Tiktoken */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 50849C962F874B8B008E3250 /* XCRemoteSwiftPackageReference "Tiktoken" */;
+			productName = Tiktoken;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
