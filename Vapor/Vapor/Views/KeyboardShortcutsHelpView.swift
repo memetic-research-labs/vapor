@@ -34,9 +34,16 @@ struct KeyboardShortcutsHelpView: View {
                     }
 
                     shortcutSection("Window") {
-                        shortcutRow("⌃ ⌥ Space", "Activate Vapor (global hotkey)")
+                        shortcutRow("⌃ ⌥ Space", "Focus Vapor (global)")
                         shortcutRow("⌘ \\", "Toggle compact / full view")
                         shortcutRow("Escape", "Minimize to compact view")
+                    }
+
+                    shortcutSection("Editing") {
+                        shortcutRow("⌘ A", "Select all text")
+                        shortcutRow("⌘ Z", "Undo")
+                        shortcutRow("⌘ ⇧ Z", "Redo")
+                        shortcutRow("⌘ V", "Paste")
                     }
 
                     shortcutSection("Navigation") {

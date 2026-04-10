@@ -58,7 +58,15 @@ struct PillTextEditor: NSViewRepresentable {
         // Update text if it changed externally (e.g., from dictation)
         if textView.string != text {
             let wasAtEnd = isScrolledToBottom(scrollView)
-            textView.string = text
+
+            // Use shouldChangeText/didChangeText to register with the undo manager
+            let fullRange = NSRange(location: 0, length: (textView.string as NSString).length)
+            context.coordinator.isUpdating = true
+            if textView.shouldChangeText(in: fullRange, replacementString: text) {
+                textView.textStorage?.replaceCharacters(in: fullRange, with: text)
+                textView.didChangeText()
+            }
+            context.coordinator.isUpdating = false
             context.coordinator.updatePlaceholder()
 
             // Auto-scroll to bottom during dictation or if user was already at bottom
@@ -81,7 +89,7 @@ struct PillTextEditor: NSViewRepresentable {
     class Coordinator: NSObject, NSTextViewDelegate {
         var parent: PillTextEditor
         weak var textView: InterceptingTextView?
-        private var isUpdating = false
+        var isUpdating = false
 
         init(_ parent: PillTextEditor) {
             self.parent = parent
@@ -122,7 +130,22 @@ class InterceptingTextView: NSTextView {
 
         let chars = event.charactersIgnoringModifiers ?? ""
 
+        // Check for ⌘⇧Z (redo) before the single-modifier checks
+        if event.modifierFlags.contains(.shift) && chars == "z" {
+            // ⌘⇧Z — Redo: pass through to NSTextView's undo manager
+            return super.performKeyEquivalent(with: event)
+        }
+
         switch chars {
+        case "a":
+            // ⌘A — Select All
+            selectAll(nil)
+            return true
+
+        case "z":
+            // ⌘Z — Undo: pass through to NSTextView's undo manager
+            return super.performKeyEquivalent(with: event)
+
         case "k":
             // ⌘K — Copy & Clear
             NotificationCenter.default.post(name: .vaporCopyAndClear, object: nil)
@@ -133,11 +156,9 @@ class InterceptingTextView: NSTextView {
             if let selectedRange = selectedRanges.first as? NSValue {
                 let range = selectedRange.rangeValue
                 if range.length > 0 {
-                    // There's a selection — let normal copy handle it
                     return super.performKeyEquivalent(with: event)
                 }
             }
-            // No selection — copy full original
             NotificationCenter.default.post(name: .vaporCopyOriginal, object: nil)
             return true
 

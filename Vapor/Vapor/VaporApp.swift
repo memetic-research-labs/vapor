@@ -36,7 +36,7 @@ struct VaporApp: App {
                 .environment(preferences)
                 .onAppear {
                     KeyboardShortcuts.onKeyUp(for: .toggleVapor) {
-                        windowManager.toggleState()
+                        windowManager.focus()
                     }
                     windowManager.setupWindowOnAppear()
                 }
@@ -46,6 +46,18 @@ struct VaporApp: App {
         .defaultSize(width: 500, height: 400)
         .commands {
             CommandGroup(replacing: .newItem) { }
+
+            CommandGroup(replacing: .undoRedo) {
+                Button("Undo") {
+                    NSApp.sendAction(Selector(("undo:")), to: nil, from: nil)
+                }
+                .keyboardShortcut("z", modifiers: .command)
+
+                Button("Redo") {
+                    NSApp.sendAction(Selector(("redo:")), to: nil, from: nil)
+                }
+                .keyboardShortcut("z", modifiers: [.command, .shift])
+            }
 
             CommandGroup(replacing: .pasteboard) {
                 Button("Copy Original") {
@@ -57,6 +69,11 @@ struct VaporApp: App {
                     NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: nil)
                 }
                 .keyboardShortcut("v", modifiers: .command)
+
+                Button("Select All") {
+                    NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil)
+                }
+                .keyboardShortcut("a", modifiers: .command)
             }
 
             CommandMenu("Actions") {
