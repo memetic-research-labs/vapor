@@ -50,6 +50,21 @@ final class CompressionService {
     var openRouterModel: String = "glm-5"
     var modelDownloadProgress: Double = 0
     var isDownloading: Bool = false
+    var isModelLoading: Bool = false
+
+    /// Whether the currently selected compressor is ready to compress.
+    var isSelectedCompressorReady: Bool {
+        switch selectedCompressor {
+        case .ruleBased:
+            return true
+        case .foundationModels:
+            return availableCompressors[.foundationModels] ?? false
+        case .openRouter:
+            return availableCompressors[.openRouter] ?? false
+        case .localLLM:
+            return availableCompressors[.localLLM] ?? false
+        }
+    }
 
     private let ruleBasedCompressor = RuleBasedCompressor()
     #if canImport(FoundationModels)
@@ -90,7 +105,9 @@ final class CompressionService {
            FileManager.default.fileExists(atPath: savedModelPath.path) {
             localLLMCompressor = LocalLLMCompressor(modelURL: savedModelPath)
             Task {
+                isModelLoading = true
                 try? await localLLMCompressor?.loadModel()
+                isModelLoading = false
             }
         }
     }

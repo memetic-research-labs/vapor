@@ -79,6 +79,14 @@ final class EditorViewModel {
         isDirty = false
     }
 
+    /// Copies the original text to the clipboard, then clears the buffer.
+    func copyAndClear() {
+        if !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            clipboardService.copy(content)
+        }
+        clear()
+    }
+
     func applyDictationTranscript(_ text: String, isFinal: Bool) {
         if activeDictationRange == nil {
             activeDictationRange = NSRange(location: (content as NSString).length, length: 0)

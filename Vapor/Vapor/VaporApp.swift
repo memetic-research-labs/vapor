@@ -55,6 +55,14 @@ struct VaporApp: App {
             }
         }
 
+        Window("Transcript Preview", id: "transcript-preview") {
+            TranscriptPreviewView()
+        }
+        .windowStyle(.titleBar)
+        .windowResizability(.contentSize)
+        .defaultSize(width: 320, height: 240)
+        .defaultPosition(.trailing)
+
         MenuBarExtra("Vapor", systemImage: "waveform.circle") {
             MenuBarView()
         }

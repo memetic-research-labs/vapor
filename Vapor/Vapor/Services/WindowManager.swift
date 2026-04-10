@@ -15,7 +15,7 @@ final class WindowManager {
 
     private let preferences = UserPreferences()
     private let expandedSize = CGSize(width: 500, height: 400)
-    private let minimizedSize = CGSize(width: 160, height: 40)
+    private let minimizedSize = CGSize(width: 320, height: 200)
 
     private init() {}
 

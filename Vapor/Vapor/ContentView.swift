@@ -5,6 +5,7 @@ import AVFoundation
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.openWindow) private var openWindow
     @Environment(WindowManager.self) private var windowManager
     @Environment(UserPreferences.self) private var preferences
     @State private var viewModel = EditorViewModel()
@@ -28,10 +29,28 @@ struct ContentView: View {
         Group {
             switch windowManager.windowState {
             case .minimized:
-                MinimizedPillView(onExpand: {
-                    windowManager.expand()
-                    startDictationOnExpand()
-                })
+                MinimizedPillView(
+                    onExpand: {
+                        windowManager.expand()
+                        startDictationOnExpand()
+                    },
+                    onCompressAndCopy: {
+                        Task { await performCompressAndCopy() }
+                    },
+                    onCopyOriginal: {
+                        viewModel.copyOriginalToClipboard()
+                        toastService.showSuccess("Original copied to clipboard")
+                    },
+                    onClear: {
+                        viewModel.copyAndClear()
+                    },
+                    text: viewModel.content,
+                    isDictating: viewModel.isDictating,
+                    isCompressing: viewModel.isCompressing,
+                    isModelReady: compressionService.isSelectedCompressorReady,
+                    isModelLoading: compressionService.isModelLoading,
+                    inputLevel: dictationService.inputLevel
+                )
             case .expanded:
                 if hasPermissionIssue {
                     PermissionsOverlayView(
@@ -50,12 +69,14 @@ struct ContentView: View {
             if let saved = UserDefaults.standard.string(forKey: "lastEditorContent") {
                 viewModel.content = saved
             }
+            TranscriptStore.shared.text = viewModel.content
             setupDictation()
             checkPermissions()
             windowManager.setupWindowOnAppear()
         }
         .onChange(of: viewModel.content) { _, newValue in
             UserDefaults.standard.set(newValue, forKey: "lastEditorContent")
+            TranscriptStore.shared.text = newValue
         }
         .onChange(of: viewModel.compressedContent) { _, newValue in
             sidebarPrompt = newValue
