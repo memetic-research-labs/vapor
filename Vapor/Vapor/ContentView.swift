@@ -192,7 +192,7 @@ struct ContentView: View {
 
                         ScrollView {
                             Text(viewModel.compressedContent)
-                                .font(.system(size: 12, design: .monospaced))
+                                .font(.system(size: 13, design: .monospaced))
                                 .textSelection(.enabled)
                                 .padding(12)
                                 .frame(maxWidth: .infinity, alignment: .leading)

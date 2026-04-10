@@ -28,7 +28,7 @@ struct PillTextEditor: NSViewRepresentable {
         textView.isSelectable = true
         textView.isRichText = false
         textView.allowsUndo = true
-        textView.font = .systemFont(ofSize: 13)
+        textView.font = .monospacedSystemFont(ofSize: 13, weight: .regular)
         textView.textColor = .labelColor
         textView.drawsBackground = false
         textView.isVerticallyResizable = true
@@ -167,7 +167,7 @@ class InterceptingTextView: NSTextView {
         // Draw placeholder when empty
         if string.isEmpty, let placeholder = placeholderString {
             let attrs: [NSAttributedString.Key: Any] = [
-                .font: font ?? .systemFont(ofSize: 13),
+                .font: font ?? .monospacedSystemFont(ofSize: 13, weight: .regular),
                 .foregroundColor: NSColor.placeholderTextColor
             ]
             let inset = textContainerInset

@@ -4,7 +4,7 @@ import SwiftUI
 struct NativeTextEditor: NSViewRepresentable {
     @Binding var text: String
     var onTextChange: ((String) -> Void)?
-    var font: NSFont = .monospacedSystemFont(ofSize: 14, weight: .regular)
+    var font: NSFont = .monospacedSystemFont(ofSize: 13, weight: .regular)
     
     func makeNSView(context: Context) -> NSScrollView {
         let scrollView = NSTextView.scrollableTextView()
@@ -21,15 +21,14 @@ struct NativeTextEditor: NSViewRepresentable {
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
         textView.isAutomaticTextReplacementEnabled = false
-        textView.drawsBackground = true
-        textView.backgroundColor = NSColor.textBackgroundColor
+        textView.drawsBackground = false
         textView.textContainerInset = NSSize(width: 8, height: 8)
         
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
         scrollView.borderType = .noBorder
-        scrollView.drawsBackground = true
+        scrollView.drawsBackground = false
         
         EditorTextViewRegistry.current = textView
         

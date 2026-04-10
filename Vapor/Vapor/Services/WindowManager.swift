@@ -33,6 +33,8 @@ final class WindowManager {
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
         window.backgroundColor = .windowBackgroundColor
+        window.isOpaque = false
+        window.styleMask.insert(.fullSizeContentView)
     }
 
     func expand() {
