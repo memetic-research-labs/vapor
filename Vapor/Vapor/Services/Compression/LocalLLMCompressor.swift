@@ -32,7 +32,17 @@ actor LocalLLMCompressor: Compressor {
             LlamaChatMessage(role: .user, content: text)
         ]
 
-        let samplingConfig = LlamaSamplingConfig(temperature: 0.5, seed: 42)
+        let samplingConfig = LlamaSamplingConfig(
+            temperature: 0.1,
+            seed: 42,
+            topP: 0.9,
+            repetitionPenaltyConfig: LlamaRepetitionPenaltyConfig(
+                lastN: 64,
+                repeatPenalty: 1.0,
+                freqPenalty: 0.0,
+                presentPenalty: 0.0
+            )
+        )
 
         var compressed = ""
         let stream = try await service.streamCompletion(of: messages, samplingConfig: samplingConfig)
