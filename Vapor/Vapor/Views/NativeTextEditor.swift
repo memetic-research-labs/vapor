@@ -29,6 +29,7 @@ struct NativeTextEditor: NSViewRepresentable {
         scrollView.autohidesScrollers = true
         scrollView.borderType = .noBorder
         scrollView.drawsBackground = false
+        scrollView.contentView.drawsBackground = false
         
         EditorTextViewRegistry.current = textView
         

@@ -32,6 +32,17 @@ final class WindowManager {
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         window.isMovableByWindowBackground = true
         window.titlebarAppearsTransparent = true
+
+        // Unified compact toolbar eliminates the separator line between title bar and content
+        if window.toolbar == nil {
+            let toolbar = NSToolbar(identifier: "vapor.main")
+            toolbar.showsBaselineSeparator = false
+            window.toolbar = toolbar
+            window.toolbarStyle = .unifiedCompact
+        }
+
+        // Layer-backed content view for smoother resize rendering
+        window.contentView?.wantsLayer = true
     }
 
     func expand() {
