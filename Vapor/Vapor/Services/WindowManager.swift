@@ -26,19 +26,12 @@ final class WindowManager {
             ?? windows.first(where: { $0.isVisible && $0.canBecomeKey })
     }
 
+    /// Base window configuration shared by both states.
     private func configureWindow(_ window: NSWindow) {
         window.level = .floating
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         window.isMovableByWindowBackground = true
-        // Transparent title bar blends with content — title text still visible
         window.titlebarAppearsTransparent = true
-        window.titleVisibility = .visible
-        // Content extends under the title bar area
-        window.styleMask.insert(.fullSizeContentView)
-        // Near-transparent background eliminates shadow/border artifact on resize
-        // Using .clear causes rendering bugs; 0.00001 alpha avoids them
-        window.backgroundColor = NSColor.white.withAlphaComponent(0.00001)
-        window.isOpaque = false
     }
 
     func expand() {
@@ -51,6 +44,11 @@ final class WindowManager {
         }
 
         configureWindow(window)
+
+        // Expanded: show title bar with "Vapor", opaque background matching content
+        window.titleVisibility = .visible
+        window.backgroundColor = .windowBackgroundColor
+        window.isOpaque = true
 
         // Grow from current position — keep the top-left corner anchored
         let currentFrame = window.frame
@@ -77,6 +75,13 @@ final class WindowManager {
             logger.warning("minimize: no window found")
             return
         }
+
+        configureWindow(window)
+
+        // Minimized: hide title bar, transparent background for pill material
+        window.titleVisibility = .hidden
+        window.backgroundColor = .clear
+        window.isOpaque = false
 
         // Keep the pill near where the window currently is, just resize in place
         let currentFrame = window.frame
@@ -125,13 +130,20 @@ final class WindowManager {
         configureWindow(window)
 
         if windowState == .minimized {
-            // Just resize to pill size, keep current position
+            window.titleVisibility = .hidden
+            window.backgroundColor = .clear
+            window.isOpaque = false
+
             let currentFrame = window.frame
             let pillOrigin = NSPoint(
                 x: currentFrame.origin.x,
                 y: currentFrame.origin.y + currentFrame.height - minimizedSize.height
             )
             window.setFrame(NSRect(origin: pillOrigin, size: minimizedSize), display: true)
+        } else {
+            window.titleVisibility = .visible
+            window.backgroundColor = .windowBackgroundColor
+            window.isOpaque = true
         }
     }
 }

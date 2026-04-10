@@ -99,7 +99,13 @@ struct VaporApp: App {
                 .keyboardShortcut("/", modifiers: .command)
             }
 
-            CommandMenu("Window") {
+            // Suppress the auto-generated View menu
+            CommandGroup(replacing: .toolbar) { }
+
+            // Add our items to the system Window menu instead of creating a duplicate
+            CommandGroup(after: .windowArrangement) {
+                Divider()
+
                 Button("Toggle Compact / Full") {
                     windowManager.toggleState()
                 }
