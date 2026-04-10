@@ -620,8 +620,8 @@
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/aespinilla/Tiktoken";
 			requirement = {
-				branch = main;
-				kind = branch;
+				kind = revision;
+				revision = 4ad6460448278f7a28f1e4ee2723500369f20acb;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */

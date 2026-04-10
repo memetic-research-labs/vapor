@@ -69,7 +69,7 @@ struct ContentView: View {
                 }
             }
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(windowManager.windowState == .expanded ? Color(nsColor: .windowBackgroundColor) : Color.clear)
         .onAppear {
             historyService.setModelContext(modelContext)
             viewModel.setServices(compression: compressionService, history: historyService)
@@ -93,8 +93,8 @@ struct ContentView: View {
                 Task { await performAutoCompress() }
             }
         }
-        .onChange(of: HistoryStore.shared.pendingRestore) { _, record in
-            if let record {
+        .onChange(of: HistoryStore.shared.pendingRestore?.persistentModelID) { _, newID in
+            if newID != nil, let record = HistoryStore.shared.pendingRestore {
                 viewModel.restoreFromHistory(record)
                 HistoryStore.shared.pendingRestore = nil
                 toastService.showSuccess("Restored from history")

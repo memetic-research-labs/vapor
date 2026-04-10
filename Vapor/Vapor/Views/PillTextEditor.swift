@@ -154,6 +154,9 @@ class InterceptingTextView: NSTextView {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        // Remove old observers before re-adding to prevent duplicates
+        NotificationCenter.default.removeObserver(self, name: NSWindow.didBecomeKeyNotification, object: nil)
+        NotificationCenter.default.removeObserver(self, name: NSWindow.didResignKeyNotification, object: nil)
         guard let window else { return }
         NotificationCenter.default.addObserver(
             self, selector: #selector(windowKeyChanged),
@@ -168,6 +171,10 @@ class InterceptingTextView: NSTextView {
             guard let self else { return }
             self.window?.makeFirstResponder(self)
         }
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
     }
 
     @objc private func windowKeyChanged() {
@@ -186,10 +193,19 @@ class InterceptingTextView: NSTextView {
 
         let chars = event.charactersIgnoringModifiers ?? ""
 
-        // Check for ⌘⇧Z (redo) before the single-modifier checks
-        if event.modifierFlags.contains(.shift) && chars == "z" {
-            // ⌘⇧Z — Redo: pass through to NSTextView's undo manager
-            return super.performKeyEquivalent(with: event)
+        // Check for shift+command combos before single-modifier checks
+        if event.modifierFlags.contains(.shift) {
+            switch chars {
+            case "z":
+                // ⌘⇧Z — Redo: pass through to NSTextView's undo manager
+                return super.performKeyEquivalent(with: event)
+            case "c":
+                // ⌘⇧C — Copy Original (full text)
+                NotificationCenter.default.post(name: .vaporCopyOriginal, object: nil)
+                return true
+            default:
+                break
+            }
         }
 
         switch chars {
@@ -208,12 +224,8 @@ class InterceptingTextView: NSTextView {
             return true
 
         case "c":
-            if event.modifierFlags.contains(.shift) {
-                // ⇧⌘C — Copy full original text
-                NotificationCenter.default.post(name: .vaporCopyOriginal, object: nil)
-                return true
-            }
-            // ⌘C — standard copy (respects selection)
+            // ⌘C — standard copy: pass through to NSTextView
+            // (⌘⇧C is handled in the shift check above)
             return super.performKeyEquivalent(with: event)
 
         case "\r":

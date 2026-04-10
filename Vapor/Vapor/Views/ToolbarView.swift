@@ -48,7 +48,7 @@ struct ToolbarView: View {
             }
             .buttonStyle(.plain)
             .disabled(viewModel.content.isEmpty)
-            .help("Copy Original ( ⇧⌘ C )")
+            .help("Copy Original ( ⌘ ⇧ C )")
 
             Spacer()
 

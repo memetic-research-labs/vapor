@@ -107,6 +107,9 @@ class FocusTrackingTextView: NSTextView {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        // Remove old observers before re-adding to prevent duplicates
+        NotificationCenter.default.removeObserver(self, name: NSWindow.didBecomeKeyNotification, object: nil)
+        NotificationCenter.default.removeObserver(self, name: NSWindow.didResignKeyNotification, object: nil)
         guard let window else { return }
         NotificationCenter.default.addObserver(
             self, selector: #selector(windowKeyChanged),

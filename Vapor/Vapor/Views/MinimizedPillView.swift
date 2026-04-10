@@ -78,7 +78,9 @@ struct MinimizedPillView: View {
             }
         }
         .onChange(of: isCompressing) { wasCompressing, isNowCompressing in
-            if wasCompressing && !isNowCompressing {
+            // Only show "Copied" if compression finished AND there's still content
+            // (if compression failed, the toast shows the error and content remains)
+            if wasCompressing && !isNowCompressing && hasContent {
                 withAnimation(.easeInOut(duration: 0.2)) { showCopied = true }
                 Task {
                     try? await Task.sleep(for: .seconds(2))
@@ -202,7 +204,7 @@ struct MinimizedPillView: View {
             .buttonStyle(.bordered)
             .controlSize(.small)
             .disabled(!hasContent)
-            .help("Copy Original ( ⇧⌘ C )")
+            .help("Copy Original ( ⌘ ⇧ C )")
 
             // Clear (copy + clear)
             Button(action: onClear) {

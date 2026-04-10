@@ -7,8 +7,15 @@ private let logger = Logger(subsystem: "lol.mrl.app.Vapor", category: "App")
 
 @main
 struct VaporApp: App {
-    @State private var windowManager = WindowManager.shared
     @State private var preferences = UserPreferences()
+    @State private var windowManager: WindowManager
+
+    init() {
+        let prefs = UserPreferences()
+        WindowManager.configure(preferences: prefs)
+        _preferences = State(initialValue: prefs)
+        _windowManager = State(initialValue: WindowManager.shared)
+    }
     @Environment(\.openWindow) private var openWindow
 
     var sharedModelContainer: ModelContainer = {

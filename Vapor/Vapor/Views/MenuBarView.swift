@@ -4,11 +4,11 @@ struct MenuBarView: View {
     var body: some View {
         VStack(spacing: 0) {
             Button("Show Vapor") {
-                WindowManager.shared.expand()
+                WindowManager.shared.focus()
             }
             Divider()
-            Button("Settings...") {
-                NotificationCenter.default.post(name: .showSettings, object: nil)
+            SettingsLink {
+                Text("Settings...")
             }
             Divider()
             Button("Quit Vapor") {
@@ -16,9 +16,4 @@ struct MenuBarView: View {
             }
         }
     }
-}
-
-extension Notification.Name {
-    static let showSettings = Notification.Name("showSettings")
-    static let toggleWindowState = Notification.Name("toggleWindowState")
 }

@@ -7,17 +7,26 @@ private let logger = Logger(subsystem: "lol.mrl.app.Vapor", category: "WindowMan
 @MainActor
 @Observable
 final class WindowManager {
-    static let shared = WindowManager()
+    static private(set) var shared = WindowManager(preferences: UserPreferences())
 
-    var windowState: WindowState = .expanded {
+    /// Call once at app startup to inject the shared UserPreferences instance.
+    static func configure(preferences: UserPreferences) {
+        shared = WindowManager(preferences: preferences)
+    }
+
+    var windowState: WindowState {
         didSet { logger.debug("Window state: \(self.windowState == .minimized ? "minimized" : "expanded")") }
     }
 
-    private let preferences = UserPreferences()
+    private let preferences: UserPreferences
     private let expandedSize = CGSize(width: 500, height: 400)
     private let minimizedSize = CGSize(width: 320, height: 200)
 
-    private init() {}
+    private init(preferences: UserPreferences) {
+        self.preferences = preferences
+        // Restore last window state from preferences
+        self.windowState = preferences.windowState
+    }
 
     private func findWindow() -> NSWindow? {
         let windows = NSApplication.shared.windows

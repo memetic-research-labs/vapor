@@ -16,7 +16,8 @@ All keyboard shortcuts in Vapor. Press `⌘ /` inside Vapor to see this list in 
 | Shortcut | Action |
 |---|---|
 | `⌘ ↩` | **Compress & Copy** — compress the text and copy the compressed version to clipboard |
-| `⌘ C` | **Copy Original** — copy the original (uncompressed) text to clipboard. If text is selected, copies only the selection |
+| `⌘ C` | **Copy** — standard copy (copies selected text, or nothing if no selection) |
+| `⌘ ⇧ C` | **Copy Original** — copy the full original (uncompressed) text to clipboard |
 | `⌘ K` | **Copy & Clear** — copy the original text to clipboard, then clear the editor |
 
 > `⌘ K` never loses your text. The original is always copied to the clipboard and saved to prompt history before clearing.

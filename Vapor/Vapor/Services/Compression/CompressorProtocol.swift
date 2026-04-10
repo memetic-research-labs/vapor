@@ -29,7 +29,7 @@ extension Compressor {
             return Int(Double(wordCount) * 1.3)
         }
         let tokens = encoder.encode(value: text)
-        tokenLogger.debug("Tiktoken BPE count: \(tokens.count) for \(text.prefix(50))...")
+        tokenLogger.debug("Tiktoken BPE count: \(tokens.count), input length: \(text.count) characters")
         return tokens.count
     }
 
