@@ -86,6 +86,7 @@ final class WindowManager {
         }
 
         window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     func toggleState() {
@@ -93,6 +94,13 @@ final class WindowManager {
         case .minimized: expand()
         case .expanded: minimize()
         }
+    }
+
+    /// Bring the window to front and focus it without changing state.
+    func focus() {
+        guard let window = findWindow() else { return }
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     func savePosition() {
