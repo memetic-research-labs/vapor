@@ -94,12 +94,12 @@ struct MinimizedPillView: View {
 
     private var textArea: some View {
         PillTextEditor(text: $text, isFocused: $isEditorFocused, isDictating: isDictating)
-            .padding(2)
             .editorGlow(
                 isFocused: isEditorFocused,
                 isDictating: isDictating,
                 inputLevel: inputLevel
             )
+            .padding(6)
     }
 
     // MARK: - Status Bar

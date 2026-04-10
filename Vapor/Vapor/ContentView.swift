@@ -171,13 +171,13 @@ struct ContentView: View {
                 )
 
                 NativeTextEditor(text: $viewModel.content, isFocused: $isEditorFocused)
-                    .padding(2)
-                    .frame(maxHeight: .infinity)
                     .editorGlow(
                         isFocused: isEditorFocused,
                         isDictating: viewModel.isDictating,
                         inputLevel: dictationService.inputLevel
                     )
+                    .padding(6)
+                    .frame(maxHeight: .infinity)
 
                 if viewModel.originalTokenCount > 0 {
                     Divider()

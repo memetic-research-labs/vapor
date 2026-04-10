@@ -66,10 +66,10 @@ struct EditorGlowModifier: ViewModifier {
     private var borderWidth: CGFloat {
         if !isFocused { return 0 }
         if isDictating {
-            // Fixed 2px solid border during dictation
-            return 2.0
+            // Fixed 4px solid border during dictation
+            return 4.0
         }
-        return 1.0
+        return 2.0
     }
 
     private var shadowOpacity: Double {
