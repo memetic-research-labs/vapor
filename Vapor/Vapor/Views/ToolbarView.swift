@@ -28,26 +28,22 @@ struct ToolbarView: View {
                 Text("Compress & Copy")
             }
             .buttonStyle(.borderedProminent)
-            .keyboardShortcut(.return, modifiers: .command)
             .disabled(viewModel.content.isEmpty || viewModel.isCompressing)
 
-            Menu {
-                Button("Copy Original") {
-                    onCopyOriginal()
-                }
-                .keyboardShortcut("C", modifiers: [.command, .shift])
+            Button {
+                onCopyOriginal()
             } label: {
                 Image(systemName: "doc.on.doc")
             }
-            .menuStyle(.borderlessButton)
+            .buttonStyle(.borderless)
             .disabled(viewModel.content.isEmpty)
+            .help("Copy Original ( ⌘ C )")
 
             Spacer()
 
             Button("Clear") {
                 onClear()
             }
-            .keyboardShortcut("k", modifiers: .command)
             .disabled(viewModel.content.isEmpty)
 
             Button {

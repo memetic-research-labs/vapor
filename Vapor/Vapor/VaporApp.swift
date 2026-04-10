@@ -46,6 +46,43 @@ struct VaporApp: App {
         .defaultSize(width: 500, height: 400)
         .commands {
             CommandGroup(replacing: .newItem) { }
+
+            CommandGroup(replacing: .pasteboard) {
+                Button("Copy Original") {
+                    NotificationCenter.default.post(name: .vaporCopyOriginal, object: nil)
+                }
+                .keyboardShortcut("c", modifiers: .command)
+
+                Button("Paste") {
+                    NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: nil)
+                }
+                .keyboardShortcut("v", modifiers: .command)
+            }
+
+            CommandMenu("Actions") {
+                Button("Compress & Copy") {
+                    NotificationCenter.default.post(name: .vaporCompressAndCopy, object: nil)
+                }
+                .keyboardShortcut(.return, modifiers: .command)
+
+                Button("Copy & Clear") {
+                    NotificationCenter.default.post(name: .vaporCopyAndClear, object: nil)
+                }
+                .keyboardShortcut("k", modifiers: .command)
+
+                Divider()
+
+                Button("Prompt History") {
+                    NotificationCenter.default.post(name: .vaporShowHistory, object: nil)
+                }
+                .keyboardShortcut("y", modifiers: .command)
+
+                Button("Keyboard Shortcuts") {
+                    NotificationCenter.default.post(name: .vaporShowHelp, object: nil)
+                }
+                .keyboardShortcut("/", modifiers: .command)
+            }
+
             CommandMenu("Window") {
                 Button("Minimize to Pill") {
                     windowManager.minimize()

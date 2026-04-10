@@ -46,21 +46,12 @@ final class WindowManager {
 
         configureWindow(window)
 
-        let screen = window.screen ?? NSScreen.main!
-        let screenFrame = screen.visibleFrame
-
-        var targetOrigin: NSPoint
-        if let saved = preferences.loadWindowPosition() {
-            targetOrigin = NSPoint(
-                x: saved.x,
-                y: screenFrame.maxY - saved.y - expandedSize.height
-            )
-        } else {
-            targetOrigin = NSPoint(
-                x: screenFrame.minX + 20,
-                y: screenFrame.maxY - expandedSize.height - 200
-            )
-        }
+        // Grow from current position — keep the top-left corner anchored
+        let currentFrame = window.frame
+        let targetOrigin = NSPoint(
+            x: currentFrame.origin.x,
+            y: currentFrame.origin.y + currentFrame.height - expandedSize.height
+        )
 
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.3
@@ -98,9 +89,10 @@ final class WindowManager {
     }
 
     func toggleState() {
-        switch windowState {
-        case .minimized: expand()
-        case .expanded: minimize()
+        // Just bring window to front and activate — no repositioning
+        if let window = findWindow() {
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
         }
     }
 
@@ -120,11 +112,11 @@ final class WindowManager {
         configureWindow(window)
 
         if windowState == .minimized {
-            let screen = window.screen ?? NSScreen.main!
-            let screenFrame = screen.visibleFrame
+            // Just resize to pill size, keep current position
+            let currentFrame = window.frame
             let pillOrigin = NSPoint(
-                x: screenFrame.minX + 16,
-                y: screenFrame.maxY - minimizedSize.height - 200
+                x: currentFrame.origin.x,
+                y: currentFrame.origin.y + currentFrame.height - minimizedSize.height
             )
             window.setFrame(NSRect(origin: pillOrigin, size: minimizedSize), display: true)
         }

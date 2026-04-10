@@ -86,36 +86,8 @@ struct MinimizedPillView: View {
                 }
             }
         }
-        // Hidden buttons for keyboard shortcuts
-        .background {
-            Group {
-                Button("") {
-                    if hasContent && isModelReady { onCompressAndCopy() }
-                }
-                .keyboardShortcut(.return, modifiers: .command)
-
-                Button("") {
-                    onClear()
-                }
-                .keyboardShortcut("k", modifiers: .command)
-
-                Button("") {
-                    if hasContent { onCopyOriginal() }
-                }
-                .keyboardShortcut("c", modifiers: [.command, .shift])
-
-                Button("") {
-                    onShowHistory()
-                }
-                .keyboardShortcut("y", modifiers: .command)
-
-                Button("") {
-                    onShowHelp()
-                }
-                .keyboardShortcut("/", modifiers: .command)
-            }
-            .hidden()
-        }
+        // Keyboard shortcuts are handled at app level via menu commands (VaporApp.swift)
+        // This ensures they work even when TextEditor has focus.
     }
 
     // MARK: - Text Area
@@ -245,7 +217,7 @@ struct MinimizedPillView: View {
             .buttonStyle(.bordered)
             .controlSize(.small)
             .disabled(!hasContent)
-            .help("Copy Original ( ⌘ ⇧ C )")
+            .help("Copy Original ( ⌘ C )")
 
             // Clear (copy + clear)
             Button(action: onClear) {

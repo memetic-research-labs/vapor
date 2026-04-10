@@ -98,6 +98,22 @@ struct ContentView: View {
                 toastService.showSuccess("Restored from history")
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .vaporCopyOriginal)) { _ in
+            viewModel.copyOriginalToClipboard()
+            toastService.showSuccess("Original copied to clipboard")
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .vaporCompressAndCopy)) { _ in
+            Task { await performCompressAndCopy() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .vaporCopyAndClear)) { _ in
+            viewModel.copyAndClear()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .vaporShowHistory)) { _ in
+            openWindow(id: "prompt-history")
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .vaporShowHelp)) { _ in
+            openWindow(id: "keyboard-shortcuts")
+        }
         .onDisappear {
             FnDictationMonitor.shared.stop()
             dictationService.stopDictation(commit: false)
@@ -200,20 +216,7 @@ struct ContentView: View {
             windowManager.minimize()
             return .handled
         }
-        .background {
-            Group {
-                Button("") {
-                    openWindow(id: "prompt-history")
-                }
-                .keyboardShortcut("y", modifiers: .command)
-
-                Button("") {
-                    openWindow(id: "keyboard-shortcuts")
-                }
-                .keyboardShortcut("/", modifiers: .command)
-            }
-            .hidden()
-        }
+        // Keyboard shortcuts (⌘K, ⌘C, ⌘Y, ⌘/, ⌘↩) handled at app level via menu commands.
     }
 
     private func checkPermissions() {
