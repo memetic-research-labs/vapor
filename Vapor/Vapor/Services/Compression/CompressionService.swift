@@ -45,7 +45,7 @@ private class DownloadDelegate: NSObject, URLSessionDownloadDelegate {
 @MainActor
 @Observable
 final class CompressionService {
-    var selectedCompressor: CompressorType = .ruleBased
+    var selectedCompressor: CompressorType = .foundationModels
     var availableCompressors: [CompressorType: Bool] = [:]
     var openRouterModel: String = "glm-5"
     var modelDownloadProgress: Double = 0

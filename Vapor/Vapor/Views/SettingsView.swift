@@ -20,7 +20,7 @@ struct SettingsView: View {
 
             GroupBox("Compression Backend") {
                 VStack(alignment: .leading, spacing: 12) {
-                    ForEach(CompressorType.allCases, id: \.self) { type in
+                    ForEach(CompressorType.allCases.filter { $0 != .ruleBased }, id: \.self) { type in
                         HStack {
                             ZStack {
                                 Circle()

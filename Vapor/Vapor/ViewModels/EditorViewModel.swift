@@ -16,7 +16,7 @@ final class EditorViewModel {
     var isDirty: Bool = false
     var isDictating: Bool = false
     var activeDictationRange: NSRange?
-    var selectedCompressor: CompressorType = .ruleBased
+    var selectedCompressor: CompressorType = .foundationModels
     var isCompressing: Bool = false
     var lastSavedContent: String = ""
 
