@@ -84,7 +84,12 @@ struct VaporApp: App {
             }
 
             CommandMenu("Window") {
-                Button("Minimize to Pill") {
+                Button("Toggle Compact / Full") {
+                    windowManager.toggleState()
+                }
+                .keyboardShortcut("\\", modifiers: .command)
+
+                Button("Minimize to Compact") {
                     windowManager.minimize()
                 }
                 .keyboardShortcut(.escape)

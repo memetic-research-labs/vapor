@@ -162,6 +162,9 @@ struct ContentView: View {
                         withAnimation {
                             showTestSidebar.toggle()
                         }
+                    },
+                    onMinimize: {
+                        windowManager.minimize()
                     }
                 )
 

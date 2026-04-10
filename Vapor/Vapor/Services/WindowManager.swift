@@ -89,10 +89,9 @@ final class WindowManager {
     }
 
     func toggleState() {
-        // Just bring window to front and activate — no repositioning
-        if let window = findWindow() {
-            window.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
+        switch windowState {
+        case .minimized: expand()
+        case .expanded: minimize()
         }
     }
 

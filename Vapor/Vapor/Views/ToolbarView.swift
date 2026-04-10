@@ -10,6 +10,7 @@ struct ToolbarView: View {
     let onToggleSettings: () -> Void
     let onToggleDictation: () -> Void
     let onToggleTest: () -> Void
+    let onMinimize: () -> Void
 
     var body: some View {
         HStack(spacing: 10) {
@@ -61,6 +62,14 @@ struct ToolbarView: View {
             }
             .buttonStyle(.borderless)
             .help("OpenRouter Test")
+
+            Button {
+                onMinimize()
+            } label: {
+                Image(systemName: "arrow.down.right.and.arrow.up.left")
+            }
+            .buttonStyle(.borderless)
+            .help("Minimize to compact view ( Escape )")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)

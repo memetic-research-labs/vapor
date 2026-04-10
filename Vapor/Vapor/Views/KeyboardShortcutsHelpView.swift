@@ -35,8 +35,8 @@ struct KeyboardShortcutsHelpView: View {
 
                     shortcutSection("Window") {
                         shortcutRow("⌃ ⌥ Space", "Activate Vapor (global hotkey)")
+                        shortcutRow("⌘ \\", "Toggle compact / full view")
                         shortcutRow("Escape", "Minimize to compact view")
-                        shortcutRow("↗ button", "Expand to full editor")
                     }
 
                     shortcutSection("Navigation") {
