@@ -57,6 +57,11 @@ struct NativeTextEditor: NSViewRepresentable {
 
         EditorTextViewRegistry.current = textView
 
+        // Auto-focus the text view so the glow appears immediately on launch
+        DispatchQueue.main.async {
+            scrollView.window?.makeFirstResponder(textView)
+        }
+
         return scrollView
     }
 

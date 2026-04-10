@@ -57,8 +57,8 @@ struct EditorGlowModifier: ViewModifier {
     private var borderOpacity: Double {
         if !isFocused { return 0 }
         if isDictating {
-            // VU meter: base opacity + input level boost
-            return 0.3 + Double(smoothedLevel) * 0.5
+            // VU meter: throbs with audio level
+            return 0.4 + Double(smoothedLevel) * 0.5
         }
         return 0.35
     }
@@ -66,8 +66,8 @@ struct EditorGlowModifier: ViewModifier {
     private var borderWidth: CGFloat {
         if !isFocused { return 0 }
         if isDictating {
-            // Thicker border during dictation, modulated by input level
-            return 1.5 + smoothedLevel * 1.5
+            // Fixed 2px solid border during dictation
+            return 2.0
         }
         return 1.0
     }
@@ -75,7 +75,8 @@ struct EditorGlowModifier: ViewModifier {
     private var shadowOpacity: Double {
         if !isFocused { return 0 }
         if isDictating {
-            return 0.2 + Double(smoothedLevel) * 0.4
+            // No shadow during dictation — clean solid border only
+            return 0
         }
         return 0.25
     }
@@ -83,7 +84,8 @@ struct EditorGlowModifier: ViewModifier {
     private var shadowRadius: CGFloat {
         if !isFocused { return 0 }
         if isDictating {
-            return 3 + smoothedLevel * 5
+            // No shadow during dictation
+            return 0
         }
         return 4
     }

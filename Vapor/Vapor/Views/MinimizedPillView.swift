@@ -94,6 +94,7 @@ struct MinimizedPillView: View {
 
     private var textArea: some View {
         PillTextEditor(text: $text, isFocused: $isEditorFocused, isDictating: isDictating)
+            .padding(2)
             .editorGlow(
                 isFocused: isEditorFocused,
                 isDictating: isDictating,

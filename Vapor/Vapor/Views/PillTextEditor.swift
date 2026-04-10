@@ -55,6 +55,11 @@ struct PillTextEditor: NSViewRepresentable {
         textView.string = text
         context.coordinator.updatePlaceholder()
 
+        // Auto-focus the text view so the glow appears immediately
+        DispatchQueue.main.async {
+            scrollView.window?.makeFirstResponder(textView)
+        }
+
         return scrollView
     }
 

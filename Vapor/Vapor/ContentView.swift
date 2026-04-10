@@ -171,6 +171,7 @@ struct ContentView: View {
                 )
 
                 NativeTextEditor(text: $viewModel.content, isFocused: $isEditorFocused)
+                    .padding(2)
                     .frame(maxHeight: .infinity)
                     .editorGlow(
                         isFocused: isEditorFocused,
