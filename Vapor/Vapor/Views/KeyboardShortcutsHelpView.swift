@@ -10,7 +10,7 @@ struct KeyboardShortcutsHelpView: View {
                 Text("Keyboard Shortcuts")
                     .font(.system(size: 14, weight: .semibold))
                 Spacer()
-                Text("⌘/")
+                Text("⌘ /")
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundColor(.secondary)
             }
@@ -28,27 +28,27 @@ struct KeyboardShortcutsHelpView: View {
                     }
 
                     shortcutSection("Compression") {
-                        shortcutRow("⌘↩", "Compress & copy to clipboard")
-                        shortcutRow("⌘⇧C", "Copy original text to clipboard")
-                        shortcutRow("⌘K", "Copy original & clear")
+                        shortcutRow("⌘ ↩", "Compress & copy to clipboard")
+                        shortcutRow("⌘ ⇧ C", "Copy original text to clipboard")
+                        shortcutRow("⌘ K", "Copy original & clear")
                     }
 
                     shortcutSection("Window") {
-                        shortcutRow("⌃⌥Space", "Activate Vapor (global hotkey)")
+                        shortcutRow("⌃ ⌥ Space", "Activate Vapor (global hotkey)")
                         shortcutRow("Escape", "Minimize to compact view")
                         shortcutRow("↗ button", "Expand to full editor")
                     }
 
                     shortcutSection("Navigation") {
-                        shortcutRow("⌘Y", "Open prompt history")
-                        shortcutRow("⌘,", "Open settings")
-                        shortcutRow("⌘/", "Show this help")
+                        shortcutRow("⌘ Y", "Open prompt history")
+                        shortcutRow("⌘ ,", "Open settings")
+                        shortcutRow("⌘ /", "Show this help")
                     }
                 }
                 .padding(16)
             }
         }
-        .frame(width: 300, height: 360)
+        .frame(width: 340, height: 360)
         .background(Color(nsColor: .windowBackgroundColor))
     }
 
@@ -66,7 +66,7 @@ struct KeyboardShortcutsHelpView: View {
             Text(shortcut)
                 .font(.system(size: 12, weight: .medium, design: .monospaced))
                 .foregroundColor(.accentColor)
-                .frame(width: 90, alignment: .leading)
+                .frame(width: 110, alignment: .leading)
             Text(description)
                 .font(.system(size: 12))
                 .foregroundColor(.primary.opacity(0.85))

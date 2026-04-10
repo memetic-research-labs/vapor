@@ -227,7 +227,7 @@ struct MinimizedPillView: View {
             .buttonStyle(.borderedProminent)
             .controlSize(.small)
             .disabled(!hasContent || !isModelReady)
-            .help("Compress & Copy (⌘↩)")
+            .help("Compress & Copy ( ⌘ ↩ )")
 
             // Copy Original
             Button(action: { if hasContent { onCopyOriginal() } }) {
@@ -237,7 +237,7 @@ struct MinimizedPillView: View {
             .buttonStyle(.bordered)
             .controlSize(.small)
             .disabled(!hasContent)
-            .help("Copy Original (⌘⇧C)")
+            .help("Copy Original ( ⌘ ⇧ C )")
 
             // Clear (copy + clear)
             Button(action: onClear) {
@@ -247,7 +247,7 @@ struct MinimizedPillView: View {
             .buttonStyle(.bordered)
             .controlSize(.small)
             .disabled(!hasContent)
-            .help("Copy & Clear (⌘K)")
+            .help("Copy & Clear ( ⌘ K )")
 
             // Help
             Button(action: onShowHelp) {
@@ -256,7 +256,7 @@ struct MinimizedPillView: View {
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
-            .help("Keyboard Shortcuts (⌘/)")
+            .help("Keyboard Shortcuts ( ⌘ / )")
 
             Spacer()
 
