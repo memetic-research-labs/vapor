@@ -45,8 +45,10 @@ final class WindowManager {
         window.setContentBorderThickness(0, for: .minY)
         window.setContentBorderThickness(0, for: .maxY)
 
-        // Layer-backed content view for smoother resize rendering
+        // Layer-backed content view for smoother resize rendering, zero out any layer borders
         window.contentView?.wantsLayer = true
+        window.contentView?.layer?.borderWidth = 0
+        window.contentView?.layer?.borderColor = nil
     }
 
     func expand() {

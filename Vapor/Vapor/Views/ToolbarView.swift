@@ -28,6 +28,8 @@ struct ToolbarView: View {
                         Image(systemName: "bolt.horizontal")
                     }
                     Text("Compress & Copy")
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                 }
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
@@ -88,6 +90,7 @@ struct ToolbarView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+        .frame(height: 44)
     }
 
     private var dictationButton: some View {
