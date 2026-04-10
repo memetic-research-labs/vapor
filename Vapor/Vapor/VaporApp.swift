@@ -44,7 +44,6 @@ struct VaporApp: App {
         .modelContainer(sharedModelContainer)
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 500, height: 400)
-        .defaultPosition(.topLeading)
         .commands {
             CommandGroup(replacing: .newItem) { }
             CommandMenu("Window") {
@@ -61,7 +60,6 @@ struct VaporApp: App {
         .windowStyle(.titleBar)
         .windowResizability(.contentSize)
         .defaultSize(width: 320, height: 240)
-        .defaultPosition(.trailing)
 
         Window("Prompt History", id: "prompt-history") {
             PromptHistoryView()
@@ -69,7 +67,6 @@ struct VaporApp: App {
         .modelContainer(sharedModelContainer)
         .windowStyle(.titleBar)
         .defaultSize(width: 400, height: 500)
-        .defaultPosition(.center)
 
         Window("Keyboard Shortcuts", id: "keyboard-shortcuts") {
             KeyboardShortcutsHelpView()
@@ -77,7 +74,6 @@ struct VaporApp: App {
         .windowStyle(.titleBar)
         .windowResizability(.contentSize)
         .defaultSize(width: 340, height: 360)
-        .defaultPosition(.center)
 
         MenuBarExtra("Vapor", systemImage: "waveform.circle") {
             MenuBarView()

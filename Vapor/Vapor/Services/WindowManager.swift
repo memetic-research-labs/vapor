@@ -81,12 +81,11 @@ final class WindowManager {
             return
         }
 
-        let screen = window.screen ?? NSScreen.main!
-        let screenFrame = screen.visibleFrame
-
+        // Keep the pill near where the window currently is, just resize in place
+        let currentFrame = window.frame
         let pillOrigin = NSPoint(
-            x: screenFrame.minX + 16,
-            y: screenFrame.maxY - minimizedSize.height - 200
+            x: currentFrame.origin.x,
+            y: currentFrame.origin.y + currentFrame.height - minimizedSize.height
         )
 
         NSAnimationContext.runAnimationGroup { context in

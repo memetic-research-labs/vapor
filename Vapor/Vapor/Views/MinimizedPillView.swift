@@ -27,6 +27,7 @@ struct MinimizedPillView: View {
 
     @State private var glowPulse = false
     @State private var showCopied = false
+    @State private var textSelection = TextSelection?.none
 
     private var hasContent: Bool {
         !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -121,10 +122,17 @@ struct MinimizedPillView: View {
 
     private var textArea: some View {
         ZStack(alignment: .topLeading) {
-            TextEditor(text: $text)
+            TextEditor(text: $text, selection: $textSelection)
                 .font(.system(size: 13, design: .default))
                 .scrollContentBackground(.hidden)
                 .padding(6)
+                .onChange(of: text) { _, newValue in
+                    // Move cursor to end so TextEditor scrolls to show latest text
+                    if isDictating {
+                        let endIndex = newValue.endIndex
+                        textSelection = .init(insertionPoint: endIndex)
+                    }
+                }
 
             if !hasContent {
                 Text("Hold Fn to dictate or type here…")
