@@ -32,7 +32,6 @@ struct ContentView: View {
                 MinimizedPillView(
                     onExpand: {
                         windowManager.expand()
-                        startDictationOnExpand()
                     },
                     onCompressAndCopy: {
                         Task { await performCompressAndCopy() }
@@ -47,7 +46,10 @@ struct ContentView: View {
                     onShowHistory: {
                         openWindow(id: "prompt-history")
                     },
-                    text: viewModel.content,
+                    onShowHelp: {
+                        openWindow(id: "keyboard-shortcuts")
+                    },
+                    text: $viewModel.content,
                     isDictating: viewModel.isDictating,
                     isCompressing: viewModel.isCompressing,
                     isModelReady: compressionService.isSelectedCompressorReady,
@@ -199,10 +201,17 @@ struct ContentView: View {
             return .handled
         }
         .background {
-            Button("") {
-                openWindow(id: "prompt-history")
+            Group {
+                Button("") {
+                    openWindow(id: "prompt-history")
+                }
+                .keyboardShortcut("y", modifiers: .command)
+
+                Button("") {
+                    openWindow(id: "keyboard-shortcuts")
+                }
+                .keyboardShortcut("/", modifiers: .command)
             }
-            .keyboardShortcut("y", modifiers: .command)
             .hidden()
         }
     }
@@ -255,21 +264,7 @@ struct ContentView: View {
         toastService.showInfo("Hold the Fn key to dictate, release to stop")
     }
 
-    private func startDictationOnExpand() {
-        if hasPermissionIssue { return }
-        if dictationService.isDictating { return }
-        viewModel.isDictating = true
-        dictationService.startDictation(onTextUpdate: { [weak viewModel] text, isFinal in
-            Task { @MainActor in
-                guard let viewModel else { return }
-                viewModel.applyDictationTranscript(text, isFinal: isFinal)
-                if isFinal {
-                    viewModel.isDictating = false
-                    EditorTextViewRegistry.refocus()
-                }
-            }
-        })
-    }
+    // Dictation is Fn-key only. No auto-start on expand.
 
     private func setupDictation() {
         FnDictationMonitor.shared.start { [weak viewModel, weak dictationService] isFnDown in
@@ -289,23 +284,17 @@ struct ContentView: View {
                 }
 
                 if isFnDown {
+                    if dictationService.isDictating { return }
                     viewModel.isDictating = true
-                    if dictationService.isDictating {
-                        return
-                    }
                     dictationService.startDictation(onTextUpdate: { text, isFinal in
                         Task { @MainActor in
                             viewModel.applyDictationTranscript(text, isFinal: isFinal)
-                            if isFinal {
-                                viewModel.isDictating = false
-                                EditorTextViewRegistry.refocus()
-                            }
+                            // Don't set isDictating = false here.
+                            // Only the Fn release handler controls dictation state.
                         }
                     })
                 } else {
-                    if dictationService.isDictating {
-                        dictationService.pauseDictation()
-                    }
+                    dictationService.pauseDictation()
                     viewModel.isDictating = false
                     EditorTextViewRegistry.refocus()
                 }

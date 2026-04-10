@@ -47,7 +47,7 @@ struct ToolbarView: View {
             Button("Clear") {
                 onClear()
             }
-            .keyboardShortcut("N", modifiers: .command)
+            .keyboardShortcut("k", modifiers: .command)
             .disabled(viewModel.content.isEmpty)
 
             Button {
@@ -106,8 +106,8 @@ struct ToolbarView: View {
 
     private var dictationHelpText: String {
         if viewModel.isDictating {
-            return "Listening... (click to stop)"
+            return "Listening… (release Fn to stop)"
         }
-        return "Click to start dictation (or hold Fn key)"
+        return "Hold Fn key to dictate"
     }
 }

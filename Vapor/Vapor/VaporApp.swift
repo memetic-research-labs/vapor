@@ -51,7 +51,7 @@ struct VaporApp: App {
                 Button("Minimize to Pill") {
                     windowManager.minimize()
                 }
-                .keyboardShortcut("H", modifiers: .command)
+                .keyboardShortcut(.escape)
             }
         }
 
@@ -69,6 +69,14 @@ struct VaporApp: App {
         .modelContainer(sharedModelContainer)
         .windowStyle(.titleBar)
         .defaultSize(width: 400, height: 500)
+        .defaultPosition(.center)
+
+        Window("Keyboard Shortcuts", id: "keyboard-shortcuts") {
+            KeyboardShortcutsHelpView()
+        }
+        .windowStyle(.titleBar)
+        .windowResizability(.contentSize)
+        .defaultSize(width: 300, height: 360)
         .defaultPosition(.center)
 
         MenuBarExtra("Vapor", systemImage: "waveform.circle") {

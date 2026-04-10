@@ -15,9 +15,10 @@ struct MinimizedPillView: View {
     let onCopyOriginal: () -> Void
     let onClear: () -> Void
     let onShowHistory: () -> Void
+    let onShowHelp: () -> Void
 
     // State
-    var text: String = ""
+    @Binding var text: String
     var isDictating: Bool = false
     var isCompressing: Bool = false
     var isModelReady: Bool = true
@@ -106,6 +107,11 @@ struct MinimizedPillView: View {
                     onShowHistory()
                 }
                 .keyboardShortcut("y", modifiers: .command)
+
+                Button("") {
+                    onShowHelp()
+                }
+                .keyboardShortcut("/", modifiers: .command)
             }
             .hidden()
         }
@@ -114,28 +120,19 @@ struct MinimizedPillView: View {
     // MARK: - Text Area
 
     private var textArea: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                if hasContent {
-                    Text(text)
-                        .font(.system(size: 13, design: .default))
-                        .foregroundColor(.primary.opacity(0.9))
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(10)
-                        .id("textBottom")
-                } else {
-                    Text("Hold Fn to dictate…")
-                        .font(.system(size: 13))
-                        .foregroundColor(.secondary.opacity(0.6))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(10)
-                }
-            }
-            .onChange(of: text) { _, _ in
-                withAnimation(.easeOut(duration: 0.1)) {
-                    proxy.scrollTo("textBottom", anchor: .bottom)
-                }
+        ZStack(alignment: .topLeading) {
+            TextEditor(text: $text)
+                .font(.system(size: 13, design: .default))
+                .scrollContentBackground(.hidden)
+                .padding(6)
+
+            if !hasContent {
+                Text("Hold Fn to dictate or type here…")
+                    .font(.system(size: 13))
+                    .foregroundColor(.secondary.opacity(0.6))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 14)
+                    .allowsHitTesting(false)
             }
         }
     }
@@ -221,17 +218,11 @@ struct MinimizedPillView: View {
     // MARK: - Controls Bar
 
     private var controlsBar: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 4) {
             // Compress & Copy
             Button(action: { if hasContent && isModelReady { onCompressAndCopy() } }) {
-                HStack(spacing: 4) {
-                    Image(systemName: "bolt.horizontal")
-                        .font(.system(size: 11, weight: .semibold))
-                    Text("Compress")
-                        .font(.system(size: 11, weight: .medium))
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
+                Image(systemName: "bolt.horizontal")
+                    .font(.system(size: 12, weight: .semibold))
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.small)
@@ -240,14 +231,8 @@ struct MinimizedPillView: View {
 
             // Copy Original
             Button(action: { if hasContent { onCopyOriginal() } }) {
-                HStack(spacing: 4) {
-                    Image(systemName: "doc.on.doc")
-                        .font(.system(size: 10))
-                    Text("Copy")
-                        .font(.system(size: 11, weight: .medium))
-                }
-                .padding(.horizontal, 6)
-                .padding(.vertical, 4)
+                Image(systemName: "doc.on.doc")
+                    .font(.system(size: 11))
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
@@ -256,19 +241,22 @@ struct MinimizedPillView: View {
 
             // Clear (copy + clear)
             Button(action: onClear) {
-                HStack(spacing: 4) {
-                    Image(systemName: "xmark.circle")
-                        .font(.system(size: 10))
-                    Text("Clear")
-                        .font(.system(size: 11, weight: .medium))
-                }
-                .padding(.horizontal, 6)
-                .padding(.vertical, 4)
+                Image(systemName: "xmark.circle")
+                    .font(.system(size: 11))
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
             .disabled(!hasContent)
             .help("Copy & Clear (⌘K)")
+
+            // Help
+            Button(action: onShowHelp) {
+                Image(systemName: "questionmark.circle")
+                    .font(.system(size: 11))
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .help("Keyboard Shortcuts (⌘/)")
 
             Spacer()
 

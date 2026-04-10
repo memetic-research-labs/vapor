@@ -58,8 +58,7 @@ final class SpeechDictationService {
     }
 
     func pauseDictation() {
-        guard isDictating else { return }
-        logger.debug("Pausing dictation (Fn released)")
+        logger.debug("Pausing dictation (Fn released), isDictating=\(self.isDictating)")
         if !currentTranscript.isEmpty {
             logger.debug("Committing partial transcript as final before pause")
             onTextUpdate?(currentTranscript, true)
@@ -67,6 +66,7 @@ final class SpeechDictationService {
         isCancellationRequested = true
         teardownAudioSession(preserveErrorState: false)
         currentTranscript = ""
+        onTextUpdate = nil
     }
 
     func stopDictation(commit: Bool) {
