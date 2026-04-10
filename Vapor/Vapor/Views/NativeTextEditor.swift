@@ -23,6 +23,7 @@ struct NativeTextEditor: NSViewRepresentable {
         textView.isAutomaticTextReplacementEnabled = false
         textView.drawsBackground = false
         textView.textContainerInset = NSSize(width: 8, height: 8)
+        textView.focusRingType = .none
         
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = false
@@ -30,6 +31,8 @@ struct NativeTextEditor: NSViewRepresentable {
         scrollView.borderType = .noBorder
         scrollView.drawsBackground = false
         scrollView.contentView.drawsBackground = false
+        scrollView.focusRingType = .none
+        scrollView.contentView.focusRingType = .none
         
         EditorTextViewRegistry.current = textView
         

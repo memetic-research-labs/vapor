@@ -169,8 +169,6 @@ struct ContentView: View {
                     }
                 )
 
-                Divider()
-
                 NativeTextEditor(text: $viewModel.content)
                     .frame(maxHeight: .infinity)
 

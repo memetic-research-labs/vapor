@@ -19,56 +19,71 @@ struct ToolbarView: View {
             Button {
                 Task { await onCompressAndCopy() }
             } label: {
-                if viewModel.isCompressing {
-                    ProgressView()
-                        .scaleEffect(0.7)
-                        .frame(width: 16, height: 16)
-                } else {
-                    Image(systemName: "bolt.horizontal")
+                HStack(spacing: 4) {
+                    if viewModel.isCompressing {
+                        ProgressView()
+                            .scaleEffect(0.7)
+                            .frame(width: 14, height: 14)
+                    } else {
+                        Image(systemName: "bolt.horizontal")
+                    }
+                    Text("Compress & Copy")
                 }
-                Text("Compress & Copy")
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color.accentColor)
+                .foregroundColor(.white)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.plain)
             .disabled(viewModel.content.isEmpty || viewModel.isCompressing)
 
             Button {
                 onCopyOriginal()
             } label: {
                 Image(systemName: "doc.on.doc")
+                    .foregroundColor(.primary)
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.plain)
             .disabled(viewModel.content.isEmpty)
             .help("Copy Original ( ⌘ C )")
 
             Spacer()
 
-            Button("Clear") {
+            Button {
                 onClear()
+            } label: {
+                Text("Clear")
+                    .foregroundColor(.primary)
             }
+            .buttonStyle(.plain)
             .disabled(viewModel.content.isEmpty)
 
             Button {
                 onToggleSettings()
             } label: {
                 Image(systemName: "gearshape")
+                    .foregroundColor(.primary)
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.plain)
             .keyboardShortcut(",", modifiers: .command)
 
             Button {
                 onToggleTest()
             } label: {
                 Image(systemName: "flask")
+                    .foregroundColor(.primary)
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.plain)
             .help("OpenRouter Test")
 
             Button {
                 onMinimize()
             } label: {
                 Image(systemName: "arrow.down.right.and.arrow.up.left")
+                    .foregroundColor(.primary)
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.plain)
             .help("Minimize to compact view ( Escape )")
         }
         .padding(.horizontal, 12)

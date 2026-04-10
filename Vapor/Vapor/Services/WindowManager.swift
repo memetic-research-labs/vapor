@@ -41,6 +41,10 @@ final class WindowManager {
             window.toolbarStyle = .unifiedCompact
         }
 
+        // Eliminate content border thickness on all edges
+        window.setContentBorderThickness(0, for: .minY)
+        window.setContentBorderThickness(0, for: .maxY)
+
         // Layer-backed content view for smoother resize rendering
         window.contentView?.wantsLayer = true
     }
