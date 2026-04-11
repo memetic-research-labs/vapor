@@ -487,7 +487,7 @@ private struct CompressStepView: View {
                     .frame(maxWidth: .infinity, alignment: .center)
                 exampleRow(
                     label: "After",
-                    text: "writepythonscript usespandas queryrealestatetaxdata",
+                    text: "writepythonscript usespandas queryrealestatedata",
                     color: .accentColor
                 )
             }
