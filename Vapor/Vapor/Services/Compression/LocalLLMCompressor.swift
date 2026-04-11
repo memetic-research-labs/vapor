@@ -25,32 +25,24 @@ actor LocalLLMCompressor: Compressor {
             throw CompressionError.unavailable
         }
 
-        let systemPrompt = """
-        You are a prompt compression assistant. Compress text by removing filler words and fusing related concepts.
-        
-        Rules:
-        1. Remove: articles (a, an, the), prepositions (in, on, at, to, for, of, with, by, from), auxiliary verbs (is, are, was, were, have, has, had, will, would, should, can, could, may, might, must), pronouns (I, you, he, she, it, we, they, my, your, his, her, its, our, their), conjunctions (and, or, but, so, yet)
-        2. Keep: nouns, verbs, adjectives, adverbs - the content words
-        3. Preserve negations: not, never, don't, won't, can't, no, unless
-        4. Preserve exact values: numbers, URLs, file paths
-        5. Fuse ONLY words that form a single concept (e.g., "web component" → "webcomponent")
-        6. Keep distinct concepts SEPARATED by spaces
-        
-        Example:
-        Input: "write a web component that renders a canvas"
-        Output: "write webcomponent renders canvas"
-        
-        Notice: "web component" became "webcomponent" (single concept), but "renders" and "canvas" stayed separate (distinct concepts).
-        
-        Return ONLY the compressed text.
-        """
+        let systemPrompt = compressionSystemPrompt
 
         let messages = [
             LlamaChatMessage(role: .system, content: systemPrompt),
             LlamaChatMessage(role: .user, content: text)
         ]
 
-        let samplingConfig = LlamaSamplingConfig(temperature: 0.5, seed: 42)
+        let samplingConfig = LlamaSamplingConfig(
+            temperature: 0.1,
+            seed: 42,
+            topP: 0.9,
+            repetitionPenaltyConfig: LlamaRepetitionPenaltyConfig(
+                lastN: 64,
+                repeatPenalty: 1.0,
+                freqPenalty: 0.0,
+                presentPenalty: 0.0
+            )
+        )
 
         var compressed = ""
         let stream = try await service.streamCompletion(of: messages, samplingConfig: samplingConfig)
@@ -58,12 +50,12 @@ actor LocalLLMCompressor: Compressor {
             compressed += token
         }
 
-        let originalTokens = estimateTokens(text)
-        let compressedTokens = estimateTokens(compressed)
+        let originalTokens = await countTokens(text)
+        let compressedTokens = await countTokens(compressed)
         let ratio = originalTokens > 0 ? Double(compressedTokens) / Double(originalTokens) : 0.0
 
         return CompressedResult(
-            text: compressed.trimmingCharacters(in: .whitespacesAndNewlines),
+            text: cleanCompressedOutput(compressed),
             originalTokens: originalTokens,
             compressedTokens: compressedTokens,
             ratio: ratio,

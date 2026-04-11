@@ -1,4 +1,5 @@
 import SwiftUI
+import KeyboardShortcuts
 import OSLog
 
 private let logger = Logger(subsystem: "lol.mrl.app.Vapor", category: "Settings")
@@ -6,6 +7,7 @@ private let logger = Logger(subsystem: "lol.mrl.app.Vapor", category: "Settings"
 struct SettingsView: View {
     let compressionService: CompressionService
     @Binding var selectedCompressor: CompressorType
+    let preferences: UserPreferences
     @State private var openRouterApiKey: String = ""
     @State private var openRouterModel: String = "glm-5"
     @State private var isLocalLLMAvailable: Bool = false
@@ -18,7 +20,7 @@ struct SettingsView: View {
 
             GroupBox("Compression Backend") {
                 VStack(alignment: .leading, spacing: 12) {
-                    ForEach(CompressorType.allCases, id: \.self) { type in
+                    ForEach(CompressorType.allCases.filter { $0 != .ruleBased }, id: \.self) { type in
                         HStack {
                             ZStack {
                                 Circle()
@@ -72,7 +74,7 @@ struct SettingsView: View {
                                     .foregroundColor(.green)
                                     .font(.system(size: 12))
                                 Spacer()
-                                Text("Qwen2.5-3B (~2.1 GB)")
+                                Text("Qwen2.5-7B Q4_K_M (~4.7 GB)")
                                     .font(.system(size: 11))
                                     .foregroundColor(.secondary)
                             } else {
@@ -83,7 +85,49 @@ struct SettingsView: View {
                             }
                         }
 
-                        if !isLocalLLMAvailable {
+                        if isLocalLLMAvailable {
+                            Divider()
+
+                            HStack(spacing: 8) {
+                                Button("Re-download Model") {
+                                    compressionService.deleteLocalLLMModel()
+                                    isLocalLLMAvailable = false
+                                    Task {
+                                        do {
+                                            try await compressionService.downloadLocalLLMModel()
+                                            isLocalLLMAvailable = true
+                                        } catch {
+                                            logger.error("Failed to download model: \(error)")
+                                        }
+                                    }
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+
+                                Button("Delete Model") {
+                                    compressionService.deleteLocalLLMModel()
+                                    isLocalLLMAvailable = false
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                                .foregroundColor(.red)
+                            }
+
+                            if compressionService.isDownloading {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    ProgressView(value: compressionService.modelDownloadProgress, total: 1.0)
+                                        .progressViewStyle(.linear)
+
+                                    Text("\(Int(compressionService.modelDownloadProgress * 100))% - \(formatBytes(Int(Double(4_900_000_000) * compressionService.modelDownloadProgress))) / 4.7 GB")
+                                        .font(.system(size: 10))
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+
+                            Text("Re-download to update to the latest model version.")
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
+                        } else {
                             Divider()
 
                             VStack(alignment: .leading, spacing: 8) {
@@ -95,12 +139,12 @@ struct SettingsView: View {
                                         ProgressView(value: compressionService.modelDownloadProgress, total: 1.0)
                                             .progressViewStyle(.linear)
 
-                                        Text("\(Int(compressionService.modelDownloadProgress * 100))% - \(formatBytes(Int(Double(2147483648) * compressionService.modelDownloadProgress))) / 2.1 GB")
+                                        Text("\(Int(compressionService.modelDownloadProgress * 100))% - \(formatBytes(Int(Double(4_900_000_000) * compressionService.modelDownloadProgress))) / 4.7 GB")
                                             .font(.system(size: 10))
                                             .foregroundColor(.secondary)
                                     }
                                 } else {
-                                    Button("Download Qwen2.5-3B (2.1 GB)") {
+                                    Button("Download Qwen2.5-7B (4.7 GB)") {
                                         Task {
                                             do {
                                                 try await compressionService.downloadLocalLLMModel()
@@ -113,7 +157,7 @@ struct SettingsView: View {
                                     .buttonStyle(.borderedProminent)
                                     .controlSize(.small)
 
-                                    Text("Recommended for best quality. Requires ~2GB storage.")
+                                    Text("Recommended for best quality. Requires ~5GB storage.")
                                         .font(.system(size: 10))
                                         .foregroundColor(.secondary)
                                 }
@@ -151,6 +195,63 @@ struct SettingsView: View {
                     }
                     .padding(8)
                 }
+            }
+
+            GroupBox("Power User") {
+                VStack(alignment: .leading, spacing: 12) {
+                    Toggle("Auto-compress when dictation ends", isOn: Binding(
+                        get: { preferences.autoCompressEnabled },
+                        set: { preferences.autoCompressEnabled = $0 }
+                    ))
+                    .font(.system(size: 13))
+
+                    Text("Automatically compress & copy when you stop speaking.")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+
+                    Toggle("Auto-minimize after compress & copy", isOn: Binding(
+                        get: { preferences.autoMinimizeEnabled },
+                        set: { preferences.autoMinimizeEnabled = $0 }
+                    ))
+                    .font(.system(size: 13))
+
+                    Text("Collapse window to pill after copying, so you can paste immediately.")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+
+                    Divider()
+
+                    Toggle("Show experiments button in toolbar", isOn: Binding(
+                        get: { preferences.showExperimentsButton },
+                        set: { preferences.showExperimentsButton = $0 }
+                    ))
+                    .font(.system(size: 13))
+
+                    Text("Show the OpenRouter test sidebar button in the expanded toolbar.")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+                .padding(8)
+            }
+
+            GroupBox("Global Hotkey") {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Activate Vapor from any app:")
+                            .font(.system(size: 13))
+                        KeyboardShortcuts.Recorder(for: .toggleVapor)
+                            .frame(width: 150)
+                    }
+
+                    Text("Default: \u{2303}\u{2325}Space (Control+Option+Space). You can change it by clicking the recorder.")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+
+                    Text("When you first set a hotkey, macOS will ask for Input Monitoring permission. Grant it to enable the global shortcut.")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+                .padding(8)
             }
 
             HStack {

@@ -1,6 +1,15 @@
 {
-  "originHash" : "84c38e0356347bb3b7e6c0c95c933b3bdaf9578e076578c2204726234b3f5d11",
+  "originHash" : "635aec133b8889766c224df8d780c7ba706d8bd28fb46cfc8fd2a099d6e891ac",
   "pins" : [
+    {
+      "identity" : "keyboardshortcuts",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/sindresorhus/KeyboardShortcuts",
+      "state" : {
+        "revision" : "1aef85578fdd4f9eaeeb8d53b7b4fc31bf08fe27",
+        "version" : "2.4.0"
+      }
+    },
     {
       "identity" : "swift-llama-cpp",
       "kind" : "remoteSourceControl",
@@ -8,6 +17,15 @@
       "state" : {
         "revision" : "5496bc7c9820f04bba7268dc8a271235deae436d",
         "version" : "1.2.0"
+      }
+    },
+    {
+      "identity" : "tiktoken",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/aespinilla/Tiktoken",
+      "state" : {
+        "branch" : "main",
+        "revision" : "4ad6460448278f7a28f1e4ee2723500369f20acb"
       }
     }
   ],

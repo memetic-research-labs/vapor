@@ -5,14 +5,30 @@ private let logger = Logger(subsystem: "lol.mrl.app.Vapor", category: "Compressi
 
 @MainActor
 private class DownloadDelegate: NSObject, URLSessionDownloadDelegate {
-    var localURL: URL?
+    var destinationURL: URL?
+    var didCopySuccessfully = false
     var error: Error?
     var isFinished = false
     var bytesWritten: Int64 = 0
     var totalBytesExpected: Int64?
 
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
-        localURL = location
+        guard let destination = destinationURL else {
+            logger.error("No destination URL set for download")
+            return
+        }
+
+        do {
+            if FileManager.default.fileExists(atPath: destination.path) {
+                try FileManager.default.removeItem(at: destination)
+            }
+            try FileManager.default.copyItem(at: location, to: destination)
+            didCopySuccessfully = true
+            logger.info("Model copied to: \(destination.path)")
+        } catch {
+            logger.error("Failed to copy downloaded file: \(error)")
+            self.error = error
+        }
     }
 
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
@@ -29,11 +45,26 @@ private class DownloadDelegate: NSObject, URLSessionDownloadDelegate {
 @MainActor
 @Observable
 final class CompressionService {
-    var selectedCompressor: CompressorType = .ruleBased
+    var selectedCompressor: CompressorType = .foundationModels
     var availableCompressors: [CompressorType: Bool] = [:]
     var openRouterModel: String = "glm-5"
     var modelDownloadProgress: Double = 0
     var isDownloading: Bool = false
+    var isModelLoading: Bool = false
+
+    /// Whether the currently selected compressor is ready to compress.
+    var isSelectedCompressorReady: Bool {
+        switch selectedCompressor {
+        case .ruleBased:
+            return true
+        case .foundationModels:
+            return availableCompressors[.foundationModels] ?? false
+        case .openRouter:
+            return availableCompressors[.openRouter] ?? false
+        case .localLLM:
+            return availableCompressors[.localLLM] ?? false
+        }
+    }
 
     private let ruleBasedCompressor = RuleBasedCompressor()
     #if canImport(FoundationModels)
@@ -45,7 +76,7 @@ final class CompressionService {
     private let openRouterApiKeyKey = "openRouterApiKey"
     private let localLLMModelURLKey = "localLLMModelURL"
 
-    private let defaultModelURL = "https://huggingface.co/bartowski/Qwen2.5-3B-Instruct-GGUF/resolve/main/Qwen2.5-3B-Instruct-Q4_K_M.gguf"
+    private let defaultModelURL = "https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-GGUF/resolve/main/Qwen2.5-7B-Instruct-Q4_K_M.gguf"
 
     init() {
         loadSavedSettings()
@@ -55,7 +86,6 @@ final class CompressionService {
     }
 
     private func loadSavedSettings() {
-        // Load model name first so the compressor is created with the correct model.
         if let savedModel = UserDefaults.standard.string(forKey: "openRouterModel"),
            !savedModel.isEmpty {
             openRouterModel = savedModel
@@ -75,7 +105,9 @@ final class CompressionService {
            FileManager.default.fileExists(atPath: savedModelPath.path) {
             localLLMCompressor = LocalLLMCompressor(modelURL: savedModelPath)
             Task {
+                isModelLoading = true
                 try? await localLLMCompressor?.loadModel()
+                isModelLoading = false
             }
         }
     }
@@ -145,14 +177,14 @@ final class CompressionService {
             }
         }
 
-        let documentsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let modelsDir = documentsDir.appendingPathComponent("Models", isDirectory: true)
+        let appContainer = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let modelsDir = appContainer.appendingPathComponent("Vapor/Models", isDirectory: true)
 
         logger.debug("Models directory: \(modelsDir.path)")
 
         try FileManager.default.createDirectory(at: modelsDir, withIntermediateDirectories: true)
 
-        let modelURL = modelsDir.appendingPathComponent("Qwen2.5-3B-Instruct-Q4_K_M.gguf")
+        let modelURL = modelsDir.appendingPathComponent("Qwen2.5-7B-Instruct-Q4_K_M.gguf")
 
         logger.debug("Model will be saved to: \(modelURL.path)")
 
@@ -164,6 +196,7 @@ final class CompressionService {
         logger.info("Downloading from: \(url.absoluteString)")
 
         let delegate = DownloadDelegate()
+        delegate.destinationURL = modelURL
         let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: OperationQueue.main)
 
         let task = session.downloadTask(with: url)
@@ -180,17 +213,10 @@ final class CompressionService {
             throw error
         }
 
-        guard let localURL = delegate.localURL else {
+        guard delegate.didCopySuccessfully else {
+            logger.error("Download completed but file was not copied to destination")
             throw CompressionError.unavailable
         }
-
-        logger.info("Download completed. Temporary file: \(localURL.path)")
-
-        if FileManager.default.fileExists(atPath: modelURL.path) {
-            try FileManager.default.removeItem(at: modelURL)
-        }
-
-        try FileManager.default.moveItem(at: localURL, to: modelURL)
 
         logger.info("Model saved to: \(modelURL.path)")
 
@@ -205,6 +231,17 @@ final class CompressionService {
         modelDownloadProgress = 1.0
 
         await checkAvailability()
+    }
+
+    func deleteLocalLLMModel() {
+        if let savedModelPath = UserDefaults.standard.url(forKey: localLLMModelURLKey) {
+            try? FileManager.default.removeItem(at: savedModelPath)
+            logger.info("Deleted model at: \(savedModelPath.path)")
+        }
+        UserDefaults.standard.removeObject(forKey: localLLMModelURLKey)
+        localLLMCompressor = nil
+        availableCompressors[.localLLM] = false
+        modelDownloadProgress = 0
     }
 
     func compress(_ text: String) async throws -> CompressedResult {

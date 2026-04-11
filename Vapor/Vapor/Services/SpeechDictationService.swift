@@ -40,6 +40,8 @@ final class SpeechDictationService {
         logger.debug("Initialized for locale: \(self.recognizer?.locale.identifier ?? "default")")
     }
 
+    // MARK: - Public API
+
     func toggleDictation(onTextUpdate: @escaping (String, Bool) -> Void) {
         switch isDictating {
         case true:
@@ -49,6 +51,22 @@ final class SpeechDictationService {
             logger.debug("Toggle ON (start dictation)")
             startDictation(onTextUpdate: onTextUpdate)
         }
+    }
+
+    func startDictation(onTextUpdate: @escaping (String, Bool) -> Void) {
+        startDictationInternal(onTextUpdate: onTextUpdate)
+    }
+
+    func pauseDictation() {
+        logger.debug("Pausing dictation (Fn released), isDictating=\(self.isDictating)")
+        if !currentTranscript.isEmpty {
+            logger.debug("Committing partial transcript as final before pause")
+            onTextUpdate?(currentTranscript, true)
+        }
+        isCancellationRequested = true
+        teardownAudioSession(preserveErrorState: false)
+        currentTranscript = ""
+        onTextUpdate = nil
     }
 
     func stopDictation(commit: Bool) {
@@ -61,138 +79,7 @@ final class SpeechDictationService {
         currentTranscript = ""
     }
 
-    private func startDictation(onTextUpdate: @escaping (String, Bool) -> Void) {
-        Task { @MainActor in
-            await startDictationInternal(onTextUpdate: onTextUpdate)
-        }
-    }
-
-    private func startDictationInternal(onTextUpdate: @escaping (String, Bool) -> Void) async {
-        guard recognitionTask == nil else { return }
-
-        state = .idle
-
-        self.onTextUpdate = onTextUpdate
-        currentTranscript = ""
-        hasDeliveredFinalResult = false
-        isCancellationRequested = false
-
-        await requestPermissionsIfNeeded()
-        guard case .ready = state else {
-            logger.warning("Permissions not ready; state=\(String(describing: self.state))")
-            return
-        }
-
-        guard let recognizer = recognizer, recognizer.isAvailable else {
-            logger.error("Recognizer not available")
-            state = .error("Speech recognizer is not available on this Mac.")
-            return
-        }
-
-        teardownAudioSession(preserveErrorState: true)
-
-        let request = SFSpeechAudioBufferRecognitionRequest()
-        request.shouldReportPartialResults = true
-        recognitionRequest = request
-
-        let inputNode = audioEngine.inputNode
-        let recordingFormat = inputNode.outputFormat(forBus: 0)
-        inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { [weak self] buffer, _ in
-            guard let self = self else { return }
-
-            let channelCount = Int(buffer.format.channelCount)
-            let frameLength = Int(buffer.frameLength)
-            if channelCount > 0, let floatChannelData = buffer.floatChannelData, frameLength > 0 {
-                let ptr = floatChannelData[0]
-                var sum: Float = 0
-                for i in 0..<frameLength {
-                    let sample = ptr[i]
-                    sum += sample * sample
-                }
-                let rms = sqrtf(sum / Float(frameLength))
-
-                let minDb: Float = -60.0
-                let clampedRms = max(rms, 1e-5)
-                let db = 20.0 * log10f(clampedRms)
-                let clampedDb = max(minDb, db)
-                let normalized = (clampedDb - minDb) / -minDb
-
-                Task { @MainActor in
-                    let smoothing: Float = 0.2
-                    self.inputLevel = self.inputLevel * (1 - smoothing) + normalized * smoothing
-                }
-            }
-
-            self.recognitionRequest?.append(buffer)
-        }
-        hasAudioTap = true
-
-        audioEngine.prepare()
-        do {
-            try audioEngine.start()
-            logger.info("Audio engine started")
-        } catch {
-            logger.error("Failed to start audio engine: \(error)")
-            state = .error("Failed to start audio engine: \(error.localizedDescription)")
-            teardownAudioSession(preserveErrorState: true)
-            return
-        }
-
-        isDictating = true
-        state = .dictating
-        logger.debug("State = dictating")
-
-        recognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, error in
-            guard let self = self else { return }
-
-            if let result = result {
-                let transcript = result.bestTranscription.formattedString
-                Task { @MainActor in
-                    self.currentTranscript = transcript
-                    self.onTextUpdate?(transcript, result.isFinal)
-                    if result.isFinal {
-                        self.hasDeliveredFinalResult = true
-                        self.teardownAudioSession(preserveErrorState: false)
-                        self.onTextUpdate = nil
-                    }
-                }
-            }
-
-            if let error = error {
-                logger.error("Recognizer error: \(error.localizedDescription)")
-                Task { @MainActor in
-                    if self.isCancellationRequested || self.hasDeliveredFinalResult {
-                        logger.debug("Ignoring error after normal termination")
-                    } else {
-                        self.state = .error("Speech recognition failed: \(error.localizedDescription)")
-                        self.teardownAudioSession(preserveErrorState: true)
-                    }
-                    self.onTextUpdate = nil
-                }
-            }
-        }
-    }
-
-    private func teardownAudioSession(preserveErrorState: Bool) {
-        audioEngine.stop()
-        logger.debug("Audio engine stopped")
-        if hasAudioTap {
-            audioEngine.inputNode.removeTap(onBus: 0)
-            hasAudioTap = false
-        }
-        recognitionRequest?.endAudio()
-        recognitionRequest = nil
-        recognitionTask?.cancel()
-        recognitionTask = nil
-
-        isDictating = false
-
-        if !preserveErrorState {
-            state = .ready
-        }
-    }
-
-    private func requestPermissionsIfNeeded() async {
+    func requestPermissionsIfNeeded() async {
         let speechStatus = SFSpeechRecognizer.authorizationStatus()
         logger.debug("Speech auth status: \(speechStatus.rawValue)")
 
@@ -241,6 +128,136 @@ final class SpeechDictationService {
         if case .requestingPermission = state {
             state = .ready
         } else if case .idle = state {
+            state = .ready
+        }
+    }
+
+    // MARK: - Private
+
+    private func startDictationInternal(onTextUpdate: @escaping (String, Bool) -> Void) {
+        guard recognitionTask == nil else { return }
+
+        state = .idle
+
+        self.onTextUpdate = onTextUpdate
+        currentTranscript = ""
+        hasDeliveredFinalResult = false
+        isCancellationRequested = false
+
+        Task { @MainActor in
+            await requestPermissionsIfNeeded()
+            guard case .ready = state else {
+                logger.warning("Permissions not ready; state=\(String(describing: self.state))")
+                return
+            }
+
+            guard let recognizer = self.recognizer, recognizer.isAvailable else {
+                logger.error("Recognizer not available")
+                self.state = .error("Speech recognizer is not available on this Mac.")
+                return
+            }
+
+            self.teardownAudioSession(preserveErrorState: true)
+
+            let request = SFSpeechAudioBufferRecognitionRequest()
+            request.shouldReportPartialResults = true
+            self.recognitionRequest = request
+
+            let inputNode = self.audioEngine.inputNode
+            let recordingFormat = inputNode.outputFormat(forBus: 0)
+            inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { [weak self] buffer, _ in
+                guard let self = self else { return }
+
+                let channelCount = Int(buffer.format.channelCount)
+                let frameLength = Int(buffer.frameLength)
+                if channelCount > 0, let floatChannelData = buffer.floatChannelData, frameLength > 0 {
+                    let ptr = floatChannelData[0]
+                    var sum: Float = 0
+                    for i in 0..<frameLength {
+                        let sample = ptr[i]
+                        sum += sample * sample
+                    }
+                    let rms = sqrtf(sum / Float(frameLength))
+
+                    let minDb: Float = -60.0
+                    let clampedRms = max(rms, 1e-5)
+                    let db = 20.0 * log10f(clampedRms)
+                    let clampedDb = max(minDb, db)
+                    let normalized = (clampedDb - minDb) / -minDb
+
+                    Task { @MainActor in
+                        let smoothing: Float = 0.2
+                        self.inputLevel = self.inputLevel * (1 - smoothing) + normalized * smoothing
+                    }
+                }
+
+                self.recognitionRequest?.append(buffer)
+            }
+            self.hasAudioTap = true
+
+            self.audioEngine.prepare()
+            do {
+                try self.audioEngine.start()
+                logger.info("Audio engine started")
+            } catch {
+                logger.error("Failed to start audio engine: \(error)")
+                self.state = .error("Failed to start audio engine: \(error.localizedDescription)")
+                self.teardownAudioSession(preserveErrorState: true)
+                return
+            }
+
+            self.isDictating = true
+            self.state = .dictating
+            logger.debug("State = dictating")
+
+            self.recognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, error in
+                guard let self = self else { return }
+
+                if let result = result {
+                    let transcript = result.bestTranscription.formattedString
+                    Task { @MainActor in
+                        self.currentTranscript = transcript
+                        self.onTextUpdate?(transcript, result.isFinal)
+                        if result.isFinal {
+                            self.hasDeliveredFinalResult = true
+                            self.teardownAudioSession(preserveErrorState: false)
+                            self.onTextUpdate = nil
+                        }
+                    }
+                }
+
+                if let error = error {
+                    logger.error("Recognizer error: \(error.localizedDescription)")
+                    Task { @MainActor in
+                        if self.isCancellationRequested || self.hasDeliveredFinalResult {
+                            logger.debug("Ignoring error after normal termination")
+                        } else {
+                            self.state = .error("Speech recognition failed: \(error.localizedDescription)")
+                            self.teardownAudioSession(preserveErrorState: true)
+                        }
+                        self.onTextUpdate = nil
+                    }
+                }
+            }
+        }
+    }
+
+    private func teardownAudioSession(preserveErrorState: Bool) {
+        audioEngine.stop()
+        logger.debug("Audio engine stopped")
+        if hasAudioTap {
+            audioEngine.inputNode.removeTap(onBus: 0)
+            hasAudioTap = false
+        }
+        recognitionRequest?.endAudio()
+        recognitionRequest = nil
+        recognitionTask?.cancel()
+        recognitionTask = nil
+
+        isDictating = false
+        inputLevel = 0.0
+
+        if !preserveErrorState {
             state = .ready
         }
     }

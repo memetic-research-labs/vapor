@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+body {
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 13px;
+    line-height: 1.6;
+    color: #333;
+    text-align: center;
+    padding: 8px 20px;
+    min-width: 340px;
+}
+@media (prefers-color-scheme: dark) {
+    body { color: #ccc; }
+}
+ul {
+    text-align: left;
+    list-style: none;
+    padding-left: 0;
+    margin: 12px 0;
+}
+li {
+    margin-bottom: 4px;
+}
+li::before {
+    content: "\2022\00a0\00a0";
+}
+p {
+    margin: 4px 0;
+}
+.tagline {
+    font-weight: 600;
+    font-size: 14px;
+    margin-bottom: 12px;
+}
+.footer {
+    margin-top: 12px;
+    font-size: 11px;
+    color: #888;
+}
+</style>
+</head>
+<body>
+<p class="tagline">Voice-to-text dictation &amp; AI prompt compression for macOS</p>
+<ul>
+    <li>Voice-to-text dictation via Fn key</li>
+    <li>Prompt-Cloud compression for token efficiency</li>
+    <li>On-device LLM compression (Qwen2.5-7B)</li>
+    <li>Cloud compression via OpenRouter API</li>
+    <li>Real-time BPE token counting</li>
+    <li>Prompt history with search and favorites</li>
+    <li>Compact floating window for quick dictation</li>
+    <li>Full editor with live compressed preview</li>
+    <li>Global hotkey activation</li>
+</ul>
+<p class="footer">Built by Memetic Research Labs</p>
+</body>
+</html>

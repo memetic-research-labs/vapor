@@ -2,84 +2,137 @@ import SwiftUI
 
 struct ToolbarView: View {
     @Bindable var viewModel: EditorViewModel
+    let dictationService: SpeechDictationService
+    let preferences: UserPreferences
     let onCompressAndCopy: () async -> Void
     let onCopyOriginal: () -> Void
     let onClear: () -> Void
     let onToggleSettings: () -> Void
     let onToggleDictation: () -> Void
     let onToggleTest: () -> Void
-    
+    let onMinimize: () -> Void
+
     var body: some View {
-        HStack(spacing: 12) {
-            Button {
-                onToggleDictation()
-            } label: {
-                if viewModel.isDictating {
-                    HStack(spacing: 4) {
-                        Image(systemName: "waveform")
-                            .symbolEffect(.pulse, options: .repeating, isActive: true)
-                        Text("Listening...")
-                    }
-                    .foregroundColor(.red)
-                } else {
-                    Image(systemName: "mic")
-                }
-            }
-            .buttonStyle(.bordered)
-            .help("Click to start/stop dictation (or hold Fn key)")
-            
+        HStack(spacing: 10) {
+            dictationButton
+
             Button {
                 Task { await onCompressAndCopy() }
             } label: {
-                if viewModel.isCompressing {
-                    ProgressView()
-                        .scaleEffect(0.7)
-                        .frame(width: 16, height: 16)
-                } else {
-                    Image(systemName: "compress")
+                HStack(spacing: 4) {
+                    if viewModel.isCompressing {
+                        ProgressView()
+                            .scaleEffect(0.7)
+                            .frame(width: 14, height: 14)
+                    } else {
+                        Image(systemName: "bolt.horizontal")
+                    }
+                    Text("Compress & Copy")
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                 }
-                Text("Compress & Copy")
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color.accentColor)
+                .foregroundColor(.white)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
             }
-            .buttonStyle(.borderedProminent)
-            .keyboardShortcut(.return, modifiers: .command)
+            .buttonStyle(.plain)
             .disabled(viewModel.content.isEmpty || viewModel.isCompressing)
-            
-            Menu {
-                Button("Copy Original") {
-                    onCopyOriginal()
-                }
-                .keyboardShortcut("C", modifiers: [.command, .shift])
+
+            Button {
+                onCopyOriginal()
             } label: {
                 Image(systemName: "doc.on.doc")
-                Text("Copy")
+                    .foregroundColor(.primary)
             }
-            .menuStyle(.borderlessButton)
+            .buttonStyle(.plain)
             .disabled(viewModel.content.isEmpty)
-            
+            .help("Copy Original ( ⌘ ⇧ C )")
+
             Spacer()
-            
-            Button("Clear") {
+
+            Button {
                 onClear()
+            } label: {
+                Text("Clear")
+                    .foregroundColor(.primary)
             }
-            .keyboardShortcut("N", modifiers: .command)
+            .buttonStyle(.plain)
             .disabled(viewModel.content.isEmpty)
-            
+
             Button {
                 onToggleSettings()
             } label: {
                 Image(systemName: "gearshape")
+                    .foregroundColor(.primary)
             }
-            .buttonStyle(.borderless)
-            
+            .buttonStyle(.plain)
+            .keyboardShortcut(",", modifiers: .command)
+
+            if preferences.showExperimentsButton {
+                Button {
+                    onToggleTest()
+                } label: {
+                    Image(systemName: "flask")
+                        .foregroundColor(.primary)
+                }
+                .buttonStyle(.plain)
+                .help("OpenRouter Test")
+            }
+
             Button {
-                onToggleTest()
+                onMinimize()
             } label: {
-                Image(systemName: "flask")
+                Image(systemName: "arrow.down.right.and.arrow.up.left")
+                    .foregroundColor(.primary)
             }
-            .buttonStyle(.borderless)
-            .help("OpenRouter Test")
+            .buttonStyle(.plain)
+            .help("Minimize to compact view ( Escape )")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+        .frame(height: 44)
+    }
+
+    private var dictationButton: some View {
+        Button {
+            onToggleDictation()
+        } label: {
+            HStack(spacing: 4) {
+                ZStack(alignment: .topTrailing) {
+                    if viewModel.isDictating {
+                        Image(systemName: "mic.fill")
+                            .foregroundColor(.red)
+                    } else {
+                        Image(systemName: "mic")
+                            .foregroundColor(.secondary)
+                    }
+
+                    if preferences.autoCompressEnabled {
+                        Image(systemName: "bolt.fill")
+                            .font(.system(size: 8))
+                            .foregroundColor(.orange)
+                            .offset(x: 6, y: -4)
+                    }
+                }
+
+                if viewModel.isDictating {
+                    AudioLevelView(
+                        inputLevel: dictationService.inputLevel,
+                        isActive: true
+                    )
+                }
+            }
+        }
+        .buttonStyle(.bordered)
+        .help(dictationHelpText)
+    }
+
+    private var dictationHelpText: String {
+        if viewModel.isDictating {
+            return "Listening… (release Fn to stop)"
+        }
+        return "Hold Fn key to dictate"
     }
 }

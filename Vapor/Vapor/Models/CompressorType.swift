@@ -9,9 +9,9 @@ enum CompressorType: String, CaseIterable, Codable {
     var description: String {
         switch self {
         case .foundationModels:
-            return "Free, on-device, requires macOS 26+ & Apple Intelligence"
+            return "Free, no download, requires macOS 26+ & Apple Intelligence"
         case .localLLM:
-            return "Free, on-device LLM via llama.cpp, ~2GB download"
+            return "Best compression quality. Free, ~5GB download"
         case .openRouter:
             return "Cloud API, requires API key, ~$0.01/1M tokens"
         case .ruleBased:
