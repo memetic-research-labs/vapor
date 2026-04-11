@@ -17,7 +17,7 @@ actor LocalLLMCompressor: Compressor {
 
     func loadModel() async throws {
         let config = LlamaConfig(batchSize: 256, maxTokenCount: 4096, useGPU: true)
-        llamaService = try LlamaService(modelUrl: modelURL, config: config)
+        llamaService = LlamaService(modelUrl: modelURL, config: config)
     }
 
     func compress(_ text: String) async throws -> CompressedResult {

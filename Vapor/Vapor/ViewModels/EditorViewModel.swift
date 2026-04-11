@@ -92,8 +92,7 @@ final class EditorViewModel {
         // Auto-save current content before replacing
         if !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
            content != lastSavedContent,
-           let historyService,
-           let compressionService {
+           let historyService {
             let autoSaveRecord = PromptRecord(
                 originalText: content,
                 compressedText: compressedContent,

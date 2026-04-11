@@ -128,7 +128,7 @@ final class CompressionService {
         availableCompressors[.foundationModels] = false
         #endif
 
-        availableCompressors[.ruleBased] = await ruleBasedCompressor.isAvailable
+        availableCompressors[.ruleBased] = ruleBasedCompressor.isAvailable
 
         if let openRouter = openRouterCompressor {
             availableCompressors[.openRouter] = await openRouter.isAvailable
@@ -227,6 +227,29 @@ final class CompressionService {
         modelDownloadProgress = 1.0
 
         await checkAvailability()
+    }
+
+    /// Reload the local LLM compressor from UserDefaults (e.g., after an external download).
+    func reloadLocalLLMIfNeeded() async {
+        guard let savedModelPath = UserDefaults.standard.url(forKey: localLLMModelURLKey),
+              FileManager.default.fileExists(atPath: savedModelPath.path) else { return }
+        localLLMCompressor = LocalLLMCompressor(modelURL: savedModelPath)
+        isModelLoading = true
+        defer { isModelLoading = false }
+
+        do {
+            try await localLLMCompressor?.loadModel()
+        } catch {
+            logger.error("Failed to load local LLM model at \(savedModelPath.path): \(error.localizedDescription)")
+        }
+
+        await checkAvailability()
+
+        // Also sync the selected compressor in case onboarding changed it
+        if let saved = UserDefaults.standard.string(forKey: "selectedCompressor"),
+           let type = CompressorType(rawValue: saved) {
+            selectedCompressor = type
+        }
     }
 
     func deleteLocalLLMModel() {

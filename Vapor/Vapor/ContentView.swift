@@ -124,6 +124,9 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .vaporShowHelp)) { _ in
             openWindow(id: "keyboard-shortcuts")
         }
+        .onReceive(NotificationCenter.default.publisher(for: .vaporLLMDownloadCompleted)) { _ in
+            Task { await compressionService.reloadLocalLLMIfNeeded() }
+        }
         .onDisappear {
             FnDictationMonitor.shared.stop()
             dictationService.stopDictation(commit: false)

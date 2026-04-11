@@ -46,6 +46,9 @@ struct VaporApp: App {
                         windowManager.focus()
                     }
                     windowManager.setupWindowOnAppear()
+                    if !UserDefaults.standard.bool(forKey: "hasCompletedOnboarding") {
+                        openWindow(id: "onboarding")
+                    }
                 }
         }
         .modelContainer(sharedModelContainer)
@@ -128,6 +131,17 @@ struct VaporApp: App {
                 }
                 .keyboardShortcut(.escape)
             }
+
+            CommandGroup(after: .help) {
+                Button("Show Onboarding") {
+                    openWindow(id: "onboarding")
+                }
+
+                Button("Keyboard Shortcuts") {
+                    NotificationCenter.default.post(name: .vaporShowHelp, object: nil)
+                }
+                .keyboardShortcut("/", modifiers: .command)
+            }
         }
 
         Window("Transcript Preview", id: "transcript-preview") {
@@ -150,6 +164,13 @@ struct VaporApp: App {
         .windowStyle(.titleBar)
         .windowResizability(.contentSize)
         .defaultSize(width: 340, height: 360)
+
+        Window("Vapor Onboarding", id: "onboarding") {
+            OnboardingView()
+        }
+        .windowStyle(.titleBar)
+        .windowResizability(.contentSize)
+        .defaultSize(width: 480, height: 540)
 
         MenuBarExtra("Vapor", systemImage: "waveform.circle") {
             MenuBarView()
