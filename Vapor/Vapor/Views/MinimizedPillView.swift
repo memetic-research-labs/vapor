@@ -187,20 +187,20 @@ struct MinimizedPillView: View {
     private var controlsBar: some View {
         HStack(spacing: 4) {
             // Compress & Copy
-            Button(action: { if hasContent && isModelReady { onCompressAndCopy() } }) {
+            Button(action: { if hasContent && isModelReady { onCompressAndCopy() } }, label: {
                 Image(systemName: "bolt.horizontal")
                     .font(.system(size: 12, weight: .semibold))
-            }
+            })
             .buttonStyle(.borderedProminent)
             .controlSize(.small)
             .disabled(!hasContent || !isModelReady)
             .help("Compress & Copy ( ⌘ ↩ )")
 
             // Copy Original
-            Button(action: { if hasContent { onCopyOriginal() } }) {
+            Button(action: { if hasContent { onCopyOriginal() } }, label: {
                 Image(systemName: "doc.on.doc")
                     .font(.system(size: 11))
-            }
+            })
             .buttonStyle(.bordered)
             .controlSize(.small)
             .disabled(!hasContent)

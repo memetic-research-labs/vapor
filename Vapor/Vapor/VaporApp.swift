@@ -170,7 +170,7 @@ struct VaporApp: App {
         }
         .windowStyle(.titleBar)
         .windowResizability(.contentSize)
-        .defaultSize(width: 480, height: 440)
+        .defaultSize(width: 480, height: 540)
 
         MenuBarExtra("Vapor", systemImage: "waveform.circle") {
             MenuBarView()

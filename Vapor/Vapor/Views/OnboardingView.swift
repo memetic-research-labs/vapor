@@ -110,7 +110,7 @@ struct OnboardingView: View {
             .padding(.vertical, 14)
             .background(.bar)
         }
-        .frame(width: 480, height: 440)
+        .frame(width: 480, height: 540)
         .background(Color(nsColor: .windowBackgroundColor))
         .onAppear {
             store.refreshPermissions()
@@ -250,10 +250,10 @@ private struct WelcomeStepView: View {
     var body: some View {
         VStack(spacing: 24) {
             Spacer()
-            Image(systemName: "waveform.circle.fill")
-                .font(.system(size: 64))
-                .foregroundStyle(.tint)
-                .symbolRenderingMode(.hierarchical)
+            Image(nsImage: NSApp.applicationIconImage)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 96, height: 96)
 
             VStack(spacing: 10) {
                 Text("Welcome to Vapor")
@@ -340,7 +340,7 @@ private struct PermissionsStepView: View {
             }
 
             if !store.bothPermissionsGranted {
-                Text("The "Next" button will unlock once both permissions are granted.")
+                Text("The \"Next\" button will unlock once both permissions are granted.")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -481,6 +481,7 @@ private struct CompressStepView: View {
             description: "Press ⌘ ↩ to compress your prompt and copy it to the clipboard. Vapor removes filler words and fuses related concepts for maximum token efficiency."
         ) {
             ShortcutRow(key: "⌘ ↩", label: "Compress & copy")
+            ShortcutRow(key: "⌘ ⇧ C", label: "Copy original (no compression)")
 
             VStack(alignment: .leading, spacing: 8) {
                 exampleRow(
@@ -522,7 +523,7 @@ private struct CompressStepView: View {
 
 private struct LLMDownloadStepView: View {
     var store: OnboardingStore
-    @State private var downloadError: String? = nil
+    @State private var downloadError: String?
 
     var body: some View {
         StepCard(
@@ -592,7 +593,7 @@ private struct LLMDownloadStepView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(Color.accentColor.opacity(0.1))
-        .foregroundStyle(.accentColor)
+        .foregroundStyle(Color.accentColor)
         .cornerRadius(20)
     }
 
@@ -619,6 +620,7 @@ private struct CopyAndClearStepView: View {
             description: "Press ⌘ K to copy your original text and clear the editor. Your text is never lost — it's automatically saved to prompt history."
         ) {
             ShortcutRow(key: "⌘ K", label: "Copy original & clear")
+            ShortcutRow(key: "⌘ ⇧ C", label: "Copy original (keep text)")
         }
     }
 }
@@ -664,6 +666,7 @@ private struct AllSetStepView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     ShortcutRow(key: "Fn (hold)", label: "Dictate")
                     ShortcutRow(key: "⌘ ↩", label: "Compress & copy")
+                    ShortcutRow(key: "⌘ ⇧ C", label: "Copy original")
                     ShortcutRow(key: "⌘ K", label: "Copy & clear")
                     ShortcutRow(key: "⌘ Y", label: "Prompt history")
                     ShortcutRow(key: "⌘ /", label: "All shortcuts")
@@ -681,5 +684,3 @@ private struct AllSetStepView: View {
         }
     }
 }
-
-

@@ -128,7 +128,7 @@ final class CompressionService {
         availableCompressors[.foundationModels] = false
         #endif
 
-        availableCompressors[.ruleBased] = await ruleBasedCompressor.isAvailable
+        availableCompressors[.ruleBased] = ruleBasedCompressor.isAvailable
 
         if let openRouter = openRouterCompressor {
             availableCompressors[.openRouter] = await openRouter.isAvailable

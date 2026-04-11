@@ -2,23 +2,25 @@ import SwiftUI
 
 /// RGB color values for smooth interpolation between Vapor icon colors.
 struct GlowColor {
-    let r: Double, g: Double, b: Double
+    let red: Double
+    let green: Double
+    let blue: Double
 
     func interpolated(to other: GlowColor, fraction: Double) -> Color {
         Color(
-            red: r + (other.r - r) * fraction,
-            green: g + (other.g - g) * fraction,
-            blue: b + (other.b - b) * fraction
+            red: red + (other.red - red) * fraction,
+            green: green + (other.green - green) * fraction,
+            blue: blue + (other.blue - blue) * fraction
         )
     }
 }
 
 /// Colors from the Vapor app icon's vapor/smoke gradient, brightened for visibility.
 enum VaporColors {
-    static let blue    = GlowColor(r: 0.25, g: 0.50, b: 1.00)
-    static let cyan    = GlowColor(r: 0.30, g: 0.75, b: 1.00)
-    static let purple  = GlowColor(r: 0.60, g: 0.40, b: 1.00)
-    static let magenta = GlowColor(r: 0.85, g: 0.40, b: 1.00)
+    static let blue = GlowColor(red: 0.25, green: 0.50, blue: 1.00)
+    static let cyan = GlowColor(red: 0.30, green: 0.75, blue: 1.00)
+    static let purple = GlowColor(red: 0.60, green: 0.40, blue: 1.00)
+    static let magenta = GlowColor(red: 0.85, green: 0.40, blue: 1.00)
 
     static let all: [GlowColor] = [blue, cyan, purple, magenta]
 

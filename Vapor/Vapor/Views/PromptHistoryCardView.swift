@@ -50,19 +50,19 @@ struct PromptHistoryCardView: View {
                     .foregroundColor(.secondary.opacity(0.7))
 
                 // Favorite toggle
-                Button(action: { onToggleFavorite(record) }) {
+                Button(action: { onToggleFavorite(record) }, label: {
                     Image(systemName: record.isFavorite ? "star.fill" : "star")
                         .font(.system(size: 11))
                         .foregroundColor(record.isFavorite ? .yellow : .secondary.opacity(0.5))
-                }
+                })
                 .buttonStyle(.borderless)
 
                 // Delete
-                Button(action: { onDelete(record) }) {
+                Button(action: { onDelete(record) }, label: {
                     Image(systemName: "trash")
                         .font(.system(size: 10))
                         .foregroundColor(.secondary.opacity(0.5))
-                }
+                })
                 .buttonStyle(.borderless)
             }
         }

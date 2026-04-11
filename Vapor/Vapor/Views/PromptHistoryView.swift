@@ -80,11 +80,11 @@ struct PromptHistoryView: View {
                     .textFieldStyle(.plain)
                     .font(.system(size: 12))
                 if !searchText.isEmpty {
-                    Button(action: { searchText = "" }) {
+                    Button(action: { searchText = "" }, label: {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundColor(.secondary)
                             .font(.system(size: 11))
-                    }
+                    })
                     .buttonStyle(.plain)
                 }
             }
@@ -143,11 +143,11 @@ struct PromptHistoryView: View {
 
             Spacer()
 
-            Button(action: { showFavoritesOnly.toggle() }) {
+            Button(action: { showFavoritesOnly.toggle() }, label: {
                 Image(systemName: showFavoritesOnly ? "star.fill" : "star")
                     .font(.system(size: 12))
                     .foregroundColor(showFavoritesOnly ? .yellow : .secondary)
-            }
+            })
             .buttonStyle(.plain)
             .help(showFavoritesOnly ? "Show all" : "Show favorites only")
 

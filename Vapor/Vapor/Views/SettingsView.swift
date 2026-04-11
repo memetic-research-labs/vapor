@@ -168,7 +168,7 @@ struct SettingsView: View {
                 }
                 .onAppear {
                     Task {
-                        isLocalLLMAvailable = await compressionService.availableCompressors[.localLLM] ?? false
+                        isLocalLLMAvailable = compressionService.availableCompressors[.localLLM] ?? false
                     }
                 }
             }
