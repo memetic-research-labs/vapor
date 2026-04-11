@@ -26,7 +26,7 @@ struct OpenRouterTestSidebar: View {
                     .font(.system(size: 11))
                     .onSubmit {
                         if !apiKey.isEmpty {
-                            try? KeychainService.save(key: "openRouterApiKey", value: apiKey)
+                            UserDefaults.standard.set(apiKey, forKey: "openRouterApiKey")
                         }
                     }
             }
@@ -76,7 +76,7 @@ struct OpenRouterTestSidebar: View {
             Spacer()
         }
         .onAppear {
-            if let savedKey = KeychainService.load(key: "openRouterApiKey") {
+            if let savedKey = UserDefaults.standard.string(forKey: "openRouterApiKey") {
                 apiKey = savedKey
             }
         }

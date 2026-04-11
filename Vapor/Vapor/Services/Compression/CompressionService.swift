@@ -91,7 +91,7 @@ final class CompressionService {
             openRouterModel = savedModel
         }
 
-        if let savedApiKey = KeychainService.load(key: openRouterApiKeyKey),
+        if let savedApiKey = UserDefaults.standard.string(forKey: openRouterApiKeyKey),
            !savedApiKey.isEmpty {
             openRouterCompressor = OpenRouterCompressor(apiKey: savedApiKey, model: openRouterModel)
         }
@@ -144,11 +144,7 @@ final class CompressionService {
     }
 
     func setOpenRouterApiKey(_ apiKey: String, model: String = "glm-5") {
-        do {
-            try KeychainService.save(key: openRouterApiKeyKey, value: apiKey)
-        } catch {
-            logger.error("Failed to save API key: \(error)")
-        }
+        UserDefaults.standard.set(apiKey, forKey: openRouterApiKeyKey)
 
         openRouterModel = model
         UserDefaults.standard.set(model, forKey: "openRouterModel")
