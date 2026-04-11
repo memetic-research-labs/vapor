@@ -235,8 +235,14 @@ final class CompressionService {
               FileManager.default.fileExists(atPath: savedModelPath.path) else { return }
         localLLMCompressor = LocalLLMCompressor(modelURL: savedModelPath)
         isModelLoading = true
-        try? await localLLMCompressor?.loadModel()
-        isModelLoading = false
+        defer { isModelLoading = false }
+
+        do {
+            try await localLLMCompressor?.loadModel()
+        } catch {
+            logger.error("Failed to load local LLM model at \(savedModelPath.path): \(error.localizedDescription)")
+        }
+
         await checkAvailability()
 
         // Also sync the selected compressor in case onboarding changed it

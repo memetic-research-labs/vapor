@@ -68,6 +68,9 @@ struct OnboardingView: View {
                             .font(.system(size: 13, weight: .semibold))
                     }
                     .buttonStyle(.borderedProminent)
+                } else if currentStep == 0 {
+                    Color.clear
+                        .frame(width: 1, height: 1)
                 } else if currentStep == 1 {
                     // Permissions step: Next disabled until both granted
                     Button {
@@ -599,7 +602,7 @@ private struct LLMDownloadStepView: View {
 
     private func startDownload() {
         downloadError = nil
-        Task {
+        Task { @MainActor in
             do {
                 try await store.downloadLocalLLM()
             } catch {

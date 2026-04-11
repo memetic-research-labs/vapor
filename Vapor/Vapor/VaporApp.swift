@@ -132,7 +132,7 @@ struct VaporApp: App {
                 .keyboardShortcut(.escape)
             }
 
-            CommandGroup(replacing: .help) {
+            CommandGroup(after: .help) {
                 Button("Show Onboarding") {
                     openWindow(id: "onboarding")
                 }

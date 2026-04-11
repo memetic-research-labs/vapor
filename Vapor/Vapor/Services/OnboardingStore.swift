@@ -69,7 +69,6 @@ final class OnboardingStore {
         try await compressionService.downloadLocalLLMModel()
         // Switch default compressor to Local LLM on successful download
         compressionService.saveSelectedCompressor(.localLLM)
-        await compressionService.checkAvailability()
         // Notify any other services (e.g. main window) to reload the LLM
         NotificationCenter.default.post(name: .vaporLLMDownloadCompleted, object: nil)
     }
@@ -77,8 +76,31 @@ final class OnboardingStore {
     // MARK: - System Settings
 
     func openSystemSettings() {
-        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") {
-            NSWorkspace.shared.open(url)
+        refreshPermissions()
+
+        let urlStrings: [String]
+
+        if !speechGranted && micGranted {
+            urlStrings = [
+                "x-apple.systempreferences:com.apple.preference.security?Privacy_SpeechRecognition",
+                "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
+            ]
+        } else if !micGranted && speechGranted {
+            urlStrings = [
+                "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone",
+                "x-apple.systempreferences:com.apple.preference.security?Privacy_SpeechRecognition"
+            ]
+        } else {
+            urlStrings = [
+                "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone",
+                "x-apple.systempreferences:com.apple.preference.security?Privacy_SpeechRecognition"
+            ]
+        }
+
+        for urlString in urlStrings {
+            if let url = URL(string: urlString), NSWorkspace.shared.open(url) {
+                return
+            }
         }
     }
 }
