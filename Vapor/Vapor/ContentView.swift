@@ -89,8 +89,13 @@ struct ContentView: View {
             sidebarPrompt = newValue
         }
         .onChange(of: viewModel.isDictating) { _, isDictating in
-            if !isDictating, preferences.autoCompressEnabled, !viewModel.content.isEmpty {
-                Task { await performAutoCompress() }
+            if !isDictating, !viewModel.content.isEmpty {
+                if preferences.autoCompressEnabled {
+                    Task { await performAutoCompress() }
+                } else if preferences.autoCopyOriginalEnabled {
+                    viewModel.copyOriginalToClipboard()
+                    toastService.showSuccess("Original copied to clipboard")
+                }
             }
         }
         .onChange(of: HistoryStore.shared.pendingRestore?.persistentModelID) { _, newID in

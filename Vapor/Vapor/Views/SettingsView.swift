@@ -209,6 +209,17 @@ struct SettingsView: View {
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
 
+                    Toggle("Auto-copy original when dictation ends", isOn: Binding(
+                        get: { preferences.autoCopyOriginalEnabled },
+                        set: { preferences.autoCopyOriginalEnabled = $0 }
+                    ))
+                    .font(.system(size: 13))
+                    .disabled(preferences.autoCompressEnabled)
+
+                    Text("Copy the uncompressed dictated text to clipboard when you stop speaking. Ignored when auto-compress is on.")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+
                     Toggle("Auto-minimize after compress & copy", isOn: Binding(
                         get: { preferences.autoMinimizeEnabled },
                         set: { preferences.autoMinimizeEnabled = $0 }
