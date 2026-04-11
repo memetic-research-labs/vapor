@@ -229,6 +229,17 @@ final class CompressionService {
         await checkAvailability()
     }
 
+    /// Reload the local LLM compressor from UserDefaults (e.g., after an external download).
+    func reloadLocalLLMIfNeeded() async {
+        guard let savedModelPath = UserDefaults.standard.url(forKey: localLLMModelURLKey),
+              FileManager.default.fileExists(atPath: savedModelPath.path) else { return }
+        localLLMCompressor = LocalLLMCompressor(modelURL: savedModelPath)
+        isModelLoading = true
+        try? await localLLMCompressor?.loadModel()
+        isModelLoading = false
+        await checkAvailability()
+    }
+
     func deleteLocalLLMModel() {
         if let savedModelPath = UserDefaults.standard.url(forKey: localLLMModelURLKey) {
             try? FileManager.default.removeItem(at: savedModelPath)
