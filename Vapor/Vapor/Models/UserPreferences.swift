@@ -35,7 +35,7 @@ final class UserPreferences {
         self.autoCompressEnabled = UserDefaults.standard.object(forKey: Keys.autoCompress) as? Bool ?? false
         self.autoMinimizeEnabled = UserDefaults.standard.object(forKey: Keys.autoMinimize) as? Bool ?? false
         self.showExperimentsButton = UserDefaults.standard.object(forKey: Keys.showExperiments) as? Bool ?? false
-        self.autoCopyOriginalEnabled = UserDefaults.standard.object(forKey: Keys.autoCopyOriginal) as? Bool ?? false
+        self.autoCopyOriginalEnabled = UserDefaults.standard.object(forKey: Keys.autoCopyOriginal) as? Bool ?? true
     }
 
     func saveWindowPosition(_ point: CGPoint) {

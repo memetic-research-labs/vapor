@@ -60,9 +60,9 @@ When enabled, Vapor automatically compresses and copies to clipboard as soon as 
 
 When enabled, Vapor automatically copies the full uncompressed dictated text to the clipboard as soon as you release the Fn key — without running compression. Useful when you just want the raw prompt on the clipboard immediately.
 
-> This setting is ignored when **Auto-compress when dictation ends** is on. Auto-compress takes priority.
+> Enabling **Auto-compress when dictation ends** automatically turns this off, since both auto-actions would conflict.
 
-**Default:** Off
+**Default:** On
 
 ### Auto-minimize after compress & copy
 

@@ -201,7 +201,10 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     Toggle("Auto-compress when dictation ends", isOn: Binding(
                         get: { preferences.autoCompressEnabled },
-                        set: { preferences.autoCompressEnabled = $0 }
+                        set: {
+                            preferences.autoCompressEnabled = $0
+                            if $0 { preferences.autoCopyOriginalEnabled = false }
+                        }
                     ))
                     .font(.system(size: 13))
 
@@ -216,7 +219,7 @@ struct SettingsView: View {
                     .font(.system(size: 13))
                     .disabled(preferences.autoCompressEnabled)
 
-                    Text("Copy the uncompressed dictated text to clipboard when you stop speaking. Ignored when auto-compress is on.")
+                    Text("Copy the uncompressed dictated text to clipboard when you stop speaking.")
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
 

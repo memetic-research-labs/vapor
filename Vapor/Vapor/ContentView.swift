@@ -89,9 +89,12 @@ struct ContentView: View {
             sidebarPrompt = newValue
         }
         .onChange(of: viewModel.isDictating) { _, isDictating in
-            if !isDictating, !viewModel.content.isEmpty {
+            guard !isDictating else { return }
+            Task {
+                await Task.yield()
+                guard !viewModel.isDictating, !viewModel.content.isEmpty else { return }
                 if preferences.autoCompressEnabled {
-                    Task { await performAutoCompress() }
+                    await performAutoCompress()
                 } else if preferences.autoCopyOriginalEnabled {
                     viewModel.copyOriginalToClipboard()
                     toastService.showSuccess("Original copied to clipboard")
