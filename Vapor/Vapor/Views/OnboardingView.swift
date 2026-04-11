@@ -114,6 +114,12 @@ struct OnboardingView: View {
         .background(Color(nsColor: .windowBackgroundColor))
         .onAppear {
             store.refreshPermissions()
+            // Pause the main Fn monitor to avoid audio engine conflicts with the dictation demo
+            FnDictationMonitor.shared.pauseForOnboarding()
+        }
+        .onDisappear {
+            // Restart the main Fn monitor when the onboarding window closes
+            FnDictationMonitor.shared.resumeAfterOnboarding()
         }
     }
 

@@ -238,6 +238,12 @@ final class CompressionService {
         try? await localLLMCompressor?.loadModel()
         isModelLoading = false
         await checkAvailability()
+
+        // Also sync the selected compressor in case onboarding changed it
+        if let saved = UserDefaults.standard.string(forKey: "selectedCompressor"),
+           let type = CompressorType(rawValue: saved) {
+            selectedCompressor = type
+        }
     }
 
     func deleteLocalLLMModel() {
