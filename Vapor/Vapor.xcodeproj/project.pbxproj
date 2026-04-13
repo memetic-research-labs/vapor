@@ -108,6 +108,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 5084985C2F86F965008E324C /* Build configuration list for PBXNativeTarget "Vapor" */;
 			buildPhases = (
+				BC7AADB47596F2902FAD407C /* Download Ollama Binary */,
 				508498352F86F964008E324C /* Sources */,
 				508498362F86F964008E324C /* Frameworks */,
 				508498372F86F964008E324C /* Resources */,
@@ -248,6 +249,28 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		BC7AADB47596F2902FAD407C /* Download Ollama Binary */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Download Ollama Binary";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(SRCROOT)/Vapor/Resources/ollama",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/bash;
+			shellScript = "\"$SRCROOT/scripts/download-ollama.sh\"";
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		508498352F86F964008E324C /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -324,7 +347,7 @@
 				DEVELOPMENT_TEAM = YRQLJYMX5S;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -388,7 +411,7 @@
 				DEVELOPMENT_TEAM = YRQLJYMX5S;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;

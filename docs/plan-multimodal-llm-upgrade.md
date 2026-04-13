@@ -67,7 +67,8 @@ OLLAMA_VERSION="0.6.5"   # was 0.5.7
 Test that `ollama run google/gemma4:4b` succeeds on Apple Silicon before pinning to a specific release.
 
 **Acceptance criteria:**
-- `ollama run google/gemma4:4b --version` exits 0 inside the app sandbox.
+- `ollama --version` reports the bundled version `>= 0.6.5`.
+- A simple `ollama run google/gemma4:4b` invocation (or equivalent local API call) succeeds inside the app sandbox.
 - Existing models (Qwen2.5-7B, Llama 3) still work.
 
 ---

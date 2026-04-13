@@ -34,7 +34,7 @@ extension Compressor {
     }
 
     /// Clean LLM output by stripping quotes, whitespace, and common wrapper artifacts.
-    func cleanCompressedOutput(_ text: String) -> String {
+    nonisolated func cleanCompressedOutput(_ text: String) -> String {
         var result = text.trimmingCharacters(in: .whitespacesAndNewlines)
         // Strip wrapping quotes (single or double)
         while (result.hasPrefix("\"") && result.hasSuffix("\"")) ||
@@ -49,7 +49,7 @@ extension Compressor {
         return result
     }
 
-    var compressionSystemPrompt: String {
+    nonisolated var compressionSystemPrompt: String {
         """
         You are a Prompt-Cloud (PC) compression engine. Compress prompts into dense, token-efficient form that preserves functional equivalence — the model processing the compressed form should activate the same semantic patterns as the original.
 
@@ -79,6 +79,19 @@ extension Compressor {
 
         Input: compare the pros and cons of buying versus renting a home in a high cost of living area like San Francisco when you have $200,000 saved for a down payment
         Output: compareproscons buyingvsrenting homehighcostliving sanFrancisco $200,000saved downpayment
+
+        Return ONLY the compressed text, no quotes, no explanation.
+        """
+    }
+
+    nonisolated var smallModelSystemPrompt: String {
+        """
+        Compress the following text to preserve its meaning in fewer words. Follow these rules:
+        1. Remove unnecessary words (articles, filler phrases, repetition).
+        2. Keep all numbers, proper nouns, URLs, file paths, and technical terms exactly as-is.
+        3. Use short clear phrases instead of full sentences.
+        4. Keep negations explicit (not, never, unless, no).
+        5. Use spaces between compressed words. Do not fuse words together.
 
         Return ONLY the compressed text, no quotes, no explanation.
         """

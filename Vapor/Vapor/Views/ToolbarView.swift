@@ -7,7 +7,6 @@ struct ToolbarView: View {
     let onCompressAndCopy: () async -> Void
     let onCopyOriginal: () -> Void
     let onClear: () -> Void
-    let onToggleSettings: () -> Void
     let onToggleDictation: () -> Void
     let onToggleTest: () -> Void
     let onMinimize: () -> Void
@@ -61,9 +60,7 @@ struct ToolbarView: View {
             .buttonStyle(.plain)
             .disabled(viewModel.content.isEmpty)
 
-            Button {
-                onToggleSettings()
-            } label: {
+            SettingsLink {
                 Image(systemName: "gearshape")
                     .foregroundColor(.primary)
             }

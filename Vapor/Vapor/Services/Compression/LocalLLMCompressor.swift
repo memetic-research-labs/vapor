@@ -1,8 +1,11 @@
 import Foundation
 import SwiftLlama
+import OSLog
 
 actor LocalLLMCompressor: Compressor {
     let name = "Local LLM (On-Device)"
+
+    nonisolated private let logger = Logger(subsystem: "lol.mrl.app.Vapor", category: "LocalLLM")
 
     private var llamaService: LlamaService?
     private let modelURL: URL
@@ -16,8 +19,18 @@ actor LocalLLMCompressor: Compressor {
     }
 
     func loadModel() async throws {
+        let start = CFAbsoluteTimeGetCurrent()
         let config = LlamaConfig(batchSize: 256, maxTokenCount: 4096, useGPU: true)
         llamaService = LlamaService(modelUrl: modelURL, config: config)
+        let elapsed = CFAbsoluteTimeGetCurrent() - start
+        logger.info("Local LLM model loaded in \(String(format: "%.1f", elapsed))s")
+        Task { @MainActor in
+            CompressionTelemetry.shared.recordServiceEvent(.modelLoad(
+                backend: "Local LLM",
+                model: "Qwen2.5-7B",
+                duration: elapsed
+            ))
+        }
     }
 
     func compress(_ text: String) async throws -> CompressedResult {

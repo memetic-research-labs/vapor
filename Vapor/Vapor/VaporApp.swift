@@ -9,14 +9,36 @@ private let logger = Logger(subsystem: "lol.mrl.app.Vapor", category: "App")
 struct VaporApp: App {
     @State private var preferences = UserPreferences()
     @State private var windowManager: WindowManager
+    @State private var compressionService = CompressionService()
+    @Environment(\.openWindow) private var openWindow
 
     init() {
         let prefs = UserPreferences()
         WindowManager.configure(preferences: prefs)
         _preferences = State(initialValue: prefs)
         _windowManager = State(initialValue: WindowManager.shared)
+        Task {
+            do {
+                try await OllamaDaemonManager.shared.start()
+            } catch {
+                logger.warning("Ollama daemon did not start: \(error.localizedDescription)")
+            }
+        }
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            Task { await OllamaDaemonManager.shared.stop() }
+        }
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.willPowerOffNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            Task { await OllamaDaemonManager.shared.stop() }
+        }
     }
-    @Environment(\.openWindow) private var openWindow
 
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
@@ -41,10 +63,9 @@ struct VaporApp: App {
             ContentView()
                 .environment(windowManager)
                 .environment(preferences)
+                .environment(compressionService)
                 .onAppear {
-                    KeyboardShortcuts.onKeyUp(for: .toggleVapor) {
-                        windowManager.focus()
-                    }
+                    KeyboardShortcuts.onKeyUp(for: .toggleVapor) { windowManager.focus() }
                     windowManager.setupWindowOnAppear()
                     if !UserDefaults.standard.bool(forKey: "hasCompletedOnboarding") {
                         openWindow(id: "onboarding")
@@ -171,6 +192,10 @@ struct VaporApp: App {
         .windowStyle(.titleBar)
         .windowResizability(.contentSize)
         .defaultSize(width: 480, height: 540)
+
+        Settings {
+            SettingsView(compressionService: compressionService, preferences: preferences)
+        }
 
         MenuBarExtra("Vapor", systemImage: "waveform.circle") {
             MenuBarView()

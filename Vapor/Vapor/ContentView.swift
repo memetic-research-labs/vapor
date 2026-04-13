@@ -8,12 +8,11 @@ struct ContentView: View {
     @Environment(\.openWindow) private var openWindow
     @Environment(WindowManager.self) private var windowManager
     @Environment(UserPreferences.self) private var preferences
+    @Environment(CompressionService.self) private var compressionService
     @State private var viewModel = EditorViewModel()
-    @State private var compressionService = CompressionService()
     @State private var historyService = PromptHistoryService()
     @State private var toastService = ToastService()
     @State private var dictationService = SpeechDictationService()
-    @State private var showSettings = false
     @State private var showTestSidebar = false
     @State private var isEditorFocused = false
     @State private var sidebarPrompt: String = ""
@@ -27,78 +26,57 @@ struct ContentView: View {
     }
 
     var body: some View {
+        contentGroup
+            .background(windowManager.windowState == .expanded ? Color(nsColor: .windowBackgroundColor) : Color.clear)
+            .onAppear { handleOnAppear() }
+            .onChange(of: viewModel.content) { _, newValue in
+                UserDefaults.standard.set(newValue, forKey: "lastEditorContent")
+                TranscriptStore.shared.text = newValue
+            }
+            .onChange(of: viewModel.compressedContent) { _, newValue in
+                sidebarPrompt = newValue
+            }
+            .onChange(of: viewModel.isDictating) { _, isDictating in
+                guard !isDictating else { return }
+                Task {
+                    await Task.yield()
+                    guard !viewModel.isDictating, !viewModel.content.isEmpty else { return }
+                    if preferences.autoCompressEnabled {
+                        await performAutoCompress()
+                    } else if preferences.autoCopyOriginalEnabled {
+                        viewModel.copyOriginalToClipboard()
+                        toastService.showSuccess("Original copied to clipboard")
+                    }
+                }
+            }
+            .onDisappear { handleOnDisappear() }
+            .overlay(alignment: .top) {
+                if toastService.isShowing {
+                    ToastView(message: toastService.message, isError: toastService.isError, isInfo: toastService.isInfo)
+                        .padding(.top, 40)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
+            }
+        .safeAreaInset(edge: .bottom) {
+            if windowManager.windowState == .expanded {
+                Text(compressionService.statusMessage)
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 4)
+                    .background(Color(NSColor.controlBackgroundColor))
+            }
+        }
+    }
+
+    private var contentGroup: some View {
         Group {
             switch windowManager.windowState {
             case .minimized:
-                MinimizedPillView(
-                    onExpand: {
-                        windowManager.expand()
-                    },
-                    onCompressAndCopy: {
-                        Task { await performCompressAndCopy() }
-                    },
-                    onCopyOriginal: {
-                        viewModel.copyOriginalToClipboard()
-                        toastService.showSuccess("Original copied to clipboard")
-                    },
-                    onClear: {
-                        viewModel.copyAndClear()
-                    },
-                    onShowHistory: {
-                        openWindow(id: "prompt-history")
-                    },
-                    onShowHelp: {
-                        openWindow(id: "keyboard-shortcuts")
-                    },
-                    text: $viewModel.content,
-                    isDictating: viewModel.isDictating,
-                    isCompressing: viewModel.isCompressing,
-                    isModelReady: compressionService.isSelectedCompressorReady,
-                    isModelLoading: compressionService.isModelLoading,
-                    inputLevel: dictationService.inputLevel
-                )
+                minimizedView
             case .expanded:
-                if hasPermissionIssue {
-                    PermissionsOverlayView(
-                        speechStatus: speechAuthStatus,
-                        micStatus: micAuthStatus,
-                        onRetry: checkPermissions
-                    )
-                } else {
-                    expandedContent
-                }
-            }
-        }
-        .background(windowManager.windowState == .expanded ? Color(nsColor: .windowBackgroundColor) : Color.clear)
-        .onAppear {
-            historyService.setModelContext(modelContext)
-            viewModel.setServices(compression: compressionService, history: historyService)
-            if let saved = UserDefaults.standard.string(forKey: "lastEditorContent") {
-                viewModel.content = saved
-            }
-            TranscriptStore.shared.text = viewModel.content
-            setupDictation()
-            checkPermissions()
-            windowManager.setupWindowOnAppear()
-        }
-        .onChange(of: viewModel.content) { _, newValue in
-            UserDefaults.standard.set(newValue, forKey: "lastEditorContent")
-            TranscriptStore.shared.text = newValue
-        }
-        .onChange(of: viewModel.compressedContent) { _, newValue in
-            sidebarPrompt = newValue
-        }
-        .onChange(of: viewModel.isDictating) { _, isDictating in
-            guard !isDictating else { return }
-            Task {
-                await Task.yield()
-                guard !viewModel.isDictating, !viewModel.content.isEmpty else { return }
-                if preferences.autoCompressEnabled {
-                    await performAutoCompress()
-                } else if preferences.autoCopyOriginalEnabled {
-                    viewModel.copyOriginalToClipboard()
-                    toastService.showSuccess("Original copied to clipboard")
-                }
+                expandedView
             }
         }
         .onChange(of: HistoryStore.shared.pendingRestore?.persistentModelID) { _, newID in
@@ -127,25 +105,58 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .vaporLLMDownloadCompleted)) { _ in
             Task { await compressionService.reloadLocalLLMIfNeeded() }
         }
-        .onDisappear {
-            FnDictationMonitor.shared.stop()
-            dictationService.stopDictation(commit: false)
-            windowManager.savePosition()
-        }
-        .overlay(alignment: .top) {
-            if toastService.isShowing {
-                ToastView(message: toastService.message, isError: toastService.isError, isInfo: toastService.isInfo)
-                    .padding(.top, 40)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-            }
-        }
-        .sheet(isPresented: $showSettings) {
-            SettingsView(
-                compressionService: compressionService,
-                selectedCompressor: $viewModel.selectedCompressor,
-                preferences: preferences
+    }
+
+    private var minimizedView: some View {
+        MinimizedPillView(
+            onExpand: { windowManager.expand() },
+            onCompressAndCopy: { Task { await performCompressAndCopy() } },
+            onCopyOriginal: {
+                viewModel.copyOriginalToClipboard()
+                toastService.showSuccess("Original copied to clipboard")
+            },
+            onClear: { viewModel.copyAndClear() },
+            onShowHistory: { openWindow(id: "prompt-history") },
+            onShowHelp: { openWindow(id: "keyboard-shortcuts") },
+            text: $viewModel.content,
+            statusMessage: compressionService.statusMessage,
+            isDictating: viewModel.isDictating,
+            isCompressing: viewModel.isCompressing,
+            isModelReady: compressionService.isSelectedCompressorReady,
+            isModelLoading: compressionService.isModelLoading,
+            inputLevel: dictationService.inputLevel
+        )
+    }
+
+    @ViewBuilder
+    private var expandedView: some View {
+        if hasPermissionIssue {
+            PermissionsOverlayView(
+                speechStatus: speechAuthStatus,
+                micStatus: micAuthStatus,
+                onRetry: checkPermissions
             )
+        } else {
+            expandedContent
         }
+    }
+
+    private func handleOnAppear() {
+        historyService.setModelContext(modelContext)
+        viewModel.setServices(compression: compressionService, history: historyService)
+        if let saved = UserDefaults.standard.string(forKey: "lastEditorContent") {
+            viewModel.content = saved
+        }
+        TranscriptStore.shared.text = viewModel.content
+        setupDictation()
+        checkPermissions()
+        windowManager.setupWindowOnAppear()
+    }
+
+    private func handleOnDisappear() {
+        FnDictationMonitor.shared.stop()
+        dictationService.stopDictation(commit: false)
+        windowManager.savePosition()
     }
 
     private var expandedContent: some View {
@@ -164,9 +175,6 @@ struct ContentView: View {
                     },
                     onClear: {
                         viewModel.clear()
-                    },
-                    onToggleSettings: {
-                        showSettings.toggle()
                     },
                     onToggleDictation: {
                         toggleDictation()

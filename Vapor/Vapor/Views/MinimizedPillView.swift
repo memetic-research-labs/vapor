@@ -19,6 +19,7 @@ struct MinimizedPillView: View {
 
     // State
     @Binding var text: String
+    var statusMessage: String = "Ready"
     var isDictating: Bool = false
     var isCompressing: Bool = false
     var isModelReady: Bool = true
@@ -158,27 +159,35 @@ struct MinimizedPillView: View {
 
     @ViewBuilder
     private var statusLabel: some View {
-        switch status {
-        case .idle:
-            Text("Ready")
+        let isStatusBusy = statusMessage != "Ready" && !statusMessage.isEmpty && !statusMessage.hasPrefix("Done")
+        if isStatusBusy {
+            Text(statusMessage)
                 .font(.system(size: 11, weight: .medium))
                 .foregroundColor(.secondary)
-        case .modelLoading:
-            Text("Loading model…")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(.secondary)
-        case .dictating:
-            Text("Listening")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(.red.opacity(0.9))
-        case .compressing:
-            Text("Compressing…")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(.secondary)
-        case .copied:
-            Text("Copied to clipboard")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(.green)
+                .lineLimit(1)
+        } else {
+            switch status {
+            case .idle:
+                Text("Ready")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.secondary)
+            case .modelLoading:
+                Text("Loading model…")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.secondary)
+            case .dictating:
+                Text("Listening")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.red.opacity(0.9))
+            case .compressing:
+                Text("Compressing…")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.secondary)
+            case .copied:
+                Text("Copied to clipboard")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.green)
+            }
         }
     }
 
