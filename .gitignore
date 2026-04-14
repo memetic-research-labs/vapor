@@ -18,3 +18,4 @@ xcuserdata/
 *.swp
 *~
 Vapor/Resources/ollama
+*.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
