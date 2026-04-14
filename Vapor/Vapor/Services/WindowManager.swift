@@ -104,8 +104,10 @@ final class WindowManager {
 
         configureWindow(window)
 
-        // Minimized: show title bar with "Vapor" label, transparent background for pill material
+        // Minimized: opaque title bar with "Vapor" title visible
         window.titleVisibility = .visible
+        window.titlebarAppearsTransparent = false
+        window.toolbar = nil
         window.backgroundColor = .clear
         window.isOpaque = false
 
@@ -157,6 +159,8 @@ final class WindowManager {
 
         if windowState == .minimized {
             window.titleVisibility = .visible
+            window.titlebarAppearsTransparent = false
+            window.toolbar = nil
             window.backgroundColor = .clear
             window.isOpaque = false
 

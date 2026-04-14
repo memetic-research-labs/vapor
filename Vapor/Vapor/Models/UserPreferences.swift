@@ -18,6 +18,25 @@ final class UserPreferences {
     var autoCopyOriginalEnabled: Bool {
         didSet { UserDefaults.standard.set(autoCopyOriginalEnabled, forKey: Keys.autoCopyOriginal) }
     }
+    var browserIntegrationEnabled: Bool {
+        didSet { UserDefaults.standard.set(browserIntegrationEnabled, forKey: Keys.browserIntegrationEnabled) }
+    }
+    var autoSendToBrowser: Bool {
+        didSet { UserDefaults.standard.set(autoSendToBrowser, forKey: Keys.autoSendToBrowser) }
+    }
+    var autoSubmitToAI: Bool {
+        didSet { UserDefaults.standard.set(autoSubmitToAI, forKey: Keys.autoSubmitToAI) }
+    }
+    var embeddedServerPort: Int {
+        didSet {
+            let clamped = max(1, min(65_535, embeddedServerPort))
+            if clamped != embeddedServerPort {
+                embeddedServerPort = clamped
+                return
+            }
+            UserDefaults.standard.set(embeddedServerPort, forKey: Keys.embeddedServerPort)
+        }
+    }
 
     struct Keys {
         static let windowExpanded = "windowExpanded"
@@ -27,6 +46,10 @@ final class UserPreferences {
         static let autoCopyOriginal = "autoCopyOriginalEnabled"
         static let windowPositionX = "windowPositionX"
         static let windowPositionY = "windowPositionY"
+        static let browserIntegrationEnabled = "browserIntegrationEnabled"
+        static let autoSendToBrowser = "autoSendToBrowser"
+        static let autoSubmitToAI = "autoSubmitToAI"
+        static let embeddedServerPort = "embeddedServerPort"
     }
 
     init() {
@@ -36,6 +59,10 @@ final class UserPreferences {
         self.autoMinimizeEnabled = UserDefaults.standard.object(forKey: Keys.autoMinimize) as? Bool ?? false
         self.showExperimentsButton = UserDefaults.standard.object(forKey: Keys.showExperiments) as? Bool ?? false
         self.autoCopyOriginalEnabled = UserDefaults.standard.object(forKey: Keys.autoCopyOriginal) as? Bool ?? true
+        self.browserIntegrationEnabled = UserDefaults.standard.object(forKey: Keys.browserIntegrationEnabled) as? Bool ?? false
+        self.autoSendToBrowser = UserDefaults.standard.object(forKey: Keys.autoSendToBrowser) as? Bool ?? false
+        self.autoSubmitToAI = UserDefaults.standard.object(forKey: Keys.autoSubmitToAI) as? Bool ?? false
+        self.embeddedServerPort = UserDefaults.standard.object(forKey: Keys.embeddedServerPort) as? Int ?? 8766
     }
 
     func saveWindowPosition(_ point: CGPoint) {

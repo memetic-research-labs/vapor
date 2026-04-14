@@ -10,6 +10,7 @@ struct VaporApp: App {
     @State private var preferences = UserPreferences()
     @State private var windowManager: WindowManager
     @State private var compressionService = CompressionService()
+    @State private var browserBridge = BrowserBridge()
     @Environment(\.openWindow) private var openWindow
 
     init() {
@@ -17,9 +18,23 @@ struct VaporApp: App {
         WindowManager.configure(preferences: prefs)
         _preferences = State(initialValue: prefs)
         _windowManager = State(initialValue: WindowManager.shared)
+        _browserBridge = State(initialValue: BrowserBridge())
+    }
+
+    private static var hasSetupBrowserBridge = false
+
+    private func setupBrowserBridge() {
+        guard !Self.hasSetupBrowserBridge else { return }
+        Self.hasSetupBrowserBridge = true
+
+        let prefs = preferences
+        let bridge = browserBridge
         Task {
             do {
                 try await OllamaDaemonManager.shared.start()
+                if prefs.browserIntegrationEnabled {
+                    await bridge.start()
+                }
             } catch {
                 logger.warning("Ollama daemon did not start: \(error.localizedDescription)")
             }
@@ -30,6 +45,7 @@ struct VaporApp: App {
             queue: .main
         ) { _ in
             Task { await OllamaDaemonManager.shared.stop() }
+            Task { await bridge.stop() }
         }
         NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.willPowerOffNotification,
@@ -37,6 +53,7 @@ struct VaporApp: App {
             queue: .main
         ) { _ in
             Task { await OllamaDaemonManager.shared.stop() }
+            Task { await bridge.stop() }
         }
     }
 
@@ -64,7 +81,9 @@ struct VaporApp: App {
                 .environment(windowManager)
                 .environment(preferences)
                 .environment(compressionService)
+                .environment(browserBridge)
                 .onAppear {
+                    setupBrowserBridge()
                     KeyboardShortcuts.onKeyUp(for: .toggleVapor) { windowManager.focus() }
                     windowManager.setupWindowOnAppear()
                     if !UserDefaults.standard.bool(forKey: "hasCompletedOnboarding") {
@@ -195,6 +214,7 @@ struct VaporApp: App {
 
         Settings {
             SettingsView(compressionService: compressionService, preferences: preferences)
+                .environment(browserBridge)
         }
 
         MenuBarExtra("Vapor", systemImage: "waveform.circle") {

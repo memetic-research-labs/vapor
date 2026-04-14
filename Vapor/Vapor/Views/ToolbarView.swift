@@ -4,6 +4,7 @@ struct ToolbarView: View {
     @Bindable var viewModel: EditorViewModel
     let dictationService: SpeechDictationService
     let preferences: UserPreferences
+    @Environment(BrowserBridge.self) private var browserBridge
     let onCompressAndCopy: () async -> Void
     let onCopyOriginal: () -> Void
     let onClear: () -> Void
@@ -59,6 +60,13 @@ struct ToolbarView: View {
             }
             .buttonStyle(.plain)
             .disabled(viewModel.content.isEmpty)
+
+            if browserBridge.isExtensionConnected {
+                Image(systemName: "safari.fill")
+                    .font(.system(size: 11))
+                    .foregroundColor(.blue)
+                    .help("Browser connected")
+            }
 
             SettingsLink {
                 Image(systemName: "gearshape")

@@ -9,6 +9,7 @@ struct ContentView: View {
     @Environment(WindowManager.self) private var windowManager
     @Environment(UserPreferences.self) private var preferences
     @Environment(CompressionService.self) private var compressionService
+    @Environment(BrowserBridge.self) private var browserBridge
     @State private var viewModel = EditorViewModel()
     @State private var historyService = PromptHistoryService()
     @State private var toastService = ToastService()
@@ -124,6 +125,7 @@ struct ContentView: View {
             isCompressing: viewModel.isCompressing,
             isModelReady: compressionService.isSelectedCompressorReady,
             isModelLoading: compressionService.isModelLoading,
+            isBrowserConnected: browserBridge.isExtensionConnected,
             inputLevel: dictationService.inputLevel
         )
     }
@@ -144,6 +146,8 @@ struct ContentView: View {
     private func handleOnAppear() {
         historyService.setModelContext(modelContext)
         viewModel.setServices(compression: compressionService, history: historyService)
+        viewModel.setBrowserBridge(browserBridge)
+        viewModel.setPreferences(preferences)
         if let saved = UserDefaults.standard.string(forKey: "lastEditorContent") {
             viewModel.content = saved
         }

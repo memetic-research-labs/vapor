@@ -7,6 +7,7 @@ private let logger = Logger(subsystem: "lol.mrl.app.Vapor", category: "Settings"
 struct SettingsView: View {
     let compressionService: CompressionService
     let preferences: UserPreferences
+    @Environment(BrowserBridge.self) private var browserBridge
     @State private var openRouterApiKey: String = ""
     @State private var openRouterModel: String = "glm-5"
     @State private var isLocalLLMAvailable: Bool = false
@@ -16,9 +17,11 @@ struct SettingsView: View {
     @State private var showCustomPull: Bool = false
     @State private var isConnecting: Bool = false
     @State private var selectedTab: SettingsTab = .compression
+    @State private var displayedAuthToken: String = ""
 
     enum SettingsTab: String, CaseIterable, Identifiable {
         case compression = "Compression"
+        case browser = "Browser"
         case ollama = "Ollama Models"
         case openRouter = "OpenRouter"
         case general = "General"
@@ -29,6 +32,7 @@ struct SettingsView: View {
         var icon: String {
             switch self {
             case .compression: return "arrow.left.arrow.right"
+            case .browser: return "globe"
             case .ollama: return "cpu"
             case .openRouter: return "cloud"
             case .general: return "gearshape.2"
@@ -49,6 +53,8 @@ struct SettingsView: View {
                 switch selectedTab {
                 case .compression:
                     compressionTab
+                case .browser:
+                    browserTab
                 case .ollama:
                     ollamaTab
                 case .openRouter:
@@ -62,6 +68,134 @@ struct SettingsView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(minWidth: 650, minHeight: 400)
+    }
+
+    // MARK: - Browser Tab
+
+    private var browserTab: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                GroupBox("Browser Integration") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Toggle("Enable browser integration", isOn: Binding(
+                            get: { preferences.browserIntegrationEnabled },
+                            set: { newValue in
+                                preferences.browserIntegrationEnabled = newValue
+                                if newValue {
+                                    Task { await browserBridge.start() }
+                                } else {
+                                    Task { await browserBridge.stop() }
+                                }
+                            }
+                        ))
+                        .toggleStyle(.switch)
+                        .controlSize(.regular)
+
+                        Text("Start the embedded server on launch and allow the Chrome extension to connect.")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+
+                        Divider()
+
+                        Toggle("Auto-send to browser after compression", isOn: Binding(
+                            get: { preferences.autoSendToBrowser },
+                            set: { preferences.autoSendToBrowser = $0 }
+                        ))
+                            .toggleStyle(.switch)
+                            .controlSize(.regular)
+                            .disabled(!preferences.browserIntegrationEnabled)
+
+                        Text("After compressing, automatically inject the compressed prompt into the active AI chat tab.")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+
+                        Divider()
+
+                        Toggle("Auto-submit to AI", isOn: Binding(
+                            get: { preferences.autoSubmitToAI },
+                            set: { preferences.autoSubmitToAI = $0 }
+                        ))
+                            .toggleStyle(.switch)
+                            .controlSize(.regular)
+                            .disabled(!preferences.browserIntegrationEnabled || !preferences.autoSendToBrowser)
+
+                        Text("Simulate Enter after injecting (requires auto-send).")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+
+                        Divider()
+
+                        HStack {
+                            Text("Server port")
+                                .font(.system(size: 12, weight: .medium))
+                            TextField("", value: Binding(
+                                get: { preferences.embeddedServerPort },
+                                set: { preferences.embeddedServerPort = $0 }
+                            ), format: .number)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 80)
+                                .disabled(browserBridge.isRunning)
+                        }
+
+                        HStack(spacing: 16) {
+                            if browserBridge.isRunning {
+                                Label("Server running", systemImage: "circle.fill")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.green)
+                            } else if let error = browserBridge.lastError {
+                                Label(error, systemImage: "exclamationmark.triangle.fill")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.red)
+                            }
+
+                            if browserBridge.isExtensionConnected {
+                                Label("\(browserBridge.connectedClientCount) client(s) connected", systemImage: "link")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.green)
+                            } else {
+                                Label("No clients connected", systemImage: "circle.slash")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                    .padding(8)
+                }
+
+                GroupBox("Authentication") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Bearer token (for Chrome extension setup)")
+                            .font(.system(size: 12, weight: .medium))
+
+                        HStack {
+                            SecureField("Token", text: $displayedAuthToken)
+                                .textFieldStyle(.roundedBorder)
+                                .disabled(true)
+                            Button("Copy") {
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(displayedAuthToken, forType: .string)
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            Button("Reset") {
+                                displayedAuthToken = browserBridge.resetAuthToken()
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                        }
+
+                        Text("Copy this token to the Chrome extension's settings to authenticate the connection.")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(8)
+                }
+            }
+            .padding(20)
+        }
+        .onAppear {
+            displayedAuthToken = browserBridge.authToken()
+        }
     }
 
     // MARK: - Telemetry Tab

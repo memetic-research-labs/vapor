@@ -10,6 +10,9 @@
 		50849C8E2F874B8B008E324C /* SwiftLlama in Frameworks */ = {isa = PBXBuildFile; productRef = 508498662F86F966008E324C /* SwiftLlama */; };
 		50849C902F874B8B008E324D /* KeyboardShortcuts in Frameworks */ = {isa = PBXBuildFile; productRef = 50849C912F874B8B008E324D /* KeyboardShortcuts */; };
 		50849C942F874B8B008E324F /* Tiktoken in Frameworks */ = {isa = PBXBuildFile; productRef = 50849C952F874B8B008E324F /* Tiktoken */; };
+		50A10B002F9C0000008E324C /* NIOCore in Frameworks */ = {isa = PBXBuildFile; productRef = 50A10AF02F9C0000008E324C /* NIOCore */; };
+		50A10B022F9C0001008E324C /* NIOHTTP1 in Frameworks */ = {isa = PBXBuildFile; productRef = 50A10B012F9C0001008E324C /* NIOHTTP1 */; };
+		50A10B042F9C0002008E324C /* NIOPosix in Frameworks */ = {isa = PBXBuildFile; productRef = 50A10B032F9C0002008E324C /* NIOPosix */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -58,6 +61,9 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				50A10B002F9C0000008E324C /* NIOCore in Frameworks */,
+				50A10B022F9C0001008E324C /* NIOHTTP1 in Frameworks */,
+				50A10B042F9C0002008E324C /* NIOPosix in Frameworks */,
 				50849C8E2F874B8B008E324C /* SwiftLlama in Frameworks */,
 				50849C902F874B8B008E324D /* KeyboardShortcuts in Frameworks */,
 				50849C942F874B8B008E324F /* Tiktoken in Frameworks */,
@@ -122,6 +128,9 @@
 			);
 			name = Vapor;
 			packageProductDependencies = (
+				50A10AF02F9C0000008E324C /* NIOCore */,
+				50A10B012F9C0001008E324C /* NIOHTTP1 */,
+				50A10B032F9C0002008E324C /* NIOPosix */,
 				508498662F86F966008E324C /* SwiftLlama */,
 				50849C912F874B8B008E324D /* KeyboardShortcuts */,
 				50849C952F874B8B008E324F /* Tiktoken */,
@@ -212,6 +221,7 @@
 				508498652F86F966008E324C /* XCRemoteSwiftPackageReference "swift-llama-cpp" */,
 				50849C922F874B8B008E324E /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */,
 				50849C962F874B8B008E3250 /* XCRemoteSwiftPackageReference "Tiktoken" */,
+				50A10AEF2F9C0000008E324C /* XCRemoteSwiftPackageReference "swift-nio" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 5084983A2F86F964008E324C /* Products */;
@@ -438,7 +448,7 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = YRQLJYMX5S;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -477,7 +487,7 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = YRQLJYMX5S;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -653,6 +663,14 @@
 				revision = 4ad6460448278f7a28f1e4ee2723500369f20acb;
 			};
 		};
+		50A10AEF2F9C0000008E324C /* XCRemoteSwiftPackageReference "swift-nio" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-nio.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.65.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -670,6 +688,21 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 50849C962F874B8B008E3250 /* XCRemoteSwiftPackageReference "Tiktoken" */;
 			productName = Tiktoken;
+		};
+		50A10AF02F9C0000008E324C /* NIOCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 50A10AEF2F9C0000008E324C /* XCRemoteSwiftPackageReference "swift-nio" */;
+			productName = NIOCore;
+		};
+		50A10B012F9C0001008E324C /* NIOHTTP1 */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 50A10AEF2F9C0000008E324C /* XCRemoteSwiftPackageReference "swift-nio" */;
+			productName = NIOHTTP1;
+		};
+		50A10B032F9C0002008E324C /* NIOPosix */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 50A10AEF2F9C0000008E324C /* XCRemoteSwiftPackageReference "swift-nio" */;
+			productName = NIOPosix;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

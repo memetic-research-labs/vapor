@@ -23,11 +23,21 @@ final class EditorViewModel {
     private let clipboardService = ClipboardService()
     private var compressionService: CompressionService?
     private var historyService: PromptHistoryService?
+    private var browserBridge: BrowserBridge?
+    private var preferences: UserPreferences?
 
     func setServices(compression: CompressionService, history: PromptHistoryService) {
         self.compressionService = compression
         self.historyService = history
         self.selectedCompressor = compression.selectedCompressor
+    }
+
+    func setBrowserBridge(_ bridge: BrowserBridge) {
+        self.browserBridge = bridge
+    }
+
+    func setPreferences(_ prefs: UserPreferences) {
+        self.preferences = prefs
     }
 
     func copyOriginalToClipboard() {
@@ -55,6 +65,16 @@ final class EditorViewModel {
         clipboardService.copy(compressedContent)
         logger.info("Compressed using: \(self.selectedCompressor.rawValue)")
         logger.debug("Ratio: \(String(format: "%.2f", self.compressionRatio))")
+
+        if let browserBridge, let preferences,
+           preferences.autoSendToBrowser,
+           browserBridge.isExtensionConnected {
+            browserBridge.sendCompressedPrompt(
+                compressedContent,
+                original: content,
+                autoSubmit: preferences.autoSubmitToAI
+            )
+        }
 
         if let historyService, content != lastSavedContent {
             let record = PromptRecord(

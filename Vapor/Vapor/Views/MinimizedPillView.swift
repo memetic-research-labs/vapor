@@ -24,6 +24,7 @@ struct MinimizedPillView: View {
     var isCompressing: Bool = false
     var isModelReady: Bool = true
     var isModelLoading: Bool = false
+    var isBrowserConnected: Bool = false
     var inputLevel: Float = 0
 
     @State private var glowPulse = false
@@ -67,12 +68,12 @@ struct MinimizedPillView: View {
                 .padding(.vertical, 8)
         }
         .background(
-            RoundedRectangle(cornerRadius: 12)
+            UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: 12, bottomTrailingRadius: 12, topTrailingRadius: 0)
                 .fill(.ultraThinMaterial)
                 .shadow(color: glowColor.opacity(glowPulse ? 0.45 : 0.2), radius: glowPulse ? 10 : 5, x: 0, y: 0)
                 .shadow(color: .black.opacity(0.15), radius: 3, x: 0, y: 2)
         )
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .clipShape(UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: 12, bottomTrailingRadius: 12, topTrailingRadius: 0))
         .onAppear {
             withAnimation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true)) {
                 glowPulse = true
@@ -111,6 +112,8 @@ struct MinimizedPillView: View {
         HStack(spacing: 8) {
             statusIcon
 
+            browserStatusIcon
+
             statusLabel
 
             Spacer()
@@ -119,6 +122,16 @@ struct MinimizedPillView: View {
                 Text("\(wordCount) words")
                     .font(.system(size: 11))
                     .foregroundColor(.secondary)
+            }
+        }
+    }
+
+    private var browserStatusIcon: some View {
+        Group {
+            if isBrowserConnected {
+                Image(systemName: "safari.fill")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundColor(.blue)
             }
         }
     }
