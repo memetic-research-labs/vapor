@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes the user experience for Vapor's **Context Management** and **Glossary** features. It is a companion to `docs/plan-context-management.md`, which covers the backend architecture. Together they address the research direction set out in the [Context Management Tools issue].
+This document describes the user experience for Vapor's **Context Management** and **Glossary** features. It is a companion to `docs/plan-context-management.md`, which covers the backend architecture.
 
 The goal is a fast, keyboard-first experience that feels as natural as dictating a single sentence — even when you are composing a large, complex prompt that weaves together articles, data tables, images, and stored glossary entries.
 
@@ -143,7 +143,7 @@ Background: `systemBackground`. Left edge: thin grey accent bar.
 │     Tags: swift · networking · concurrency                │
 │     "Swift NIO is a cross-platform asynchronous event-    │
 │      driven network application framework…" [expand ▼]   │
-│     [Cite: ¹]  [↗ Open]  [✕ Remove]                      │
+│     [Cite: [1]]  [↗ Open]  [✕ Remove]                      │
 └───────────────────────────────────────────────────────────┘
 ```
 Background: `secondarySystemBackground`. Border: 1pt, `separator`. Icon matches `ContextItemKind`.
@@ -156,7 +156,7 @@ Background: `secondarySystemBackground`. Border: 1pt, `separator`. Icon matches 
 │     │   [thumbnail 256px]  │                              │
 │     └──────────────────────┘                              │
 │     Tags: architecture · diagram                          │
-│     [Cite: ²]  [↗ Open]  [✕ Remove]                      │
+│     [Cite: [2]]  [↗ Open]  [✕ Remove]                      │
 └───────────────────────────────────────────────────────────┘
 ```
 
@@ -173,8 +173,8 @@ Background: accent color at 10% opacity. Border: accent color.
 ```
 ┌───────────────────────────────────────────────────────────┐
 │ 📎  References                                            │
-│     ¹ swift.org — "SwiftNIO" (2025-04-14)                │
-│     ² cdn.example.com/diagram.png — "Architecture…"      │
+│     [1] swift.org — "SwiftNIO" (2025-04-14)                │
+│     [2] cdn.example.com/diagram.png — "Architecture…"      │
 └───────────────────────────────────────────────────────────┘
 ```
 Auto-appended at the end of the composer when any context items are present. Always collapses to "2 citations" in the compressed preview.
@@ -184,7 +184,7 @@ Auto-appended at the end of the composer when any context items are present. Alw
 | Shortcut | Action |
 |---|---|
 | `@` | Open autocomplete popover for glossary items |
-| `⌘ + Shift + C` | Capture current browser selection into context tray |
+| `⌘ + Option + C` | Capture current browser selection into context tray |
 | `⌘ + Shift + V` | Insert last captured context item at cursor |
 | `⌘ + [` / `⌘ + ]` | Select previous / next segment |
 | `⌘ + Delete` | Remove selected segment |
@@ -375,9 +375,9 @@ seniorSwiftdev reviewingNIOvsGCD focusmemoryalloc perf
 
 benchmarkdatabelow showmetricsalloc perfreqs
 
----
-¹ swift.org — "Swift NIO" (2025-04-14)
-² cdn.example.com/diagram.png — "Architecture Diagram"
+ ---
+ [1] swift.org — "Swift NIO" (2025-04-14)
+ [2] cdn.example.com/diagram.png — "Architecture Diagram"
 ```
 
 - Text segments are compressed as normal.
@@ -415,7 +415,7 @@ seniorSwiftdev reviewNIOimpl endpoint <amber>https://api.example.com/v2/infer?mo
 
 ## Prompt History — Extended View
 
-The existing `HistoryListView` is extended to show composed prompts in addition to plain prompts. A new toggle allows filtering:
+The existing `PromptHistoryView` is extended to show composed prompts in addition to plain prompts. A new toggle allows filtering:
 
 ```
   [All]  [Plain]  [Composed]

@@ -260,7 +260,7 @@ final class ContextQueueService {
 2. Calls `ContextQueueService.ingest(_:)`.
 3. Service creates a `ContextItem` with `status = .pending`, writes any binary to the blob store, and appends to `queue`.
 4. `processNext()` picks up the item:
-   - Runs `VectorizationService.embed(_:)`
+    - Runs `VectorizationService.embed(contextItem:)`
    - Runs `EntityExtractionService.extract(_:)`
    - Runs `TaggerService.tag(_:)`
    - Builds `Citation`
@@ -277,7 +277,10 @@ final class VectorizationService {
     //   Recommended: all-MiniLM-L6-v2 (384-dim, fast) or nomic-embed-text-v1.5 (768-dim, higher quality)
     //   Models are bundled as .mlpackage assets converted with exportcoreml / apple/coremltools
     // Fallback (text): Apple NLEmbedding (available, but lower quality — use only if CoreML model unavailable)
-    // Images: OpenAI CLIP ViT-B/32 — re-use CoreML port from the image-pipeline repo
+    // Images: CLIP ViT-B/32 — re-use CoreML port from the image-pipeline repo
+    //   Cross-modal: enables text↔image search (find images using text queries)
+    // Apple Vision VNFeaturePrintObservation is image↔image only (find similar photos)
+    //   and is NOT a substitute for CLIP's cross-modal embeddings
     //   (image-pipeline/models/clip_image_encoder.mlpackage)
 
     func embed(contextItem: ContextItem) async throws -> [Float]
@@ -288,7 +291,7 @@ final class VectorizationService {
 }
 ```
 
-**Vector Index:** Embeddings are stored in a lightweight SQLite database with a custom cosine-similarity query using SQLite's `json_each` or an optional `sqlite-vec` extension. The index file lives at `~/Library/Application Support/Vapor/vector.db`.
+**Vector Index:** Embeddings are stored in a SQLite database with the [sqlite-vec](https://github.com/asg017/sqlite-vec) extension for native vector similarity search (cosine distance). sqlite-vec is already used in the Contex.st project (see `Contexst/LLM` in the org namespace for proven embedding and model management patterns). The index file lives at `~/Library/Application Support/Vapor/vector.db`.
 
 **Model sourcing:** Preferred text models are available on HuggingFace in ONNX format and can be converted to CoreML with `coremltools`. The CLIP image encoder is already ported in the `image-pipeline` repo and should be re-used directly. Apple `NLEmbedding` is kept as a zero-dependency fallback only.
 
@@ -431,7 +434,7 @@ The extension's service worker can be instructed (via a `WATCH_XHR` SSE command 
 |---|---|---|
 | `POST` | `/api/context` | Ingest a text-based `ContextItem` |
 | `POST` | `/api/blob` | Multipart upload for binary assets |
-| `GET`  | `/api/context/status/:jobId` | Poll processing status |
+| `GET`  | `/api/context/status/<jobId>` | Poll processing status |
 | `POST` | `/api/watch-xhr` | Configure XHR watch patterns |
 
 These are served by the existing `VaporEmbeddedServer` alongside the current `/api/stream` and `/api/response` endpoints.
@@ -458,7 +461,7 @@ CREATE TABLE embedding_text_fts (
 ) -- used with SQLite FTS5 for hybrid search
 ```
 
-**Similarity search:** A Swift helper reads all embedding vectors from the DB (or a subset filtered by `kind`), computes cosine similarity in a tight loop using `vDSP`, and returns the top-K results. For collections up to ~100,000 items this is fast enough without an ANN index. If the collection grows, we can add `sqlite-vec` or an in-process HNSW index.
+**Similarity search:** Uses sqlite-vec's built-in `vec0` virtual table for K-nearest-neighbour cosine distance queries. No need to load vectors into Swift — the query runs entirely in SQLite. For collections up to ~100,000 items this is fast and avoids the overhead of cross-process vector transfer.
 
 ---
 
@@ -655,8 +658,8 @@ Results are merged and re-ranked by a weighted score: `0.4 * fts_score + 0.4 * v
 
 ## Privacy & Performance Notes
 
-- **All NLP processing is on-device** (HuggingFace CoreML models, Apple NLTagger, CLIP). No text or images are sent to a network for processing unless the user has configured OpenRouter.
-- Binary blobs are stored in the app's sandboxed `Application Support` directory and are never uploaded anywhere.
+- **All NLP and embedding processing is on-device** (HuggingFace CoreML models, Apple NLTagger, CLIP). No text or images are sent to a network for processing. OpenRouter is used only for LLM inference (compression and multi-modal generation), never for embedding or NLP.
+- Binary blobs are stored under the app's `Application Support` directory and are never uploaded anywhere. True sandbox-enforced containment would require re-enabling App Sandbox.
 - The vector index grows linearly. At 1,000 items, each with a 512-float embedding, the index is ~2 MB — trivially small.
 - Blob storage is capped at a user-configurable limit (default: 500 MB). Eviction removes the oldest items first.
 - XHR interception is **opt-in per-tab** and must be explicitly activated by the user from Vapor.
@@ -688,7 +691,7 @@ Results are merged and re-ranked by a weighted score: `0.4 * fts_score + 0.4 * v
 - [Apple NaturalLanguage Framework](https://developer.apple.com/documentation/naturallanguage)
 - [Mozilla Readability](https://github.com/mozilla/readability) — article extraction in extension
 - [SQLite FTS5](https://www.sqlite.org/fts5.html)
-- [sqlite-vec](https://github.com/asg017/sqlite-vec) — optional vector extension for SQLite
+- [sqlite-vec](https://github.com/asg017/sqlite-vec) — vector extension for SQLite (used for KNN cosine similarity search)
 - `docs/plan-browser-extension.md` — existing NIO server + SSE architecture
 - `docs/plan-web-scraping.md` — existing scrape command protocol
 - `docs/plan-multimodal-llm-upgrade.md` — multi-modal LLM backend
