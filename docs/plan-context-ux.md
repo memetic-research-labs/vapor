@@ -385,6 +385,32 @@ benchmarkdatabelow showmetricsalloc perfreqs
 - Images are referenced by a `[Image: …]` placeholder in the compressed text (actual images are sent separately via the multi-modal API if applicable).
 - Citations appear as a block after the `---` separator.
 
+### Marking Segments as "No Compress"
+
+Some content must reach the LLM verbatim — API endpoint URLs, package names, version numbers, file paths, and other technical tokens where compression would destroy meaning.
+
+Users mark a segment as "no compress" with `⌘ + Shift + L` while the segment is focused, or via a right-click context menu "Lock — Do Not Compress". Locked segments render with a **padlock badge** and a subtle amber left border:
+
+```
+┌───────────────────────────────────────────────────────────┐
+│ 🔒  https://api.example.com/v2/infer?model=gpt-4o        │
+│     [Unlock]                                              │
+└───────────────────────────────────────────────────────────┘
+```
+
+Locked segments are wrapped in `{{RAW}}…{{/RAW}}` sentinels during serialisation so the compression engine passes them through untouched. The sentinels are stripped before the final string is placed on the clipboard.
+
+The compressed preview shows locked content with an amber highlight so the user can confirm it arrived intact:
+
+```
+seniorSwiftdev reviewNIOimpl endpoint <amber>https://api.example.com/v2/infer?model=gpt-4o</amber> focuserrorhandling
+```
+
+| Shortcut | Action |
+|---|---|
+| `⌘ + Shift + L` | Toggle lock on focused segment |
+| Right-click segment | "Lock — Do Not Compress" / "Unlock" |
+
 ---
 
 ## Prompt History — Extended View
@@ -502,8 +528,20 @@ Context items from XHR interception (API responses) can become stale quickly. Al
 
 ## Open UX Questions
 
-1. **Tray position:** Left panel vs. bottom drawer vs. floating palette? Left panel maximises vertical text space in the composer; bottom drawer may feel more natural for media-heavy capture sessions.
-2. **Segment granularity:** Should a single dictation session produce one segment, or should Vapor auto-split on natural pause boundaries? Finer segments give more precise reordering but create visual clutter.
-3. **Image display in Composer:** Should images be shown inline at full thumbnail size, or should they always be collapsed to a small chip with an expand button? The latter keeps the composer compact.
-4. **Glossary discoverability:** How do new users learn that `@` triggers autocomplete? Consider a subtle hint line at the bottom of the composer: *"Type @ to insert a glossary item"* that fades out after first use.
-5. **XHR Interception consent:** Should Vapor display a per-domain confirmation dialog each time the user enables XHR watching, for transparency? This mirrors how browser extensions request permissions.
+1. **Tray position:** **Resolved — left panel.** It maximises vertical text space in the composer and maps naturally to the mental model of "source material on the left, composed output on the right". Position should be user-configurable (left panel / bottom drawer / floating palette) as a future enhancement in Settings.
+
+2. **Segment granularity:** **Resolved — one segment per dictation session.** A single dictation recording produces a single text segment. This keeps the composer clean and avoids the cognitive overhead of managing many tiny segments. Users who want finer granularity can manually split a segment by placing the cursor and pressing `↩` (which inserts a segment break).
+
+3. **Image display in Composer:** **Resolved — small chip, click to expand.** Images always render as a compact chip (icon + filename + source domain). Clicking or tapping the chip expands an inline preview (max 480px wide) that can be collapsed again. This keeps the composer scannable even with many image segments.
+
+4. **Glossary discoverability:** Consider a subtle hint line at the bottom of the composer: *"Type @ to insert a glossary item"* that fades out after first use.
+
+5. **XHR Interception consent:** Use a **non-modal, inline approach** rather than a blocking dialog. When the user enables XHR watching for a tab, the extension's page action icon updates to show a live pulse indicator and a slim status banner appears at the top of the Vapor window:
+
+   ```
+   ┌──────────────────────────────────────────────────────────────┐
+   │  🔵  XHR watching: api.example.com  |  Payloads: 3  [Stop]  │
+   └──────────────────────────────────────────────────────────────┘
+   ```
+
+   The banner is dismissible and does not interrupt the composition flow. No modal dialog is shown. This keeps the experience elegant and non-intrusive while still making the watch state visible.

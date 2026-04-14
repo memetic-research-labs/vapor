@@ -208,6 +208,7 @@ struct PromptSegment: Codable, Identifiable {
     // Text segment
     var text: String?
     var isDictated: Bool?
+    var noCompress: Bool = false    // when true, segment bypasses compression verbatim
 
     // Context item segment
     var contextItemID: UUID?
@@ -272,13 +273,16 @@ Generates embeddings for both `ContextItem`s and `ComposedPrompt`s. Used for sem
 
 ```swift
 final class VectorizationService {
-    // Primary: Apple on-device NaturalLanguage embeddings (NLEmbedding)
-    // Secondary: OpenAI text-embedding-3-small via OpenRouter
-    // For images: CLIP-style via Apple's Vision framework (feature prints)
+    // Primary (text): HuggingFace ONNX model running on-device via CoreML conversion
+    //   Recommended: all-MiniLM-L6-v2 (384-dim, fast) or nomic-embed-text-v1.5 (768-dim, higher quality)
+    //   Models are bundled as .mlpackage assets converted with exportcoreml / apple/coremltools
+    // Fallback (text): Apple NLEmbedding (available, but lower quality — use only if CoreML model unavailable)
+    // Images: OpenAI CLIP ViT-B/32 — re-use CoreML port from the image-pipeline repo
+    //   (image-pipeline/models/clip_image_encoder.mlpackage)
 
     func embed(contextItem: ContextItem) async throws -> [Float]
     func embed(text: String) async throws -> [Float]
-    func embed(image: CGImage) async throws -> [Float]  // Vision FeaturePrint
+    func embed(image: CGImage) async throws -> [Float]  // CLIP image encoder
 
     func similarity(_ a: [Float], _ b: [Float]) -> Float  // cosine similarity
 }
@@ -286,14 +290,19 @@ final class VectorizationService {
 
 **Vector Index:** Embeddings are stored in a lightweight SQLite database with a custom cosine-similarity query using SQLite's `json_each` or an optional `sqlite-vec` extension. The index file lives at `~/Library/Application Support/Vapor/vector.db`.
 
-**Alternative:** Apple's `NLEmbedding` and `CreateML` frameworks for on-device embedding without any network call. This is preferred for privacy and latency.
+**Model sourcing:** Preferred text models are available on HuggingFace in ONNX format and can be converted to CoreML with `coremltools`. The CLIP image encoder is already ported in the `image-pipeline` repo and should be re-used directly. Apple `NLEmbedding` is kept as a zero-dependency fallback only.
 
 ### EntityExtractionService
 
-Uses Apple's `NaturalLanguage` framework for NER (Named Entity Recognition) — no network required.
+Uses Apple's `NaturalLanguage` framework for NER (Named Entity Recognition) — no network required. On-device small LLMs (Gemma 2B, Qwen2-1.5B via CoreML) are viable alternatives for higher-quality extraction and should be evaluated once the embedding model integration is stable.
 
 ```swift
 final class EntityExtractionService {
+    // Backend options (configurable):
+    //   .nlTagger   — Apple NLTagger, zero-config, instant, adequate quality
+    //   .onDeviceLLM — Gemma 2B / Qwen2-1.5B via CoreML; higher recall for code entities
+    var backend: EntityExtractionBackend = .nlTagger
+
     private let tagger = NLTagger(tagSchemes: [.nameType])
 
     func extract(from text: String) -> [ExtractedEntity]
@@ -302,7 +311,7 @@ final class EntityExtractionService {
 
 Recognized entity types map to `EntityKind`: `NLTag.personalName` → `.person`, `NLTag.organizationName` → `.organization`, `NLTag.placeName` → `.location`.
 
-For code entities (function names, APIs, package names), a regex-augmented pass runs after NER.
+For code entities (function names, APIs, package names), a regex-augmented pass runs after NER. When the on-device LLM backend is selected, a structured prompt instructs the model to return entities as JSON, which is parsed into `[ExtractedEntity]` directly.
 
 ### TaggerService
 
@@ -456,6 +465,26 @@ CREATE TABLE embedding_text_fts (
 ## Prompt Compression Integration
 
 Every `ComposedPrompt` passes through the existing `CompressionService` when the user triggers `⌘↩`. The compression target is `serialise()` — the plain-text rendering of all segments, including inline text from context items.
+
+### No-Compress Token
+
+Some segments must reach the LLM verbatim — URLs, API endpoint paths, version numbers, package names, file paths, and other technical data where compression would destroy meaning. These segments are flagged with `noCompress = true` on `PromptSegment`.
+
+During serialisation, `PromptCompositionService` wraps no-compress segments in a sentinel token pair so the `CompressionService` can pass them through untouched:
+
+```
+{{RAW}}https://api.example.com/v2/infer?model=gpt-4o{{/RAW}}
+```
+
+The `CompressionService` pre-processes the input string to extract all `{{RAW}}…{{/RAW}}` spans, compresses the remaining text, then splices the raw spans back in at their original positions before returning the final string.
+
+The compressed output therefore looks like:
+
+```
+seniorSwiftdev reviewNIOimpl endpoint{{RAW}}https://api.example.com/v2/infer?model=gpt-4o{{/RAW}} focuserrorhandling
+```
+
+LLMs already ignore unknown control tokens gracefully; in practice the `{{RAW}}` delimiters can be stripped as a post-processing step before dispatch if the target API is sensitive to them.
 
 Media segments (images, videos) are excluded from the compression text but their citations are included as a compact reference list appended after the compressed text:
 
@@ -626,7 +655,7 @@ Results are merged and re-ranked by a weighted score: `0.4 * fts_score + 0.4 * v
 
 ## Privacy & Performance Notes
 
-- **All NLP processing is on-device** (NLEmbedding, NLTagger, Vision). No text or images are sent to a network for processing unless the user has configured OpenRouter.
+- **All NLP processing is on-device** (HuggingFace CoreML models, Apple NLTagger, CLIP). No text or images are sent to a network for processing unless the user has configured OpenRouter.
 - Binary blobs are stored in the app's sandboxed `Application Support` directory and are never uploaded anywhere.
 - The vector index grows linearly. At 1,000 items, each with a 512-float embedding, the index is ~2 MB — trivially small.
 - Blob storage is capped at a user-configurable limit (default: 500 MB). Eviction removes the oldest items first.
@@ -636,18 +665,27 @@ Results are merged and re-ranked by a weighted score: `0.4 * fts_score + 0.4 * v
 
 ## Open Questions
 
-1. **Multi-modal LLM integration:** When a `ComposedPrompt` contains image segments, which LLM APIs should receive the images? Should we use OpenRouter's multi-modal endpoints, or rely on Apple Intelligence's future multi-modal capabilities? See `docs/plan-multimodal-llm-upgrade.md`.
-2. **Video handling:** Full video clips can be very large. Options: (a) capture only key frames via `AVAssetImageGenerator`; (b) accept short clips only (< 30s); (c) transcribe audio track and capture as text. This decision affects `BlobStore` design significantly.
-3. **Sync/iCloud:** Should the vector index and blob store be iCloud-backed? iCloud Drive has quota implications for binary assets.
-4. **Citation formats:** Which formats should we generate automatically? Proposal: URL-only always; APA/MLA/Chicago on demand.
-5. **Glossary sharing:** Should glossaries be exportable/importable (JSON)? Could enable team-level shared glossaries.
+1. **Multi-modal LLM integration:** Use OpenRouter's multi-modal endpoints as the primary destination for composed prompts containing image segments (OpenRouter supports GPT-4o, Claude 3.5 Sonnet, Gemini 1.5 Pro, etc.). Corporate or firewall-internal tools are addressed by designating any open browser tab and its prompt input element as a delivery destination via the existing bidirectional bridge — the extension injects the serialised prompt (and, where the UI supports it, inline images) directly. A browser-extension **plugin system** (custom destination adapters) is a natural follow-on that will make this extensible to arbitrary internal tools without shipping new app versions; tracked as a future issue.
+
+2. **Video handling (low priority):** Full video clips can be very large. Preferred approach: embed `ffmpeg` (static binary or via Swift wrapper) to pre-process clips — reduce frame rate, lower resolution, and trim to a user-set max duration — before any frame extraction or transcription. Options: (a) extract key frames post-ffmpeg via `AVAssetImageGenerator`; (b) transcribe the audio track via `SFSpeechRecognizer` and capture as text. The ffmpeg path gives the most control over file size and keeps the blob store manageable. Low priority for now — design with this capability in mind but do not block Phase 1–3 on it.
+
+3. **Sync / companion apps:** Design the data layer (SwiftData schema, blob store paths, vector index) to be iCloud Drive–compatible from the start, so a future iOS or Android companion app can sync context items and glossaries. iCloud-backing of the blob store is deferred (quota implications); text metadata and the vector index are lightweight enough to sync via iCloud Documents. A companion mobile app would make capturing context while on the go natural — not high priority now, but the schema should not make it hard later.
+
+4. **Citation formats:** Generate two formats automatically: **URL-only** (always, zero-config) and **APA** (on demand, sufficient for most research and writing workflows). MLA and Chicago can be added later via a format-string template if demand warrants it.
+
+5. **Glossary sharing:** Exportable/importable glossaries (JSON) would enable team-level shared glossary packs. Tracked as a follow-up issue — not in scope for the current implementation phases.
 
 ---
 
 ## References
 
+- [HuggingFace ONNX models — all-MiniLM-L6-v2](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2)
+- [HuggingFace ONNX models — nomic-embed-text-v1.5](https://huggingface.co/nomic-ai/nomic-embed-text-v1.5)
+- [Apple coremltools — ONNX conversion](https://coremltools.readme.io/docs/convert-learning-models)
+- [OpenAI CLIP — CoreML port](https://github.com/openai/CLIP) (see also: `image-pipeline` repo)
+- [Gemma 2B on CoreML](https://huggingface.co/google/gemma-2b)
+- [Qwen2-1.5B on CoreML](https://huggingface.co/Qwen/Qwen2-1.5B)
 - [Apple NaturalLanguage Framework](https://developer.apple.com/documentation/naturallanguage)
-- [Apple Vision Framework — Feature Print](https://developer.apple.com/documentation/vision/vnfeatureprintobservation)
 - [Mozilla Readability](https://github.com/mozilla/readability) — article extraction in extension
 - [SQLite FTS5](https://www.sqlite.org/fts5.html)
 - [sqlite-vec](https://github.com/asg017/sqlite-vec) — optional vector extension for SQLite
