@@ -43,6 +43,15 @@ nonisolated final class VaporHTTPHandler: ChannelInboundHandler, @unchecked Send
                 return
             }
 
+            if head.method == .GET && requestPath == "/api/status" {
+                sendJSON(context: context, status: .ok, body: [
+                    "status": "ok",
+                    "version": "1.0",
+                    "connectedClients": sseHub.clientCount
+                ])
+                return
+            }
+
             guard checkAuth(head: head) else {
                 sendJSON(context: context, status: .unauthorized, body: ["error": "Unauthorized"])
                 return
@@ -54,12 +63,6 @@ nonisolated final class VaporHTTPHandler: ChannelInboundHandler, @unchecked Send
                 handleSSEConnect(context: context, head: head)
             case (.POST, "/api/response"):
                 break
-            case (.GET, "/api/status"):
-                sendJSON(context: context, status: .ok, body: [
-                    "status": "ok",
-                    "version": "1.0",
-                    "connectedClients": sseHub.clientCount
-                ])
             default:
                 sendJSON(context: context, status: .notFound, body: ["error": "Not found"])
             }
@@ -157,8 +160,23 @@ nonisolated final class VaporHTTPHandler: ChannelInboundHandler, @unchecked Send
 
     private func checkAuth(head: HTTPRequestHead) -> Bool {
         let token = authTokenProvider()
+        if token.isEmpty { return false }
+
         let auth = head.headers.first(name: "Authorization")
         if let auth, auth == "Bearer \(token)" { return true }
+
+        let queryToken = head.uri.split(separator: "?", maxSplits: 1).last
+            .flatMap { String($0).split(separator: "&").map(String.init) }
+            .flatMap { parts -> String? in
+                for part in parts {
+                    if part.hasPrefix("token=") {
+                        return String(part.dropFirst(6)).removingPercentEncoding
+                    }
+                }
+                return nil
+            }
+        if let queryToken, !queryToken.isEmpty, queryToken == token { return true }
+
         return false
     }
 

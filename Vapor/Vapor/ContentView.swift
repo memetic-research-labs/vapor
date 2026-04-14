@@ -69,6 +69,25 @@ struct ContentView: View {
                     .background(Color(NSColor.controlBackgroundColor))
             }
         }
+        .alert("Browser Server Error", isPresented: .init(
+            get: { browserBridge.portConflict },
+            set: { if !$0 { browserBridge.portConflict = false } }
+        )) {
+            Button("Open Settings", role: nil) {
+                openWindow(id: "settings")
+                browserBridge.portConflict = false
+            }
+            Button("Dismiss", role: .cancel) {
+                browserBridge.portConflict = false
+            }
+        } message: {
+            Text("Port \(browserBridge.serverPort) is already in use. Another app may be running, or a previous Vapor instance didn't shut down cleanly.\n\nChange the port in Settings > Browser or quit the conflicting process.")
+        }
+        .onChange(of: browserBridge.portConflict) { _, isConflict in
+            if isConflict {
+                toastService.showError("Port \(browserBridge.serverPort) unavailable")
+            }
+        }
     }
 
     private var contentGroup: some View {
@@ -103,6 +122,9 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .vaporShowHelp)) { _ in
             openWindow(id: "keyboard-shortcuts")
         }
+        .onReceive(NotificationCenter.default.publisher(for: .vaporSendToBrowser)) { _ in
+            sendToBrowser()
+        }
         .onReceive(NotificationCenter.default.publisher(for: .vaporLLMDownloadCompleted)) { _ in
             Task { await compressionService.reloadLocalLLMIfNeeded() }
         }
@@ -119,6 +141,7 @@ struct ContentView: View {
             onClear: { viewModel.copyAndClear() },
             onShowHistory: { openWindow(id: "prompt-history") },
             onShowHelp: { openWindow(id: "keyboard-shortcuts") },
+            onSendToBrowser: { sendToBrowser() },
             text: $viewModel.content,
             statusMessage: compressionService.statusMessage,
             isDictating: viewModel.isDictating,
@@ -297,6 +320,17 @@ struct ContentView: View {
 
     private func toggleDictation() {
         toastService.showInfo("Hold the Fn key to dictate, release to stop")
+    }
+
+    private func sendToBrowser() {
+        guard browserBridge.isExtensionConnected else {
+            toastService.showError("No browser extension connected")
+            return
+        }
+        guard !viewModel.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        let text = viewModel.compressedContent.isEmpty ? viewModel.content : viewModel.compressedContent
+        browserBridge.sendPrompt(text, original: viewModel.content, autoSubmit: preferences.autoSubmitToAI)
+        toastService.showSuccess("Sent to browser")
     }
 
     // Dictation is Fn-key only. No auto-start on expand.

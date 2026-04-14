@@ -16,6 +16,7 @@ struct MinimizedPillView: View {
     let onClear: () -> Void
     let onShowHistory: () -> Void
     let onShowHelp: () -> Void
+    let onSendToBrowser: () -> Void
 
     // State
     @Binding var text: String
@@ -227,6 +228,19 @@ struct MinimizedPillView: View {
             .controlSize(.small)
             .disabled(!hasContent)
             .help("Copy Original ( ⌘ ⇧ C )")
+
+            // Send to Browser
+            if isBrowserConnected {
+                Button(action: { if hasContent { onSendToBrowser() } }, label: {
+                    Image(systemName: "safari.fill")
+                        .font(.system(size: 11))
+                        .foregroundColor(.blue)
+                })
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(!hasContent)
+                .help("Send to Browser ( ⌘ ⇧ ↩ )")
+            }
 
             // Clear (copy + clear)
             Button(action: onClear) {

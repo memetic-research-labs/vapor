@@ -136,6 +136,11 @@ struct VaporApp: App {
                 }
                 .keyboardShortcut(.return, modifiers: .command)
 
+                Button("Send to Browser") {
+                    NotificationCenter.default.post(name: .vaporSendToBrowser, object: nil)
+                }
+                .keyboardShortcut(.return, modifiers: [.command, .shift])
+
                 Button("Copy & Clear") {
                     NotificationCenter.default.post(name: .vaporCopyAndClear, object: nil)
                 }

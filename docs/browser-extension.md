@@ -1,135 +1,183 @@
 # Browser Extension: Setup and Usage Guide
 
-This guide explains how to install the **Vapor – Prompt Injector** Chrome extension and use it to automatically inject compressed prompts from Vapor into any web-based AI chat.
+The Vapor Chrome extension sends compressed prompts from the Vapor Mac app directly into AI chat tabs — no copy-paste needed.
 
 ---
 
 ## Prerequisites
 
-- Vapor for macOS installed and running
-- Google Chrome (or any Chromium-based browser: Arc, Brave, Edge)
+- Vapor for macOS running
+- Google Chrome
 - macOS 13 Ventura or later
 
 ---
 
-## Installation
+## Install the Extension
 
-### 1. Enable Browser Integration in Vapor
-
-1. Open Vapor and click the ⚙️ Settings button.
-2. In the **Browser Integration** section, check **Enable browser integration**.
-3. Optionally set the **Server port** (default: `8766`). Only change this if another service is already using that port.
-4. Restart Vapor if prompted.
-
-### 2. Load the Extension in Chrome
-
-The extension is not yet on the Chrome Web Store. Load it as an unpacked extension:
+The extension is not on the Chrome Web Store. Load it as an unpacked extension:
 
 1. Open Chrome and navigate to `chrome://extensions`.
 2. Enable **Developer mode** (toggle in the top-right corner).
 3. Click **Load unpacked**.
-4. Select the `vapor-extension/` folder from the Vapor repository (or from wherever you downloaded it).
-5. The Vapor icon (⚡) appears in your Chrome toolbar.
-
-### 3. Verify the Connection
-
-- Click the ⚡ Vapor icon in Chrome. The popup should show **"Connected to Vapor"** with a green dot.
-- In Vapor's toolbar, you should see **"🌐 Browser connected"** with a green indicator.
-
-If the popup shows "Waiting for Vapor…", make sure Vapor is running with browser integration enabled (Step 1).
+4. Select the `vapor-extension/` folder from the Vapor repository.
+5. The Vapor icon appears in your Chrome toolbar.
 
 ---
 
-## Basic Usage
+## Enable Browser Integration in Vapor
 
-### Inject a Prompt (Manual)
-
-1. Type or dictate a prompt in Vapor.
-2. Press `⌘↩` to compress the prompt. It is automatically copied to your clipboard (existing behaviour).
-3. Switch to your Chrome tab (ChatGPT, Claude, Gemini, etc.).
-4. The compressed prompt is already in your clipboard — paste with `⌘V` as usual.
-
-### Inject a Prompt (Automatic — Recommended)
-
-1. Open Vapor Settings → Browser Integration.
-2. Enable **Auto-send to browser after compression**.
-3. Optionally enable **Auto-submit to AI** (simulates pressing Enter after injection).
-4. Now press `⌘↩` in Vapor. The compressed prompt is injected directly into your active AI chat tab — no paste needed.
-
-### Compress, Copy, and Send in One Step
-
-Press `⌘⇧↩` to compress, copy to clipboard, **and** send to the browser — regardless of the auto-send setting. Useful when you want to override auto-send for a specific prompt.
+1. Open Vapor Settings (**⌘,** or the gear icon).
+2. Go to the **Browser** tab.
+3. Check **Enable browser integration**.
+4. Note the **Auth Token** shown in the settings — you'll need this in the next step.
+5. The embedded server starts on port `8766` by default. Only change this if another service is using that port.
 
 ---
 
-## Supported AI Platforms
+## Copy the Auth Token to the Extension
 
-The extension auto-detects the prompt input on these platforms out of the box:
+The extension authenticates to Vapor's local server using a shared token.
 
-| Platform | URL | Notes |
-|---|---|---|
-| ChatGPT | chatgpt.com | Uses `#prompt-textarea` |
-| Claude | claude.ai | Uses `div[contenteditable]` |
-| Gemini | gemini.google.com | Uses `div[contenteditable]` |
-| Perplexity | perplexity.ai | Uses `textarea` |
-| Generic | any other site | Keyword-based heuristic |
-
-For platforms not listed above, or if auto-detection picks the wrong field, use the **DOM Element Picker** (see below).
+1. In Vapor Settings > Browser, click the copy button next to the auth token.
+2. Click the Vapor icon in your Chrome toolbar to open the extension popup.
+3. Paste the token into the input field.
+4. Click **Save**.
+5. The token field should now show "Token saved" and be disabled.
 
 ---
 
-## DOM Element Picker
+## Verify the Connection
 
-If the extension injects into the wrong field, or you are on a custom AI tool not in the list:
+### In Vapor
 
-1. In Vapor's expanded toolbar, click **[Pick Target]** (visible when extension is connected).
-2. An overlay appears on your active tab. Move the mouse — blue outlines highlight text inputs.
-3. Click the input field where you want prompts injected.
-4. Vapor stores this choice for the current domain. All future injections on this site use the selected field.
+- **Pulsing orange** `safari` icon — server is running, waiting for the extension to connect.
+- **Solid blue** `safari` icon — extension is connected and ready.
+- **No icon** — browser integration is not enabled in Settings.
 
-To change or clear a pinned target, go to Vapor Settings → Browser Integration → Pinned targets.
+### In the Extension
+
+- Click the Vapor icon in Chrome. The popup should show **"Connected to Vapor"**.
+- If the popup shows "No connection", check that Vapor is running and the token matches.
+
+### After Closing Vapor
+
+- The extension detects the disconnection and shows a red `!` badge.
+- When you relaunch Vapor, the extension reconnects automatically (up to 8 seconds).
 
 ---
 
-## Web Research (Scraping)
+## Send a Prompt to the Browser
 
-Vapor can fetch web pages directly into your prompt editor using the browser:
+### Expanded Window
 
-1. In Vapor's expanded view, click the **🔍 Research** button.
-2. Enter a URL or search query.
-3. Click **Fetch**. The page content (extracted as Markdown) appears in the research panel.
-4. Click **Insert into prompt** to append it to your editor.
+1. Type or dictate a prompt in the editor.
+2. Optionally press `⌘↩` to compress it first.
+3. Click the **blue safari** icon in the toolbar.
 
-See `docs/plan-web-scraping.md` for the full design of the research feature.
+### Pill View
+
+1. Type or dictate a prompt.
+2. Click the **blue safari** icon in the controls bar (visible when the extension is connected).
+
+### Keyboard Shortcut
+
+Press `⌘⇧↩` to send to the browser immediately. This works in both the expanded window and the pill view.
+
+### What Gets Sent
+
+- If you have compressed text, the **compressed** version is sent.
+- If no compression has been done, the **raw editor text** is sent.
+- The text is injected into the active tab's prompt input field.
+
+### Auto-Submit
+
+Enable **Auto-submit to AI** in Vapor Settings > Browser to have the extension simulate pressing Enter after injection. This works on most sites but may not work on all.
+
+---
+
+## Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| `⌘↩` | Compress & copy to clipboard |
+| `⌘⇧↩` | Send to browser |
+| `⌘⇧C` | Copy original text to clipboard |
+| `⌘K` | Copy original & clear |
+
+---
+
+## Supported Sites
+
+The extension detects prompt inputs on these platforms:
+
+| Platform | URL | Input Type |
+|----------|-----|------------|
+| ChatGPT | chatgpt.com | textarea |
+| Claude | claude.ai | contenteditable div |
+| Gemini | gemini.google.com | contenteditable div |
+| Perplexity | perplexity.ai | textarea |
+| Grok | grok.com, x.com | textarea |
+| Generic | any site | keyword-based heuristic fallback |
+
+Some sites may update their DOM and break detection. If injection doesn't work on a site, check the browser console for errors.
+
+---
+
+## Current Limitations
+
+- **Active tab only** — the extension sends to the currently focused tab. There is no tab picker yet.
+- **Single input** — the extension picks the first matching input on the page. There is no DOM picker to choose a specific element.
+- **No scraping** — the extension cannot fetch or extract web page content yet.
+- **Synthetic events** — some sites with custom input handling may not register the injected text.
 
 ---
 
 ## Troubleshooting
 
-### Extension shows "Waiting for Vapor…"
+### Extension shows "No connection"
 
 - Make sure Vapor is running.
-- Make sure **Enable browser integration** is checked in Vapor Settings.
+- Make sure browser integration is enabled in Settings > Browser.
+- Verify the token in the extension popup matches the one in Vapor Settings.
 - Check that nothing else is using port 8766: run `lsof -i :8766` in Terminal.
 
-### Prompt lands in the wrong field
+### Prompt does not appear in the input field
 
-Use the **DOM Element Picker** to manually select the correct element (see above).
+- Make sure the tab has a visible text input or contenteditable area.
+- Some sites use shadow DOM or custom editors that the heuristic cannot detect.
+- Check the extension service worker console (right-click extension icon > "Inspect service worker") for errors.
 
-### Prompt is injected but the chat interface doesn't register it
+### Vapor shows port conflict alert
 
-Some platforms require a specific sequence of synthetic events to trigger their framework bindings. Try disabling and re-enabling the extension, then inject again. If it still fails, file an issue with the platform name and the browser console output.
+- Another process is using port 8766.
+- Either quit the conflicting process or change the port in Settings > Browser.
+- After changing the port, you may need to update the extension's server URL (currently hardcoded to `127.0.0.1:8766` in `background.js`).
 
-### Extension disconnects frequently
+### Extension badge stays red after relaunching Vapor
 
-Chrome's service worker is idle-terminated after ~30 seconds of inactivity. Vapor sends SSE heartbeat pings every 25 seconds to keep the connection alive. If you still see frequent disconnections, check for browser extensions that throttle background scripts.
+- Wait up to 8 seconds for the reconnection backoff.
+- If it doesn't reconnect, go to `chrome://extensions` and click the refresh button on the Vapor extension.
+
+### Debug Logs
+
+- **Extension**: right-click the Vapor icon in Chrome > "Inspect service worker" > Console tab.
+- **Vapor**: check the Xcode console for `[BrowserBridge]` log messages.
 
 ---
 
 ## Privacy and Security
 
-- The embedded server **only** binds `127.0.0.1` — it is never reachable from outside your Mac.
-- No prompt text is sent to any third party by the extension. All communication is between Vapor and Chrome on your local machine.
-- The extension uses broad `host_permissions` (`https://*/*`) to support injection, the DOM picker, and web scraping on **any** site. Chrome warns you about this at install time. The extension does not read page content except when you explicitly trigger an injection, picker, or scrape command.
-- All requests to the embedded server are authenticated with a shared bearer token (generated on first connection). Without this token, other local processes or web pages cannot send or receive prompts.
-- Scraped page content is cached in memory only; it is never written to disk unless you explicitly insert it into a prompt and save prompt history.
+- The embedded server binds **localhost only** (`127.0.0.1`). It is never reachable from outside your Mac.
+- All communication between Vapor and Chrome stays on your local machine. No data is sent to any third-party server.
+- The extension uses a shared bearer token for authentication. Without this token, other local processes or web pages cannot send or receive prompts.
+- The extension requests broad `https://*/*` host permissions. This is required for prompt injection across any site and for future browser-powered context capture features. Chrome warns you about this at install time. The extension does not read page content except when you explicitly trigger an injection.
+- The extension is vanilla JavaScript with no npm dependencies and no build step.
+
+---
+
+## Planned Follow-Ups
+
+- **Tab picker** — fetch and select a specific tab from within Vapor instead of targeting only the active tab. See issue [#33](https://github.com/memetic-research-labs/comp-tok-stt/issues/33).
+- **Dynamic input discovery** — replace hardcoded platform selectors with a visual DOM picker and server-side selector storage. See issue [#32](https://github.com/memetic-research-labs/comp-tok-stt/issues/32) and [`docs/plan-dom-picker.md`](plan-dom-picker.md).
+- **Web scraping** — use the browser as a research agent to fetch and extract page content into Vapor. See [`docs/plan-web-scraping.md`](plan-web-scraping.md).
+- **Context management** — broader bidirectional channel for structured context capture, glossaries, and prompt composition. See the context management design docs (currently under review).

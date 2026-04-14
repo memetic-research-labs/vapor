@@ -18,6 +18,7 @@ final class BrowserBridge {
     var lastInjectionResult: InjectionResult?
     var lastError: String?
     var isRunning: Bool = false
+    var portConflict: Bool = false
 
     var serverPort: Int {
         get {
@@ -56,6 +57,7 @@ final class BrowserBridge {
         guard !isRunning, startTask == nil else { return }
         isRunning = true
         lastError = nil
+        portConflict = false
 
         startTask = Task { [weak self] in
             guard let self else { return }
@@ -89,6 +91,8 @@ final class BrowserBridge {
             } catch {
                 self.isRunning = false
                 self.lastError = error.localizedDescription
+                let nsError = error as NSError
+                self.portConflict = nsError.domain == "NIOCore.IOError" && nsError.code == 1
                 logger.error("Failed to start embedded server: \(error.localizedDescription)")
             }
             self.startTask = nil

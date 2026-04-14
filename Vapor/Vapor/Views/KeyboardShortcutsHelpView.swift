@@ -29,6 +29,7 @@ struct KeyboardShortcutsHelpView: View {
 
                     shortcutSection("Compression") {
                         shortcutRow("⌘ ↩", "Compress & copy to clipboard")
+                        shortcutRow("⌘ ⇧ ↩", "Send to browser")
                         shortcutRow("⌘ ⇧ C", "Copy original text to clipboard")
                         shortcutRow("⌘ K", "Copy original & clear")
                     }

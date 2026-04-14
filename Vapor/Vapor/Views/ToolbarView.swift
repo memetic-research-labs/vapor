@@ -50,6 +50,32 @@ struct ToolbarView: View {
             .disabled(viewModel.content.isEmpty)
             .help("Copy Original ( ⌘ ⇧ C )")
 
+            if browserBridge.isRunning {
+                Button {
+                    browserBridge.sendPrompt(
+                        viewModel.compressedContent.isEmpty ? viewModel.content : viewModel.compressedContent,
+                        original: viewModel.content,
+                        autoSubmit: preferences.autoSubmitToAI
+                    )
+                } label: {
+                    if browserBridge.isExtensionConnected {
+                        Image(systemName: "safari.fill")
+                            .font(.system(size: 13))
+                            .foregroundColor(.blue)
+                    } else {
+                        Image(systemName: "safari.fill")
+                            .font(.system(size: 13))
+                            .foregroundColor(.orange)
+                            .symbolEffect(.pulse, options: .repeating)
+                    }
+                }
+                .buttonStyle(.plain)
+                .disabled(viewModel.content.isEmpty || !browserBridge.isExtensionConnected)
+                .help(browserBridge.isExtensionConnected
+                      ? "Send to browser ( ⌘⇧↩ )"
+                      : "Waiting for browser extension…")
+            }
+
             Spacer()
 
             Button {
@@ -60,13 +86,6 @@ struct ToolbarView: View {
             }
             .buttonStyle(.plain)
             .disabled(viewModel.content.isEmpty)
-
-            if browserBridge.isExtensionConnected {
-                Image(systemName: "safari.fill")
-                    .font(.system(size: 11))
-                    .foregroundColor(.blue)
-                    .help("Browser connected")
-            }
 
             SettingsLink {
                 Image(systemName: "gearshape")
