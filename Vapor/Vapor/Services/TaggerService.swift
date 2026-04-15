@@ -49,7 +49,8 @@ final class TaggerService {
         }
 
         if let text = contextItem.textContent, !text.isEmpty {
-            let textTags = extractKeywords(from: text, limit: maxTags - tags.count)
+            let remaining = max(0, maxTags - tags.count)
+            let textTags = extractKeywords(from: text, limit: remaining)
             for tag in textTags {
                 if !tags.contains(tag) { tags.append(tag) }
             }
@@ -68,6 +69,7 @@ final class TaggerService {
     }
 
     private func extractKeywords(from text: String, limit: Int) -> [String] {
+        guard limit > 0 else { return [] }
         let words = text.lowercased()
             .components(separatedBy: CharacterSet.alphanumerics.inverted)
             .filter { $0.count >= minTagLength && !stopWords.contains($0) }
