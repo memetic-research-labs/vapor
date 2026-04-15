@@ -25,6 +25,9 @@ final class ContextQueueService {
 
     private var blobStore = BlobStore.shared
     private var modelContext: ModelContext?
+    private let entityExtractor = EntityExtractionService()
+    private let tagger = TaggerService()
+    private let citationBuilder = CitationBuilder()
 
     func setModelContext(_ context: ModelContext) {
         self.modelContext = context
@@ -106,6 +109,18 @@ final class ContextQueueService {
         processing.append(item)
 
         do {
+            if let text = item.textContent, !text.isEmpty {
+                let entities = entityExtractor.extract(from: text)
+                item.entities = entities
+
+                let tags = tagger.tag(contextItem: item)
+                item.tags = tags
+            }
+
+            if let citation = citationBuilder.build(for: item) {
+                item.citation = citation
+            }
+
             if let ctx = modelContext {
                 ctx.insert(item)
                 try ctx.save()
@@ -113,7 +128,7 @@ final class ContextQueueService {
             processing.removeAll { $0.id == item.id }
             item.status = .ready
             ready.append(item)
-            logger.info("Context item ready: \(item.id)")
+            logger.info("Context item ready: \(item.id) with \(item.tags.count) tags, \(item.entities.count) entities")
         } catch {
             processing.removeAll { $0.id == item.id }
             item.status = .failed
