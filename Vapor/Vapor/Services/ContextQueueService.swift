@@ -28,6 +28,34 @@ final class ContextQueueService {
 
     func setModelContext(_ context: ModelContext) {
         self.modelContext = context
+        loadPersistedItems()
+    }
+
+    private func loadPersistedItems() {
+        guard let ctx = modelContext else { return }
+        do {
+            let descriptor = FetchDescriptor<ContextItem>(sortBy: [SortDescriptor(\.capturedAt, order: .reverse)])
+            let items = try ctx.fetch(descriptor)
+            for item in items {
+                switch item.status {
+                case .pending:
+                    if !queue.contains(where: { $0.id == item.id }) { queue.append(item) }
+                case .processing:
+                    item.status = .ready
+                    try ctx.save()
+                    fallthrough
+                case .ready:
+                    if !ready.contains(where: { $0.id == item.id }) { ready.append(item) }
+                case .failed:
+                    if !failed.contains(where: { $0.id == item.id }) { failed.append(item) }
+                }
+            }
+            if !items.isEmpty {
+                logger.info("Loaded \(items.count) persisted context items")
+            }
+        } catch {
+            logger.error("Failed to load persisted context items: \(error.localizedDescription)")
+        }
     }
 
     func status(for jobId: String) -> String? {
