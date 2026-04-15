@@ -11,6 +11,7 @@ struct VaporApp: App {
     @State private var windowManager: WindowManager
     @State private var compressionService = CompressionService()
     @State private var browserBridge = BrowserBridge()
+    @State private var contextQueueService = ContextQueueService()
     @Environment(\.openWindow) private var openWindow
 
     init() {
@@ -19,6 +20,7 @@ struct VaporApp: App {
         _preferences = State(initialValue: prefs)
         _windowManager = State(initialValue: WindowManager.shared)
         _browserBridge = State(initialValue: BrowserBridge())
+        _contextQueueService = State(initialValue: ContextQueueService())
     }
 
     private static var hasSetupBrowserBridge = false
@@ -83,7 +85,10 @@ struct VaporApp: App {
                 .environment(preferences)
                 .environment(compressionService)
                 .environment(browserBridge)
+                .environment(contextQueueService)
                 .onAppear {
+                    browserBridge.setContextQueueService(contextQueueService)
+                    contextQueueService.setModelContext(sharedModelContainer.mainContext)
                     setupBrowserBridge()
                     KeyboardShortcuts.onKeyUp(for: .toggleVapor) { windowManager.focus() }
                     windowManager.setupWindowOnAppear()

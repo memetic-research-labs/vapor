@@ -13,6 +13,8 @@ nonisolated final class VaporHTTPHandler: ChannelInboundHandler, @unchecked Send
     let sseHub: SSEHub
     let authTokenProvider: @Sendable () -> String
     let onExtensionResponse: @Sendable ([String: Any]) -> Void
+    let onContextCapture: @Sendable ([String: Any]) -> Void
+    let contextItemStatusProvider: @Sendable (String) -> String?
 
     private var requestHead: HTTPRequestHead?
     private var requestPath: String = ""
@@ -22,11 +24,15 @@ nonisolated final class VaporHTTPHandler: ChannelInboundHandler, @unchecked Send
     init(
         sseHub: SSEHub,
         authTokenProvider: @escaping @Sendable () -> String,
-        onExtensionResponse: @escaping @Sendable ([String: Any]) -> Void
+        onExtensionResponse: @escaping @Sendable ([String: Any]) -> Void,
+        onContextCapture: @escaping @Sendable ([String: Any]) -> Void,
+        contextItemStatusProvider: @escaping @Sendable (String) -> String?
     ) {
         self.sseHub = sseHub
         self.authTokenProvider = authTokenProvider
         self.onExtensionResponse = onExtensionResponse
+        self.onContextCapture = onContextCapture
+        self.contextItemStatusProvider = contextItemStatusProvider
     }
 
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
@@ -63,7 +69,19 @@ nonisolated final class VaporHTTPHandler: ChannelInboundHandler, @unchecked Send
                 handleSSEConnect(context: context, head: head)
             case (.POST, "/api/response"):
                 break
+            case (.POST, "/api/context"):
+                break
             default:
+                if head.method == .GET, requestPath.hasPrefix("/api/context/status/") {
+                    let jobId = String(requestPath.dropFirst("/api/context/status/".count))
+                    let status = contextItemStatusProvider(jobId)
+                    if let status {
+                        sendJSON(context: context, status: .ok, body: ["jobId": jobId, "status": status])
+                    } else {
+                        sendJSON(context: context, status: .notFound, body: ["error": "Not found"])
+                    }
+                    return
+                }
                 sendJSON(context: context, status: .notFound, body: ["error": "Not found"])
             }
 
@@ -77,6 +95,8 @@ nonisolated final class VaporHTTPHandler: ChannelInboundHandler, @unchecked Send
                 switch (head.method, requestPath) {
                 case (.POST, "/api/response"):
                     handlePostResponse(context: context)
+                case (.POST, "/api/context"):
+                    handleContextCapture(context: context)
                 default:
                     break
                 }
@@ -208,6 +228,31 @@ nonisolated final class VaporHTTPHandler: ChannelInboundHandler, @unchecked Send
     }
 
     func channelInactive(context: ChannelHandlerContext) {}
+
+    private func handleContextCapture(context: ChannelHandlerContext) {
+        let bytes = bodyBuffer?.readableBytes ?? 0
+        guard let str = bodyBuffer?.getString(at: 0, length: bytes), !str.isEmpty else {
+            sendJSON(context: context, status: .badRequest, body: ["error": "Empty body"])
+            return
+        }
+        guard let bodyData = str.data(using: .utf8) else {
+            sendJSON(context: context, status: .badRequest, body: ["error": "Invalid UTF-8"])
+            return
+        }
+        guard let json = try? JSONSerialization.jsonObject(with: bodyData) as? [String: Any] else {
+            sendJSON(context: context, status: .badRequest, body: ["error": "Invalid JSON"])
+            return
+        }
+        guard json["type"] as? String == "CONTEXT_CAPTURE" else {
+            sendJSON(context: context, status: .badRequest, body: ["error": "Expected CONTEXT_CAPTURE type"])
+            return
+        }
+
+        logger.debug("Context capture: \(json)")
+        onContextCapture(json)
+        let jobId = json["jobId"] as? String ?? "unknown"
+        sendJSON(context: context, status: .ok, body: ["status": "accepted", "jobId": jobId])
+    }
 
     func errorCaught(context: ChannelHandlerContext, error: Error) {
         logger.error("HTTP handler error: \(error.localizedDescription)")

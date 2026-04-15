@@ -20,7 +20,9 @@ nonisolated final class VaporEmbeddedServer: @unchecked Sendable {
 
     func start(
         authTokenProvider: @escaping @Sendable () -> String,
-        onResponse: @escaping @Sendable ([String: Any]) -> Void
+        onResponse: @escaping @Sendable ([String: Any]) -> Void,
+        onContextCapture: @escaping @Sendable ([String: Any]) -> Void,
+        contextItemStatusProvider: @escaping @Sendable (String) -> String?
     ) async throws {
         let alreadyStarted: Bool = lock.withLock {
             guard _channel == nil else { return true }
@@ -39,7 +41,9 @@ nonisolated final class VaporEmbeddedServer: @unchecked Sendable {
                     let handler = VaporHTTPHandler(
                         sseHub: hub,
                         authTokenProvider: authTokenProvider,
-                        onExtensionResponse: onResponse
+                        onExtensionResponse: onResponse,
+                        onContextCapture: onContextCapture,
+                        contextItemStatusProvider: contextItemStatusProvider
                     )
                     return channel.pipeline.configureHTTPServerPipeline(withPipeliningAssistance: true).flatMap { _ in
                         channel.pipeline.addHandler(handler)

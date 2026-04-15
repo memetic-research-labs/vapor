@@ -10,6 +10,19 @@ struct InjectionResult {
     var timestamp: Date
 }
 
+final class ContextStatusCache: @unchecked Sendable {
+    private var storage: [String: String] = [:]
+    private let lock = NSLock()
+
+    func get(_ jobId: String) -> String? {
+        lock.withLock { storage[jobId] }
+    }
+
+    func set(_ jobId: String, _ status: String) {
+        lock.withLock { storage[jobId] = status }
+    }
+}
+
 @MainActor
 @Observable
 final class BrowserBridge {
@@ -32,8 +45,14 @@ final class BrowserBridge {
     private var server: VaporEmbeddedServer?
     private var startTask: Task<Void, Never>?
     private static let tokenKey = "browserBridgeAuthToken"
+    private var contextQueueService: ContextQueueService?
+    let contextStatusCache = ContextStatusCache()
 
     init() {}
+
+    func setContextQueueService(_ service: ContextQueueService) {
+        self.contextQueueService = service
+    }
 
     nonisolated func authToken() -> String {
         if let token = UserDefaults.standard.string(forKey: Self.tokenKey), !token.isEmpty {
@@ -80,6 +99,14 @@ final class BrowserBridge {
                         Task { @MainActor [weak self] in
                             self?.handleExtensionResponse(json)
                         }
+                    },
+                    onContextCapture: { [weak self] json in
+                        Task { @MainActor [weak self] in
+                            self?.handleContextCapture(json)
+                        }
+                    },
+                    contextItemStatusProvider: { [weak cache = self.contextStatusCache] jobId in
+                        cache?.get(jobId)
                     }
                 )
                 guard !Task.isCancelled else {
@@ -164,6 +191,39 @@ final class BrowserBridge {
 
         default:
             logger.debug("Unknown extension response type: \(type)")
+        }
+    }
+
+    func handleContextCapture(_ json: [String: Any]) {
+        guard let kind = json["kind"] as? String,
+              let jobId = json["jobId"] as? String else {
+            logger.warning("Context capture missing kind or jobId")
+            return
+        }
+
+        contextStatusCache.set(jobId, "pending")
+
+        let payload = BrowserContextPayload(
+            kind: kind,
+            jobId: jobId,
+            url: json["url"] as? String ?? "",
+            title: json["title"] as? String ?? "",
+            textContent: json["textContent"] as? String,
+            mimeType: json["mimeType"] as? String,
+            dataURL: json["dataURL"] as? String,
+            capturedAt: json["capturedAt"] as? String
+        )
+
+        Task {
+            do {
+                let item = try await contextQueueService?.ingest(payload)
+                let itemId = item?.id.uuidString ?? jobId
+                contextStatusCache.set(itemId, "ready")
+                logger.info("Context item ingested: \(itemId)")
+            } catch {
+                contextStatusCache.set(jobId, "failed")
+                logger.error("Context ingestion failed: \(error.localizedDescription)")
+            }
         }
     }
 }
