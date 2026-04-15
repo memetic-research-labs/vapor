@@ -34,16 +34,19 @@ struct ContextTrayView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 2) {
                         ForEach(filteredItems) { item in
-                            ContextItemRow(item: item)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 3)
-                                .onTapGesture {
+                            Button {
+                                openDetail(item: item)
+                            } label: {
+                                ContextItemRow(item: item)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 3)
+                            }
+                            .buttonStyle(.plain)
+                            .contentShape(Rectangle())
+                            .contextMenu {
+                                Button("Open") {
                                     openDetail(item: item)
                                 }
-                                .contextMenu {
-                                    Button("Open") {
-                                        openDetail(item: item)
-                                    }
                                     Button("Insert into editor") {
                                         insertItem(item)
                                     }
@@ -161,8 +164,7 @@ struct ContextTrayView: View {
     }
 
     private func openDetail(item: ContextItem) {
-        ContextDetailStore.shared.selectedItemID = item.id
-        openWindow(id: "context-item-detail")
+        openWindow(value: ContextItemDetailPayload(itemID: item.id))
     }
 
     private func insertItem(_ item: ContextItem) {

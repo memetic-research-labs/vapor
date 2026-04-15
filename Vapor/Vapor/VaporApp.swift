@@ -223,9 +223,12 @@ struct VaporApp: App {
                 .environment(browserBridge)
         }
 
-        Window("Context Item", id: "context-item-detail") {
-            ContextItemDetailView()
-                .environment(ContextDetailStore.shared)
+        WindowGroup("Context Item", for: ContextItemDetailPayload.self) { $payload in
+            Group {
+                if let payload, let itemID = $payload.wrappedValue?.itemID {
+                    ContextItemDetailView(itemID: itemID)
+                }
+            }
         }
         .modelContainer(sharedModelContainer)
         .windowStyle(.titleBar)

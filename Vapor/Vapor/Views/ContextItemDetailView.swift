@@ -3,12 +3,10 @@ import SwiftData
 
 struct ContextItemDetailView: View {
     @Environment(\.modelContext) private var modelContext
-    @Environment(ContextDetailStore.self) private var detailStore
+    let itemID: UUID
 
     @State private var item: ContextItem?
     @State private var showCopyConfirmation = false
-
-    private var itemID: UUID { detailStore.selectedItemID }
 
     var body: some View {
         Group {
@@ -59,10 +57,6 @@ struct ContextItemDetailView: View {
         .frame(minWidth: 480, minHeight: 400)
         .background(Color(nsColor: .windowBackgroundColor))
         .onAppear {
-            fetchItem()
-        }
-        .onChange(of: detailStore.selectedItemID) {
-            item = nil
             fetchItem()
         }
         .overlay(alignment: .top) {
