@@ -2783,4 +2783,6 @@ if (typeof module === "object") {
   /* eslint-disable-next-line no-redeclare */
   /* global module */
   module.exports = Readability;
+} else {
+  self.Readability = Readability;
 }

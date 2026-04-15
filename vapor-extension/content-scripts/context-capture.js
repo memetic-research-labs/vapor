@@ -9,18 +9,6 @@ function generateJobId() {
   return 'ctx-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
 
-async function loadReadability() {
-  if (typeof Readability !== 'undefined') return;
-  const script = document.createElement('script');
-  script.src = chrome.runtime.getURL('libs/readability.js');
-  script.type = 'text/javascript';
-  document.head.appendChild(script);
-  await new Promise((resolve, reject) => {
-    script.onload = resolve;
-    script.onerror = reject;
-  });
-}
-
 async function captureSelection() {
   const selection = window.getSelection();
   const text = selection ? selection.toString().trim() : '';
@@ -41,10 +29,8 @@ async function captureSelection() {
 }
 
 async function captureArticle() {
-  try {
-    await loadReadability();
-  } catch (err) {
-    return { success: false, error: 'Could not load Readability library' };
+  if (typeof Readability === 'undefined') {
+    return { success: false, error: 'Readability not available — ensure the extension is up to date' };
   }
 
   const clone = document.cloneNode(true);

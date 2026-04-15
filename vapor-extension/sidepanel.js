@@ -10,8 +10,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const captureSnapshotBtn = document.getElementById('captureSnapshotBtn');
   const captureCountEl = document.getElementById('captureCount');
   const captureResultEl = document.getElementById('captureResult');
+  const captureListEl = document.getElementById('captureList');
 
   let isTokenSaved = false;
+  let capturedItems = [];
 
   async function refreshStatus() {
     try {
@@ -31,7 +33,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (hasToken && !isTokenSaved) {
         tokenField.value = '';
-        tokenField.placeholder = 'Token saved ✓';
+        tokenField.placeholder = 'Token saved';
         tokenField.disabled = true;
         isTokenSaved = true;
       } else if (!hasToken && isTokenSaved) {
@@ -40,7 +42,7 @@ document.addEventListener('DOMContentLoaded', () => {
         isTokenSaved = false;
       }
 
-      captureCountEl.textContent = response.capturedThisSession ?? 0;
+      captureCountEl.textContent = capturedItems.length;
     } catch (err) {
       statusText.textContent = 'Error checking status';
     }
@@ -59,7 +61,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!token) return;
     await chrome.runtime.sendMessage({ type: 'SET_TOKEN', token });
     tokenField.value = '';
-    tokenField.placeholder = 'Saved ✓';
+    tokenField.placeholder = 'Saved';
     tokenField.disabled = true;
     isTokenSaved = true;
     refreshStatus();
@@ -92,54 +94,72 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  const kindIcons = {
+    articleText: '\uD83D\uDCC4',
+    selectedText: '\u2702\uFE0F',
+    pageSnapshot: '\uD83C\uDF10'
+  };
+
+  function addCapturedItem(result) {
+    const kind = result.payload?.kind || 'unknown';
+    const title = result.payload?.title || 'Untitled';
+    capturedItems.unshift({ kind, title, jobId: result.jobId });
+    captureCountEl.textContent = capturedItems.length;
+    renderCapturedItems();
+  }
+
+  function renderCapturedItems() {
+    captureListEl.innerHTML = '';
+    for (const item of capturedItems) {
+      const div = document.createElement('div');
+      div.className = 'capture-item';
+      div.innerHTML = `
+        <span class="kind-icon">${kindIcons[item.kind] || '\uD83D\uDCCB'}</span>
+        <span class="item-title" title="${item.title}">${item.title}</span>
+        <span class="item-status">sent</span>
+      `;
+      captureListEl.appendChild(div);
+    }
+  }
+
   function showCaptureResult(success, message) {
     captureResultEl.textContent = message;
     captureResultEl.className = 'capture-result ' + (success ? 'success' : 'error');
     captureResultEl.style.display = 'block';
+    setTimeout(() => { captureResultEl.style.display = 'none'; }, 5000);
   }
 
-  captureArticleBtn.addEventListener('click', async () => {
-    captureArticleBtn.disabled = true;
-    captureArticleBtn.textContent = 'Capturing...';
-    const result = await chrome.runtime.sendMessage({ type: 'CAPTURE_ARTICLE' });
-    captureArticleBtn.disabled = false;
-    captureArticleBtn.textContent = 'Capture Article';
-    if (result?.success) {
-      showCaptureResult(true, 'Article captured and sent to Vapor');
-      captureCountEl.textContent = parseInt(captureCountEl.textContent || '0') + 1;
-    } else {
-      console.error('[Vapor] Capture article failed:', JSON.stringify(result));
-      showCaptureResult(false, result?.error || 'Capture failed — check background console');
-    }
+  function doCapture(type, msgType, btn) {
+    btn.disabled = true;
+    const origText = btn.textContent;
+    btn.textContent = 'Capturing...';
+    chrome.runtime.sendMessage({ type: msgType }).then(result => {
+      btn.disabled = false;
+      btn.textContent = origText;
+      if (result?.success) {
+        addCapturedItem(result);
+        showCaptureResult(true, 'Captured and sent to Vapor');
+      } else {
+        console.error('[Vapor] Capture failed:', JSON.stringify(result));
+        showCaptureResult(false, result?.error || 'Capture failed');
+      }
+    }).catch(err => {
+      btn.disabled = false;
+      btn.textContent = origText;
+      console.error('[Vapor] Capture error:', err);
+      showCaptureResult(false, err.message || 'Capture failed');
+    });
+  }
+
+  captureArticleBtn.addEventListener('click', () => {
+    doCapture('article', 'CAPTURE_ARTICLE', captureArticleBtn);
   });
 
-  captureSelectionBtn.addEventListener('click', async () => {
-    captureSelectionBtn.disabled = true;
-    captureSelectionBtn.textContent = 'Capturing...';
-    const result = await chrome.runtime.sendMessage({ type: 'CAPTURE_SELECTION' });
-    captureSelectionBtn.disabled = false;
-    captureSelectionBtn.textContent = 'Capture Selection';
-    if (result?.success) {
-      showCaptureResult(true, 'Selection captured and sent to Vapor');
-      captureCountEl.textContent = parseInt(captureCountEl.textContent || '0') + 1;
-    } else {
-      console.error('[Vapor] Capture selection failed:', JSON.stringify(result));
-      showCaptureResult(false, result?.error || 'Capture failed — check background console');
-    }
+  captureSelectionBtn.addEventListener('click', () => {
+    doCapture('selection', 'CAPTURE_SELECTION', captureSelectionBtn);
   });
 
-  captureSnapshotBtn.addEventListener('click', async () => {
-    captureSnapshotBtn.disabled = true;
-    captureSnapshotBtn.textContent = 'Capturing...';
-    const result = await chrome.runtime.sendMessage({ type: 'CAPTURE_PAGE_SNAPSHOT' });
-    captureSnapshotBtn.disabled = false;
-    captureSnapshotBtn.textContent = 'Capture Page Text';
-    if (result?.success) {
-      showCaptureResult(true, 'Page text captured and sent to Vapor');
-      captureCountEl.textContent = parseInt(captureCountEl.textContent || '0') + 1;
-    } else {
-      console.error('[Vapor] Capture snapshot failed:', JSON.stringify(result));
-      showCaptureResult(false, result?.error || 'Capture failed — check background console');
-    }
+  captureSnapshotBtn.addEventListener('click', () => {
+    doCapture('snapshot', 'CAPTURE_PAGE_SNAPSHOT', captureSnapshotBtn);
   });
 });

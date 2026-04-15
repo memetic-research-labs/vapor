@@ -223,9 +223,13 @@ async function handleCaptureRequest(captureType) {
   if (!isConnected) return { success: false, error: 'Not connected to Vapor' };
 
   try {
+    const scriptsToInject = ['content-scripts/context-capture.js'];
+    if (captureType === 'article') {
+      scriptsToInject.unshift('libs/readability.js');
+    }
     await chrome.scripting.executeScript({
       target: { tabId: tab.id },
-      files: ['content-scripts/context-capture.js']
+      files: scriptsToInject
     });
 
     const msgType = captureType === 'article' ? 'CAPTURE_ARTICLE'
@@ -239,7 +243,7 @@ async function handleCaptureRequest(captureType) {
     }
 
     const ok = await postContextCapture(result.payload);
-    return { success: ok, jobId: result.payload.jobId };
+    return { success: ok, jobId: result.payload.jobId, payload: result.payload };
   } catch (err) {
     return { success: false, error: err.message || String(err) };
   }
@@ -263,17 +267,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === 'CAPTURE_ARTICLE') {
-    handleCaptureRequest('article').then(sendResponse);
+    handleCaptureRequest('article').then(sendResponse, sendResponse);
     return true;
   }
 
   if (message.type === 'CAPTURE_SELECTION') {
-    handleCaptureRequest('selection').then(sendResponse);
+    handleCaptureRequest('selection').then(sendResponse, sendResponse);
     return true;
   }
 
   if (message.type === 'CAPTURE_PAGE_SNAPSHOT') {
-    handleCaptureRequest('snapshot').then(sendResponse);
+    handleCaptureRequest('snapshot').then(sendResponse, sendResponse);
     return true;
   }
 
@@ -289,6 +293,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 // Start
 connect();
+
+chrome.action.onClicked.addListener((tab) => {
+  chrome.sidePanel.open({ tabId: tab.id });
+});
 
 chrome.runtime.onInstalled.addListener(() => {
   updateBadge('disconnected');
