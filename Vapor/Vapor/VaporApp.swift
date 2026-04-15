@@ -223,6 +223,13 @@ struct VaporApp: App {
                 .environment(browserBridge)
         }
 
+        Window("Context Item", id: "context-item-detail") {
+            ContextItemDetailView(itemID: ContextDetailStore.shared.selectedItemID)
+        }
+        .modelContainer(sharedModelContainer)
+        .windowStyle(.titleBar)
+        .defaultSize(width: 560, height: 600)
+
         MenuBarExtra("Vapor", systemImage: "waveform.circle") {
             MenuBarView()
         }

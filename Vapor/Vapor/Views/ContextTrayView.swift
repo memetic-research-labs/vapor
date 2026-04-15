@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ContextTrayView: View {
     @Environment(ContextQueueService.self) private var contextQueue
+    @Environment(\.openWindow) private var openWindow
 
     @State private var searchText = ""
     @State private var showReadyOnly = false
@@ -36,7 +37,13 @@ struct ContextTrayView: View {
                             ContextItemRow(item: item)
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 3)
+                                .onTapGesture(count: 2) {
+                                    openDetail(item: item)
+                                }
                                 .contextMenu {
+                                    Button("Open") {
+                                        openDetail(item: item)
+                                    }
                                     Button("Insert into editor") {
                                         insertItem(item)
                                     }
@@ -151,6 +158,11 @@ struct ContextTrayView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(Color(nsColor: .controlBackgroundColor))
+    }
+
+    private func openDetail(item: ContextItem) {
+        ContextDetailStore.shared.selectedItemID = item.id
+        openWindow(id: "context-item-detail")
     }
 
     private func insertItem(_ item: ContextItem) {
