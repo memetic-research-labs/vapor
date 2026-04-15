@@ -1,0 +1,140 @@
+import Foundation
+import SwiftData
+
+enum ContextItemKind: String, Codable, CaseIterable, Sendable {
+    case articleText
+    case selectedText
+    case image
+    case animatedGif
+    case videoClip
+    case xhrJSON
+    case xhrBinary
+    case pageSnapshot
+    case manualText
+
+    var displayName: String {
+        switch self {
+        case .articleText: "Article"
+        case .selectedText: "Selection"
+        case .image: "Image"
+        case .animatedGif: "GIF"
+        case .videoClip: "Video"
+        case .xhrJSON: "API JSON"
+        case .xhrBinary: "API Binary"
+        case .pageSnapshot: "Page Snapshot"
+        case .manualText: "Text"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .articleText: "doc.text"
+        case .selectedText: "text.selection"
+        case .image: "photo"
+        case .animatedGif: "photo.on.rectangle"
+        case .videoClip: "video"
+        case .xhrJSON: "curlybraces"
+        case .xhrBinary: "archivebox"
+        case .pageSnapshot: "globe"
+        case .manualText: "pencil"
+        }
+    }
+}
+
+enum ProcessingStatus: String, Codable, CaseIterable, Sendable {
+    case pending
+    case processing
+    case ready
+    case failed
+}
+
+nonisolated private func decodeEntities(_ data: Data) -> [ExtractedEntity] {
+    (try? JSONDecoder().decode([ExtractedEntity].self, from: data)) ?? []
+}
+
+nonisolated private func encodeEntities(_ entities: [ExtractedEntity]) -> Data? {
+    try? JSONEncoder().encode(entities)
+}
+
+nonisolated private func decodeCitation(_ data: Data) -> Citation? {
+    try? JSONDecoder().decode(Citation.self, from: data)
+}
+
+nonisolated private func encodeCitation(_ citation: Citation) -> Data? {
+    try? JSONEncoder().encode(citation)
+}
+
+@Model
+final class ContextItem {
+    var id: UUID
+    var sourceURL: String
+    var sourceTitle: String
+    var capturedAt: Date
+    var kindRaw: String
+    var statusRaw: String
+
+    var textContent: String?
+    var blobPath: String?
+    var blobMimeType: String?
+    var thumbnailPath: String?
+
+    var tags: [String]
+    var entitiesData: Data?
+    var citationData: Data?
+    var embeddingID: String?
+
+    init(
+        sourceURL: String = "",
+        sourceTitle: String = "",
+        kind: ContextItemKind,
+        textContent: String? = nil,
+        blobPath: String? = nil,
+        blobMimeType: String? = nil,
+        thumbnailPath: String? = nil
+    ) {
+        self.id = UUID()
+        self.sourceURL = sourceURL
+        self.sourceTitle = sourceTitle
+        self.capturedAt = Date()
+        self.kindRaw = kind.rawValue
+        self.statusRaw = ProcessingStatus.pending.rawValue
+        self.textContent = textContent
+        self.blobPath = blobPath
+        self.blobMimeType = blobMimeType
+        self.thumbnailPath = thumbnailPath
+        self.tags = []
+        self.entitiesData = nil
+        self.citationData = nil
+        self.embeddingID = nil
+    }
+
+    var kind: ContextItemKind {
+        get { ContextItemKind(rawValue: kindRaw) ?? .manualText }
+        set { kindRaw = newValue.rawValue }
+    }
+
+    var status: ProcessingStatus {
+        get { ProcessingStatus(rawValue: statusRaw) ?? .pending }
+        set { statusRaw = newValue.rawValue }
+    }
+
+    var entities: [ExtractedEntity] {
+        get {
+            guard let data = entitiesData else { return [] }
+            return decodeEntities(data)
+        }
+        set {
+            entitiesData = encodeEntities(newValue)
+        }
+    }
+
+    var citation: Citation? {
+        get {
+            guard let data = citationData else { return nil }
+            return decodeCitation(data)
+        }
+        set {
+            citationData = newValue.flatMap { encodeCitation($0) }
+        }
+    }
+}

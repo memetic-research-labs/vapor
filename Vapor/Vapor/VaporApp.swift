@@ -59,7 +59,8 @@ struct VaporApp: App {
 
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
-            PromptRecord.self
+            PromptRecord.self,
+            ContextItem.self
         ])
         do {
             let persistentConfig = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
