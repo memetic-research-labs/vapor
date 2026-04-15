@@ -37,7 +37,7 @@ struct ContextTrayView: View {
                             ContextItemRow(item: item)
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 3)
-                                .onTapGesture(count: 2) {
+                                .onTapGesture {
                                     openDetail(item: item)
                                 }
                                 .contextMenu {

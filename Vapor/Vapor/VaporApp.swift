@@ -224,7 +224,8 @@ struct VaporApp: App {
         }
 
         Window("Context Item", id: "context-item-detail") {
-            ContextItemDetailView(itemID: ContextDetailStore.shared.selectedItemID)
+            ContextItemDetailView()
+                .environment(ContextDetailStore.shared)
         }
         .modelContainer(sharedModelContainer)
         .windowStyle(.titleBar)
