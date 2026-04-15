@@ -37,6 +37,7 @@ nonisolated final class VaporEmbeddedServer: @unchecked Sendable {
         let serverChannel: Channel
         do {
             serverChannel = try await ServerBootstrap(group: group)
+                .serverChannelOption(ChannelOptions.socket(SocketOptionLevel(SOL_SOCKET), SO_REUSEADDR), value: 1)
                 .childChannelInitializer { channel in
                     let handler = VaporHTTPHandler(
                         sseHub: hub,

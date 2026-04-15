@@ -80,47 +80,62 @@ final class BrowserBridge {
 
         startTask = Task { [weak self] in
             guard let self else { return }
-            let srv = VaporEmbeddedServer(port: self.serverPort)
+            let maxRetries = 2
+            let retryDelay: UInt64 = 1_000_000_000
 
-            srv.sseHub.onClientCountChange { [weak self] count in
-                Task { @MainActor [weak self] in
-                    self?.connectedClientCount = count
-                    self?.isExtensionConnected = count > 0
-                }
-            }
+            for attempt in 0...maxRetries {
+                guard !Task.isCancelled else { return }
+                let srv = VaporEmbeddedServer(port: self.serverPort)
 
-            do {
-                try await srv.start(
-                    authTokenProvider: { [weak self] in
-                        guard let self else { return "" }
-                        return self.authToken()
-                    },
-                    onResponse: { [weak self] json in
-                        Task { @MainActor [weak self] in
-                            self?.handleExtensionResponse(json)
-                        }
-                    },
-                    onContextCapture: { [weak self] json in
-                        Task { @MainActor [weak self] in
-                            self?.handleContextCapture(json)
-                        }
-                    },
-                    contextItemStatusProvider: { [weak cache = self.contextStatusCache] jobId in
-                        cache?.get(jobId)
+                srv.sseHub.onClientCountChange { [weak self] count in
+                    Task { @MainActor [weak self] in
+                        self?.connectedClientCount = count
+                        self?.isExtensionConnected = count > 0
                     }
-                )
-                guard !Task.isCancelled else {
-                    try? await srv.stop()
+                }
+
+                do {
+                    try await srv.start(
+                        authTokenProvider: { [weak self] in
+                            guard let self else { return "" }
+                            return self.authToken()
+                        },
+                        onResponse: { [weak self] json in
+                            Task { @MainActor [weak self] in
+                                self?.handleExtensionResponse(json)
+                            }
+                        },
+                        onContextCapture: { [weak self] json in
+                            Task { @MainActor [weak self] in
+                                self?.handleContextCapture(json)
+                            }
+                        },
+                        contextItemStatusProvider: { [weak cache = self.contextStatusCache] jobId in
+                            cache?.get(jobId)
+                        }
+                    )
+                    guard !Task.isCancelled else {
+                        try? await srv.stop()
+                        return
+                    }
+                    self.server = srv
+                    logger.info("Browser bridge started on port \(self.serverPort)")
+                    return
+                } catch {
+                    let nsError = error as NSError
+                    let isPortConflict = nsError.domain == "NIOCore.IOError" && nsError.code == 1
+                    if isPortConflict && attempt < maxRetries {
+                        logger.warning("Port \(self.serverPort) busy, retrying in 1s (attempt \(attempt + 1))")
+                        try? await srv.stop()
+                        try? await Task.sleep(nanoseconds: retryDelay)
+                        continue
+                    }
+                    self.isRunning = false
+                    self.lastError = error.localizedDescription
+                    self.portConflict = isPortConflict
+                    logger.error("Failed to start embedded server: \(error.localizedDescription)")
                     return
                 }
-                self.server = srv
-                logger.info("Browser bridge started on port \(self.serverPort)")
-            } catch {
-                self.isRunning = false
-                self.lastError = error.localizedDescription
-                let nsError = error as NSError
-                self.portConflict = nsError.domain == "NIOCore.IOError" && nsError.code == 1
-                logger.error("Failed to start embedded server: \(error.localizedDescription)")
             }
             self.startTask = nil
         }

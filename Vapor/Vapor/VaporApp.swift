@@ -31,6 +31,9 @@ struct VaporApp: App {
 
         let prefs = preferences
         let bridge = browserBridge
+
+        NSApp.delegate = VaporAppDelegate(bridge: bridge)
+
         Task {
             do {
                 try await OllamaDaemonManager.shared.start()
@@ -40,14 +43,6 @@ struct VaporApp: App {
             } catch {
                 logger.warning("Ollama daemon did not start: \(error.localizedDescription)")
             }
-        }
-        NotificationCenter.default.addObserver(
-            forName: NSApplication.willTerminateNotification,
-            object: nil,
-            queue: .main
-        ) { _ in
-            Task { await OllamaDaemonManager.shared.stop() }
-            Task { await bridge.stop() }
         }
         NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.willPowerOffNotification,
@@ -231,5 +226,26 @@ struct VaporApp: App {
         MenuBarExtra("Vapor", systemImage: "waveform.circle") {
             MenuBarView()
         }
+    }
+}
+
+final class VaporAppDelegate: NSObject, NSApplicationDelegate {
+    private let bridge: BrowserBridge
+
+    init(bridge: BrowserBridge) {
+        self.bridge = bridge
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        Task { @MainActor [weak self] in
+            guard let self else {
+                NSApp.reply(toApplicationShouldTerminate: true)
+                return
+            }
+            await self.bridge.stop()
+            await OllamaDaemonManager.shared.stop()
+            NSApp.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
     }
 }

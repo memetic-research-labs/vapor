@@ -76,7 +76,7 @@ struct ContentView: View {
             set: { if !$0 { browserBridge.portConflict = false } }
         )) {
             Button("Open Settings", role: nil) {
-                openWindow(id: "settings")
+                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
                 browserBridge.portConflict = false
             }
             Button("Dismiss", role: .cancel) {
