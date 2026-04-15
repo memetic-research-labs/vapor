@@ -104,8 +104,8 @@ The Context Tray is a live feed of every `ContextItem` that has been captured in
 
 - **Drag to Composer:** Drag any ready item into the prompt composer to insert it at the drop point as an inline `ContextItem` chip.
 - **[+ Add] button:** Inserts the item at the current cursor position in the composer.
-- **[✕] button:** Removes the item from the tray (does not delete the asset).
-- **Long-press / right-click:** Context menu with "Save to Glossary…", "Copy citation", "Preview", "Delete".
+- **[✕] button:** Removes the item from the tray only (does not delete the captured item or its underlying blob/asset).
+- **Long-press / right-click:** Context menu with "Save to Glossary…", "Copy citation", "Preview", and "Delete captured item + blob" for permanent deletion.
 
 ---
 
