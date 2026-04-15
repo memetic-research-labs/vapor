@@ -15,7 +15,8 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "config/platform-config.js"
+        "config/platform-config.js",
+        "libs/readability.js"
       ],
       "matches": ["*://*/*"]
     }

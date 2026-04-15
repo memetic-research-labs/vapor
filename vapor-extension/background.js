@@ -19,6 +19,7 @@ let eventSource = null;
 let reconnectAttempts = 0;
 let isConnected = false;
 let authToken = null;
+let capturedThisSession = 0;
 
 let authTokenLoadPromise = null;
 
@@ -194,6 +195,56 @@ async function postResponse(body) {
   }
 }
 
+async function postContextCapture(payload) {
+  try {
+    const headers = { 'Content-Type': 'application/json' };
+    if (authToken) {
+      headers['Authorization'] = `Bearer ${authToken}`;
+    }
+    const response = await fetch(`${SERVER_URL}/api/context`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload)
+    });
+    if (response.ok) {
+      capturedThisSession++;
+    }
+    return response.ok;
+  } catch (err) {
+    console.error('[Vapor] Failed to post context capture:', err);
+    return false;
+  }
+}
+
+async function handleCaptureRequest(captureType) {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab) return { success: false, error: 'No active tab' };
+
+  if (!isConnected) return { success: false, error: 'Not connected to Vapor' };
+
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: ['content-scripts/context-capture.js']
+    });
+
+    const msgType = captureType === 'article' ? 'CAPTURE_ARTICLE'
+      : captureType === 'selection' ? 'CAPTURE_SELECTION'
+      : 'CAPTURE_PAGE_SNAPSHOT';
+
+    const result = await chrome.tabs.sendMessage(tab.id, { type: msgType });
+
+    if (!result || !result.success) {
+      return { success: false, error: result?.error || 'Capture failed' };
+    }
+
+    const ok = await postContextCapture(result.payload);
+    return { success: ok, jobId: result.payload.jobId };
+  } catch (err) {
+    return { success: false, error: err.message || String(err) };
+  }
+}
+
 // Listen for messages from popup (token management)
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || !message.type) return;
@@ -207,7 +258,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === 'GET_STATUS') {
-    sendResponse({ connected: isConnected, hasToken: !!authToken });
+    sendResponse({ connected: isConnected, hasToken: !!authToken, capturedThisSession });
+    return true;
+  }
+
+  if (message.type === 'CAPTURE_ARTICLE') {
+    handleCaptureRequest('article').then(sendResponse);
+    return true;
+  }
+
+  if (message.type === 'CAPTURE_SELECTION') {
+    handleCaptureRequest('selection').then(sendResponse);
+    return true;
+  }
+
+  if (message.type === 'CAPTURE_PAGE_SNAPSHOT') {
+    handleCaptureRequest('snapshot').then(sendResponse);
     return true;
   }
 

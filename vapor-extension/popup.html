@@ -59,6 +59,14 @@
     .btn-sm { padding: 2px 6px; font-size: 10px; }
     .btn-danger { color: #ef4444; border-color: #7f1d1d; background: transparent; }
     .btn-danger:hover { background: #7f1d1d; color: #fff; }
+    .btn-capture { border-color: #3b82f6; color: #60a5fa; }
+    .btn-capture:hover { background: #1e3a5f; border-color: #3b82f6; }
+    .capture-result {
+      font-size: 10px; padding: 6px 8px; border-radius: 4px;
+      margin-top: 6px; line-height: 1.4;
+    }
+    .capture-result.success { background: #14532d; color: #22c55e; }
+    .capture-result.error { background: #7f1d1d; color: #ef4444; }
     .help {
       font-size: 10px; color: #6b7280; line-height: 1.4;
       margin-top: 8px;
@@ -96,6 +104,18 @@
     <div class="section">
       <h2>Quick Actions</h2>
       <button class="btn" id="testBtn" style="width:100%; margin-bottom: 6px;">Test: Inject "Hello" into active tab</button>
+    </div>
+
+    <div class="section" id="captureSection">
+      <h2>Capture Context</h2>
+      <button class="btn btn-capture" id="captureArticleBtn" style="width:100%; margin-bottom: 6px;">Capture Article</button>
+      <button class="btn btn-capture" id="captureSelectionBtn" style="width:100%; margin-bottom: 6px;">Capture Selection</button>
+      <button class="btn btn-capture" id="captureSnapshotBtn" style="width:100%; margin-bottom: 6px;">Capture Page Text</button>
+      <div class="status-row" style="margin-top: 8px;">
+        <span class="status-label">Captured this session</span>
+        <span class="status-value" id="captureCount">0</span>
+      </div>
+      <div id="captureResult" class="capture-result" style="display:none;"></div>
     </div>
 
     <div class="help">
