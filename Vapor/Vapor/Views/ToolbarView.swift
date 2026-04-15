@@ -10,6 +10,7 @@ struct ToolbarView: View {
     let onClear: () -> Void
     let onToggleDictation: () -> Void
     let onToggleTest: () -> Void
+    let onToggleContextTray: () -> Void
     let onMinimize: () -> Void
 
     var body: some View {
@@ -75,6 +76,17 @@ struct ToolbarView: View {
                       ? "Send to browser ( ⌘⇧↩ )"
                       : "Waiting for browser extension…")
             }
+
+            Spacer()
+
+            Button {
+                onToggleContextTray()
+            } label: {
+                Image(systemName: "tray")
+                    .foregroundColor(.primary)
+            }
+            .buttonStyle(.plain)
+            .help("Toggle context tray")
 
             Spacer()
 

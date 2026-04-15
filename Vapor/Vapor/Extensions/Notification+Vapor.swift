@@ -10,4 +10,5 @@ extension Notification.Name {
     static let vaporSendToBrowser = Notification.Name("vaporSendToBrowser")
     /// Posted when the local LLM is downloaded (e.g. during onboarding) so the main window can reload.
     static let vaporLLMDownloadCompleted = Notification.Name("vaporLLMDownloadCompleted")
+    static let vaporInsertContextItem = Notification.Name("vaporInsertContextItem")
 }

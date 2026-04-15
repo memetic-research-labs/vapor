@@ -10,11 +10,13 @@ struct ContentView: View {
     @Environment(UserPreferences.self) private var preferences
     @Environment(CompressionService.self) private var compressionService
     @Environment(BrowserBridge.self) private var browserBridge
+    @Environment(ContextQueueService.self) private var contextQueue
     @State private var viewModel = EditorViewModel()
     @State private var historyService = PromptHistoryService()
     @State private var toastService = ToastService()
     @State private var dictationService = SpeechDictationService()
     @State private var showTestSidebar = false
+    @State private var showContextTray = false
     @State private var isEditorFocused = false
     @State private var sidebarPrompt: String = ""
     @State private var speechAuthStatus: SFSpeechRecognizerAuthorizationStatus = .notDetermined
@@ -125,6 +127,11 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .vaporSendToBrowser)) { _ in
             sendToBrowser()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .vaporInsertContextItem)) { notification in
+            if let text = notification.object as? String {
+                viewModel.content += (viewModel.content.isEmpty ? "" : "\n\n") + text
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .vaporLLMDownloadCompleted)) { _ in
             Task { await compressionService.reloadLocalLLMIfNeeded() }
         }
@@ -188,6 +195,11 @@ struct ContentView: View {
 
     private var expandedContent: some View {
         HStack(spacing: 0) {
+            if showContextTray {
+                Divider()
+                ContextTrayView()
+            }
+
             VStack(spacing: 0) {
                 ToolbarView(
                     viewModel: viewModel,
@@ -209,6 +221,11 @@ struct ContentView: View {
                     onToggleTest: {
                         withAnimation {
                             showTestSidebar.toggle()
+                        }
+                    },
+                    onToggleContextTray: {
+                        withAnimation {
+                            showContextTray.toggle()
                         }
                     },
                     onMinimize: {
