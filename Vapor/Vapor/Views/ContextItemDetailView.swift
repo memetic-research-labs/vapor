@@ -7,6 +7,10 @@ struct ContextItemDetailView: View {
 
     @State private var item: ContextItem?
     @State private var showCopyConfirmation = false
+    @State private var isSummarizing = false
+    @State private var isRegeneratingCitation = false
+    private let summarizer = SummarizationService()
+    private let citationBuilder = CitationBuilder()
 
     var body: some View {
         Group {
@@ -18,6 +22,8 @@ struct ContextItemDetailView: View {
                         Divider()
 
                         sourceSection(item: item)
+
+                        summarySection(item: item)
 
                         if item.citation != nil {
                             Divider()
@@ -128,7 +134,7 @@ struct ContextItemDetailView: View {
 
     @ViewBuilder
     private func sourceSection(item: ContextItem) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 6) {
             sectionHeader("Source")
 
             if !item.sourceURL.isEmpty {
@@ -152,6 +158,31 @@ struct ContextItemDetailView: View {
                     .font(.system(size: 11))
                     .foregroundColor(.secondary)
             }
+
+            if item.sourceAuthor != nil || item.sourcePublishedDate != nil {
+                HStack(spacing: 12) {
+                    if let author = item.sourceAuthor {
+                        HStack(spacing: 4) {
+                            Image(systemName: "person")
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
+                            Text(author)
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    if let pubDate = item.sourcePublishedDate {
+                        HStack(spacing: 4) {
+                            Image(systemName: "calendar")
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
+                            Text(formattedDate(pubDate))
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -161,6 +192,21 @@ struct ContextItemDetailView: View {
             HStack {
                 sectionHeader("Citation")
                 Spacer()
+                Button {
+                    regenerateCitation(for: item)
+                } label: {
+                    if isRegeneratingCitation {
+                        ProgressView()
+                            .scaleEffect(0.5)
+                            .frame(width: 14, height: 14)
+                    } else {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .buttonStyle(.plain)
+                .help("Regenerate citation")
                 Button {
                     if let rendered = item.citation?.rendered {
                         NSPasteboard.general.clearContents()
@@ -188,7 +234,13 @@ struct ContextItemDetailView: View {
     @ViewBuilder
     private func entitiesSection(item: ContextItem) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            sectionHeader("Entities (\(item.entities.count))")
+            HStack(spacing: 8) {
+                sectionHeader("Entities (\(item.entities.count))")
+
+                if let backend = item.extractionBackend {
+                    backendBadge(backend)
+                }
+            }
 
             FlowLayout(spacing: 6) {
                 ForEach(groupedEntities(item.entities)) { group in
@@ -206,6 +258,22 @@ struct ContextItemDetailView: View {
                 }
             }
         }
+    }
+
+    private func backendBadge(_ backend: EntityExtractionBackend) -> some View {
+        let (color, label): (Color, String) = {
+            switch backend {
+            case .openRouter: (.green, "OpenRouter")
+            case .ollama: (.blue, "Ollama")
+            case .nlTagger: (.orange, "NLTagger")
+            }
+        }()
+        return Text(label)
+            .font(.system(size: 9, weight: .medium))
+            .foregroundColor(color)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Capsule().fill(color.opacity(0.12)))
     }
 
     @ViewBuilder
@@ -338,6 +406,103 @@ struct ContextItemDetailView: View {
         }
     }
 
+    // MARK: - Summary
+
+    @ViewBuilder
+    private func summarySection(item: ContextItem) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                sectionHeader("Summary")
+                Spacer()
+                if item.summary != nil {
+                    Button {
+                        if let summary = item.summary, !summary.abstract.isEmpty {
+                            let points = summary.keyPoints.map { "• \($0)" }.joined(separator: "\n")
+                            let full = points.isEmpty ? summary.abstract : "\(summary.abstract)\n\n\(points)"
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(full, forType: .string)
+                            flashCopyConfirmation()
+                        }
+                    } label: {
+                        Image(systemName: "doc.on.doc")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Copy summary")
+                }
+            }
+
+            if let summary = item.summary {
+                VStack(alignment: .leading, spacing: 6) {
+                    if !summary.abstract.isEmpty {
+                        Text(summary.abstract)
+                            .font(.system(size: 12))
+                            .foregroundColor(.primary)
+                            .textSelection(.enabled)
+                    }
+
+                    if !summary.keyPoints.isEmpty {
+                        VStack(alignment: .leading, spacing: 3) {
+                            ForEach(summary.keyPoints, id: \.self) { point in
+                                HStack(alignment: .top, spacing: 6) {
+                                    Text("•")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(.secondary)
+                                    Text(point)
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.secondary)
+                                        .textSelection(.enabled)
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                Button {
+                    generateSummary(for: item)
+                } label: {
+                    HStack(spacing: 4) {
+                        if isSummarizing {
+                            ProgressView()
+                                .scaleEffect(0.5)
+                                .frame(width: 14, height: 14)
+                        } else {
+                            Image(systemName: "sparkles")
+                                .font(.system(size: 10))
+                        }
+                        Text(isSummarizing ? "Generating…" : "Generate Summary")
+                            .font(.system(size: 11))
+                    }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(isSummarizing)
+            }
+        }
+    }
+
+    private func generateSummary(for item: ContextItem) {
+        guard let text = item.textContent, !text.isEmpty else { return }
+        isSummarizing = true
+        Task { @MainActor in
+            if let summary = await summarizer.summarize(text: text) {
+                item.summary = summary
+                try? modelContext.save()
+            }
+            isSummarizing = false
+        }
+    }
+
+    private func regenerateCitation(for item: ContextItem) {
+        isRegeneratingCitation = true
+        Task { @MainActor in
+            item.citation = citationBuilder.build(for: item, format: .apa)
+            try? modelContext.save()
+            isRegeneratingCitation = false
+        }
+    }
+
     // MARK: - Markdown Export
 
     private func copyAsMarkdown(item: ContextItem) {
@@ -351,6 +516,20 @@ struct ContextItemDetailView: View {
         }
 
         md += "\n---\n\n"
+
+        if let summary = item.summary {
+            md += "## Summary\n\n"
+            if !summary.abstract.isEmpty {
+                md += "\(summary.abstract)\n\n"
+            }
+            if !summary.keyPoints.isEmpty {
+                for point in summary.keyPoints {
+                    md += "- \(point)\n"
+                }
+                md += "\n"
+            }
+            md += "---\n\n"
+        }
 
         if let text = item.textContent, !text.isEmpty {
             md += "\(text)\n"
@@ -369,7 +548,7 @@ struct ContextItemDetailView: View {
 
         if let citation = item.citation {
             md += "## Citation\n\n"
-            md += "[\(citation.title)](\(citation.url))\n"
+            md += "\(citation.rendered)\n"
         }
 
         NSPasteboard.general.clearContents()

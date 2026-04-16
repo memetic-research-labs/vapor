@@ -5,6 +5,7 @@ struct ToolbarView: View {
     let dictationService: SpeechDictationService
     let preferences: UserPreferences
     @Environment(BrowserBridge.self) private var browserBridge
+    @Environment(ContextQueueService.self) private var contextQueue
     let onCompressAndCopy: () async -> Void
     let onCopyOriginal: () -> Void
     let onClear: () -> Void
@@ -14,7 +15,7 @@ struct ToolbarView: View {
     let onMinimize: () -> Void
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             dictationButton
 
             Button {
@@ -82,22 +83,12 @@ struct ToolbarView: View {
             Button {
                 onToggleContextTray()
             } label: {
-                Image(systemName: "tray")
+                Image(systemName: "sidebar.trailing")
+                    .font(.system(size: 12))
                     .foregroundColor(.primary)
             }
             .buttonStyle(.plain)
             .help("Toggle context tray")
-
-            Spacer()
-
-            Button {
-                onClear()
-            } label: {
-                Text("Clear")
-                    .foregroundColor(.primary)
-            }
-            .buttonStyle(.plain)
-            .disabled(viewModel.content.isEmpty)
 
             SettingsLink {
                 Image(systemName: "gearshape")

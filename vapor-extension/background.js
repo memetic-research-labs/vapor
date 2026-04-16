@@ -223,18 +223,13 @@ async function handleCaptureRequest(captureType) {
   if (!isConnected) return { success: false, error: 'Not connected to Vapor' };
 
   try {
-    const scriptsToInject = ['content-scripts/context-capture.js'];
-    if (captureType === 'article') {
-      scriptsToInject.unshift('libs/readability.js');
-    }
+    const scriptsToInject = ['libs/readability.js', 'content-scripts/context-capture.js'];
     await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       files: scriptsToInject
     });
 
-    const msgType = captureType === 'article' ? 'CAPTURE_ARTICLE'
-      : captureType === 'selection' ? 'CAPTURE_SELECTION'
-      : 'CAPTURE_PAGE_SNAPSHOT';
+    const msgType = captureType === 'selection' ? 'CAPTURE_SELECTION' : 'CAPTURE_PAGE';
 
     const result = await chrome.tabs.sendMessage(tab.id, { type: msgType });
 
@@ -266,8 +261,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  if (message.type === 'CAPTURE_ARTICLE') {
-    handleCaptureRequest('article').then(sendResponse, sendResponse);
+  if (message.type === 'CAPTURE_PAGE') {
+    handleCaptureRequest('page').then(sendResponse, sendResponse);
     return true;
   }
 
@@ -276,8 +271,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  // Legacy support for old sidepanel versions
+  if (message.type === 'CAPTURE_ARTICLE') {
+    handleCaptureRequest('page').then(sendResponse, sendResponse);
+    return true;
+  }
+
   if (message.type === 'CAPTURE_PAGE_SNAPSHOT') {
-    handleCaptureRequest('snapshot').then(sendResponse, sendResponse);
+    handleCaptureRequest('page').then(sendResponse, sendResponse);
     return true;
   }
 

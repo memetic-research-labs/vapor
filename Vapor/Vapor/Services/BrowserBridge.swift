@@ -91,6 +91,12 @@ final class BrowserBridge {
                     Task { @MainActor [weak self] in
                         self?.connectedClientCount = count
                         self?.isExtensionConnected = count > 0
+                        if count > 0 {
+                            StatusBarService.shared.updateBrowserIndicator(connected: true)
+                            StatusBarService.shared.setTransient("Browser extension connected")
+                        } else {
+                            StatusBarService.shared.updateBrowserIndicator(connected: false)
+                        }
                     }
                 }
 
@@ -149,6 +155,7 @@ final class BrowserBridge {
         isRunning = false
         isExtensionConnected = false
         connectedClientCount = 0
+        StatusBarService.shared.updateBrowserIndicator(connected: false)
         logger.info("Browser bridge stopped")
     }
 

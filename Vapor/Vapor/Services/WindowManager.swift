@@ -19,8 +19,10 @@ final class WindowManager {
     }
 
     private let preferences: UserPreferences
-    private let expandedSize = CGSize(width: 500, height: 400)
+    private let expandedSize = CGSize(width: 640, height: 540)
     private let minimizedSize = CGSize(width: 320, height: 200)
+    private let contextTrayWidth: CGFloat = 261
+    private let testSidebarWidth: CGFloat = 351
 
     private init(preferences: UserPreferences) {
         self.preferences = preferences
@@ -61,6 +63,10 @@ final class WindowManager {
     }
 
     func expand() {
+        expand(showContextTray: false, showTestSidebar: false)
+    }
+
+    func expand(showContextTray: Bool, showTestSidebar: Bool) {
         windowState = .expanded
         preferences.windowState = .expanded
 
@@ -71,22 +77,21 @@ final class WindowManager {
 
         configureWindow(window)
 
-        // Expanded: show title bar with "Vapor", opaque background matching content
         window.titleVisibility = .visible
         window.backgroundColor = .windowBackgroundColor
         window.isOpaque = true
 
-        // Grow from current position — keep the top-left corner anchored
-        let currentFrame = window.frame
-        let targetOrigin = NSPoint(
-            x: currentFrame.origin.x,
-            y: currentFrame.origin.y + currentFrame.height - expandedSize.height
+        let targetFrame = expandedFrame(
+            from: window.frame,
+            for: window,
+            showContextTray: showContextTray,
+            showTestSidebar: showTestSidebar
         )
 
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.3
             context.timingFunction = CAMediaTimingFunction(name: .easeOut)
-            window.animator().setFrame(NSRect(origin: targetOrigin, size: expandedSize), display: true)
+            window.animator().setFrame(targetFrame, display: true)
         }
 
         window.makeKeyAndOrderFront(nil)
@@ -142,6 +147,43 @@ final class WindowManager {
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    func resizeForPanels(showContextTray: Bool, showTestSidebar: Bool) {
+        guard let window = findWindow(), windowState == .expanded else { return }
+        let targetFrame = expandedFrame(
+            from: window.frame,
+            for: window,
+            showContextTray: showContextTray,
+            showTestSidebar: showTestSidebar
+        )
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.25
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            window.animator().setFrame(targetFrame, display: true)
+        }
+    }
+
+    private func expandedFrame(from currentFrame: NSRect, for window: NSWindow, showContextTray: Bool, showTestSidebar: Bool) -> NSRect {
+        let targetWidth = expandedSize.width
+            + (showContextTray ? contextTrayWidth : 0)
+            + (showTestSidebar ? testSidebarWidth : 0)
+        let targetHeight = expandedSize.height
+        let topEdge = currentFrame.origin.y + currentFrame.height
+        var originX = currentFrame.origin.x
+
+        if let screen = window.screen ?? NSScreen.main {
+            let visibleFrame = screen.visibleFrame
+            originX = min(originX, visibleFrame.maxX - targetWidth)
+            originX = max(originX, visibleFrame.minX)
+        }
+
+        return NSRect(
+            x: originX,
+            y: topEdge - targetHeight,
+            width: targetWidth,
+            height: targetHeight
+        )
+    }
+
     func savePosition() {
         guard let window = findWindow() else { return }
         let screen = window.screen ?? NSScreen.main!
@@ -174,6 +216,13 @@ final class WindowManager {
             window.titleVisibility = .visible
             window.backgroundColor = .windowBackgroundColor
             window.isOpaque = true
+            let targetFrame = expandedFrame(
+                from: window.frame,
+                for: window,
+                showContextTray: false,
+                showTestSidebar: false
+            )
+            window.setFrame(targetFrame, display: true)
         }
     }
 }

@@ -29,7 +29,7 @@ enum ContextItemKind: String, Codable, CaseIterable, Sendable {
     var systemImage: String {
         switch self {
         case .articleText: "doc.text"
-        case .selectedText: "text.selection"
+        case .selectedText: "text.append"
         case .image: "photo"
         case .animatedGif: "photo.on.rectangle"
         case .videoClip: "video"
@@ -69,6 +69,9 @@ final class ContextItem {
     var id: UUID
     var sourceURL: String
     var sourceTitle: String
+    var sourceAuthor: String?
+    var sourcePublishedDate: Date?
+    var sourceSiteName: String?
     var capturedAt: Date
     var kindRaw: String
     var statusRaw: String
@@ -81,11 +84,16 @@ final class ContextItem {
     var tags: [String]
     var entitiesData: Data?
     var citationData: Data?
+    var summaryData: Data?
+    var extractionBackendRaw: String?
     var embeddingID: String?
 
     init(
         sourceURL: String = "",
         sourceTitle: String = "",
+        sourceAuthor: String? = nil,
+        sourcePublishedDate: Date? = nil,
+        sourceSiteName: String? = nil,
         kind: ContextItemKind,
         textContent: String? = nil,
         blobPath: String? = nil,
@@ -95,6 +103,9 @@ final class ContextItem {
         self.id = UUID()
         self.sourceURL = sourceURL
         self.sourceTitle = sourceTitle
+        self.sourceAuthor = sourceAuthor
+        self.sourcePublishedDate = sourcePublishedDate
+        self.sourceSiteName = sourceSiteName
         self.capturedAt = Date()
         self.kindRaw = kind.rawValue
         self.statusRaw = ProcessingStatus.pending.rawValue
@@ -105,6 +116,8 @@ final class ContextItem {
         self.tags = []
         self.entitiesData = nil
         self.citationData = nil
+        self.summaryData = nil
+        self.extractionBackendRaw = nil
         self.embeddingID = nil
     }
 
@@ -135,6 +148,26 @@ final class ContextItem {
         }
         set {
             citationData = newValue.flatMap { encodeCitation($0) }
+        }
+    }
+
+    var summary: DocumentSummary? {
+        get {
+            guard let data = summaryData else { return nil }
+            return try? JSONDecoder().decode(DocumentSummary.self, from: data)
+        }
+        set {
+            summaryData = newValue.flatMap { try? JSONEncoder().encode($0) }
+        }
+    }
+
+    var extractionBackend: EntityExtractionBackend? {
+        get {
+            guard let raw = extractionBackendRaw else { return nil }
+            return EntityExtractionBackend(rawValue: raw)
+        }
+        set {
+            extractionBackendRaw = newValue?.rawValue
         }
     }
 }

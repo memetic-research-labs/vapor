@@ -11,6 +11,7 @@ struct ContentView: View {
     @Environment(CompressionService.self) private var compressionService
     @Environment(BrowserBridge.self) private var browserBridge
     @Environment(ContextQueueService.self) private var contextQueue
+    @Environment(StatusBarService.self) private var statusBar
     @State private var viewModel = EditorViewModel()
     @State private var historyService = PromptHistoryService()
     @State private var toastService = ToastService()
@@ -62,13 +63,25 @@ struct ContentView: View {
             }
         .safeAreaInset(edge: .bottom) {
             if windowManager.windowState == .expanded {
-                Text(compressionService.statusMessage)
-                    .font(.system(size: 10))
-                    .foregroundColor(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 4)
-                    .background(Color(NSColor.controlBackgroundColor))
+                HStack(spacing: 0) {
+                    Text(statusBar.statusMessage)
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+
+                    Spacer()
+
+                    HStack(spacing: 8) {
+                        ForEach(Array(statusBar.indicators.enumerated()), id: \.offset) { _, indicator in
+                            statusIndicatorView(indicator)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 4)
+                .background(Color(NSColor.controlBackgroundColor))
             }
         }
         .alert("Browser Server Error", isPresented: .init(
@@ -99,6 +112,15 @@ struct ContentView: View {
                 minimizedView
             case .expanded:
                 expandedView
+            }
+        }
+        .onChange(of: windowManager.windowState) { _, newState in
+            if newState == .expanded {
+                windowManager.resizeForPanels(
+                    showContextTray: showContextTray,
+                    showTestSidebar: showTestSidebar
+                )
+                refocusEditorAfterTransition()
             }
         }
         .onChange(of: HistoryStore.shared.pendingRestore?.persistentModelID) { _, newID in
@@ -139,7 +161,13 @@ struct ContentView: View {
 
     private var minimizedView: some View {
         MinimizedPillView(
-            onExpand: { windowManager.expand() },
+            onExpand: {
+                windowManager.expand(
+                    showContextTray: showContextTray,
+                    showTestSidebar: showTestSidebar
+                )
+                refocusEditorAfterTransition()
+            },
             onCompressAndCopy: { Task { await performCompressAndCopy() } },
             onCopyOriginal: {
                 viewModel.copyOriginalToClipboard()
@@ -195,11 +223,6 @@ struct ContentView: View {
 
     private var expandedContent: some View {
         HStack(spacing: 0) {
-            if showContextTray {
-                Divider()
-                ContextTrayView()
-            }
-
             VStack(spacing: 0) {
                 ToolbarView(
                     viewModel: viewModel,
@@ -219,14 +242,26 @@ struct ContentView: View {
                         toggleDictation()
                     },
                     onToggleTest: {
+                        let willShow = !showTestSidebar
+                        windowManager.resizeForPanels(
+                            showContextTray: showContextTray,
+                            showTestSidebar: willShow
+                        )
                         withAnimation {
                             showTestSidebar.toggle()
                         }
+                        refocusEditorAfterTransition()
                     },
                     onToggleContextTray: {
+                        let willShow = !showContextTray
+                        windowManager.resizeForPanels(
+                            showContextTray: willShow,
+                            showTestSidebar: showTestSidebar
+                        )
                         withAnimation {
                             showContextTray.toggle()
                         }
+                        refocusEditorAfterTransition()
                     },
                     onMinimize: {
                         windowManager.minimize()
@@ -239,7 +274,7 @@ struct ContentView: View {
                         isDictating: viewModel.isDictating,
                         inputLevel: dictationService.inputLevel
                     )
-                    .padding(EdgeInsets(top: 6, leading: 6, bottom: 12, trailing: 6))
+                    .padding(EdgeInsets(top: 8, leading: 16, bottom: 12, trailing: 16))
                     .frame(maxHeight: .infinity)
 
                 if viewModel.originalTokenCount > 0 {
@@ -273,7 +308,13 @@ struct ContentView: View {
                     .animation(.easeInOut(duration: 0.2), value: viewModel.compressedContent.isEmpty)
                 }
             }
-            .frame(minWidth: 400, minHeight: 300)
+            .frame(width: 640)
+            .frame(minHeight: 300)
+
+            if showContextTray {
+                Divider()
+                ContextTrayView()
+            }
 
             if showTestSidebar {
                 Divider()
@@ -383,8 +424,39 @@ struct ContentView: View {
                     dictationService.pauseDictation()
                     viewModel.isDictating = false
                     EditorTextViewRegistry.refocus()
-                }
+                 }
+             }
+         }
+     }
+
+    private func refocusEditorAfterTransition() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            EditorTextViewRegistry.refocusAtEnd()
+        }
+    }
+
+    // MARK: - Status Bar Indicators
+
+    @ViewBuilder
+    func statusIndicatorView(_ indicator: StatusBarIndicator) -> some View {
+        switch indicator {
+        case .context(let count, let hasProcessing):
+            HStack(spacing: 3) {
+                Circle()
+                    .fill(hasProcessing ? .orange : .green)
+                    .frame(width: 6, height: 6)
+                Text("\(count)")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundColor(.secondary)
             }
+        case .browser(let connected):
+            Image(systemName: connected ? "link" : "link.slash")
+                .font(.system(size: 10))
+                .foregroundColor(connected ? .blue : .secondary.opacity(0.5))
+        case .llm(let available):
+            Image(systemName: available ? "cpu" : "cpu.badge.xmark")
+                .font(.system(size: 10))
+                .foregroundColor(available ? .green : .secondary.opacity(0.5))
         }
     }
 }

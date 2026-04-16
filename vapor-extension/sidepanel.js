@@ -5,9 +5,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const saveTokenBtn = document.getElementById('saveTokenBtn');
   const clearTokenBtn = document.getElementById('clearTokenBtn');
   const testBtn = document.getElementById('testBtn');
-  const captureArticleBtn = document.getElementById('captureArticleBtn');
+  const capturePageBtn = document.getElementById('capturePageBtn');
   const captureSelectionBtn = document.getElementById('captureSelectionBtn');
-  const captureSnapshotBtn = document.getElementById('captureSnapshotBtn');
   const captureCountEl = document.getElementById('captureCount');
   const captureResultEl = document.getElementById('captureResult');
   const captureListEl = document.getElementById('captureList');
@@ -151,15 +150,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  captureArticleBtn.addEventListener('click', () => {
-    doCapture('article', 'CAPTURE_ARTICLE', captureArticleBtn);
+  capturePageBtn.addEventListener('click', () => {
+    doCapture('page', 'CAPTURE_PAGE', capturePageBtn);
   });
 
   captureSelectionBtn.addEventListener('click', () => {
     doCapture('selection', 'CAPTURE_SELECTION', captureSelectionBtn);
-  });
-
-  captureSnapshotBtn.addEventListener('click', () => {
-    doCapture('snapshot', 'CAPTURE_PAGE_SNAPSHOT', captureSnapshotBtn);
   });
 });

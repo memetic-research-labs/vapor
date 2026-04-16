@@ -81,6 +81,7 @@ struct VaporApp: App {
                 .environment(compressionService)
                 .environment(browserBridge)
                 .environment(contextQueueService)
+                .environment(StatusBarService.shared)
                 .onAppear {
                     browserBridge.setContextQueueService(contextQueueService)
                     contextQueueService.setModelContext(sharedModelContainer.mainContext)
@@ -93,7 +94,7 @@ struct VaporApp: App {
                 }
         }
         .modelContainer(sharedModelContainer)
-        .defaultSize(width: 500, height: 400)
+        .defaultSize(width: 640, height: 540)
         .commands {
             CommandGroup(replacing: .newItem) { }
 
