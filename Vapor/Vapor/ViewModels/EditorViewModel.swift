@@ -107,7 +107,11 @@ final class EditorViewModel {
         // Auto-save current content before replacing
         if !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
            let historyService {
-            _ = try? historyService.saveSnapshot(currentPromptSnapshot())
+            do {
+                _ = try historyService.saveSnapshot(currentPromptSnapshot())
+            } catch {
+                logger.error("Failed to auto-save before restore: \(error)")
+            }
         }
 
         // Replace editor content with restored text
@@ -175,8 +179,12 @@ final class EditorViewModel {
         )
         guard snapshotHash != lastSavedHistoryHash else { return }
 
-        if let record = try? historyService.saveSnapshot(currentPromptSnapshot()) {
-            lastSavedHistoryHash = record.stableIdentifier
+        do {
+            if let record = try historyService.saveSnapshot(currentPromptSnapshot()) {
+                lastSavedHistoryHash = record.stableIdentifier
+            }
+        } catch {
+            logger.error("Failed to save prompt to history: \(error)")
         }
     }
 

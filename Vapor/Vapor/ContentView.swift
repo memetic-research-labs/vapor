@@ -434,9 +434,14 @@ struct ContentView: View {
         guard !viewModel.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         viewModel.recordCurrentPromptInHistory()
         let text = viewModel.compressedContent.isEmpty ? viewModel.content : viewModel.compressedContent
-        let posted = browserBridge.sendPrompt(text, original: viewModel.content, autoSubmit: preferences.autoSubmitToAI)
+        let autoSubmit = preferences.autoSubmitToAI
+        let posted = browserBridge.sendPrompt(text, original: viewModel.content, autoSubmit: autoSubmit)
         if posted, let target = browserBridge.selectedTarget {
-            toastService.showSuccess("Posted to \(target.displayLabel)")
+            if autoSubmit {
+                toastService.showSuccess("Sent to \(target.displayLabel)")
+            } else {
+                toastService.showSuccess("Injected into \(target.displayLabel) — press Enter to send")
+            }
         } else if browserBridge.selectedTarget != nil {
             toastService.showInfo("Refreshing browser tab target")
         } else {

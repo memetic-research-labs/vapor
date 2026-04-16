@@ -9,6 +9,9 @@ struct InjectionResult {
     var tabURL: String
     var tabID: Int?
     var timestamp: Date
+    var submitMethod: String?
+    var submitConfidence: String?
+    var autoSubmitted: Bool?
 }
 
 private struct PendingPromptRequest {
@@ -279,12 +282,18 @@ final class BrowserBridge {
             let platform = json["platform"] as? String ?? "unknown"
             let tabURL = json["tabUrl"] as? String ?? ""
             let tabID = json["tabId"] as? Int
+            let submitMethod = json["submitMethod"] as? String
+            let submitConfidence = json["submitConfidence"] as? String
+            let autoSubmitted = json["autoSubmitted"] as? Bool
             lastInjectionResult = InjectionResult(
                 success: success,
                 platform: platform,
                 tabURL: tabURL,
                 tabID: tabID,
-                timestamp: Date()
+                timestamp: Date(),
+                submitMethod: submitMethod,
+                submitConfidence: submitConfidence,
+                autoSubmitted: autoSubmitted
             )
             if success, let tabID, var selectedTarget {
                 selectedTarget.tabID = tabID

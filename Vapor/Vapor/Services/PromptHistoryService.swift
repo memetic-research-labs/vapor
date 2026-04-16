@@ -1,5 +1,8 @@
 import Foundation
 import SwiftData
+import OSLog
+
+nonisolated private let logger = Logger(subsystem: "lol.mrl.app.Vapor", category: "PromptHistory")
 
 struct PromptHistorySnapshot {
     let originalText: String
@@ -27,7 +30,10 @@ final class PromptHistoryService {
 
     @discardableResult
     func saveSnapshot(_ snapshot: PromptHistorySnapshot) throws -> PromptRecord? {
-        guard let modelContext else { return nil }
+        guard let modelContext else {
+            logger.error("saveSnapshot called but modelContext is nil")
+            return nil
+        }
 
         let trimmedOriginal = snapshot.originalText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedOriginal.isEmpty else { return nil }
@@ -47,6 +53,7 @@ final class PromptHistoryService {
         if let existing = try modelContext.fetch(descriptor).first {
             existing.modifiedAt = Date()
             try modelContext.save()
+            logger.info("Updated existing prompt record (hash: \(String(hash.prefix(8))))")
             return existing
         }
 
@@ -60,6 +67,7 @@ final class PromptHistoryService {
         )
         modelContext.insert(record)
         try modelContext.save()
+        logger.info("Saved new prompt record (hash: \(String(hash.prefix(8))))")
         return record
     }
 

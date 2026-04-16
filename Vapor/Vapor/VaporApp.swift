@@ -63,12 +63,24 @@ struct VaporApp: App {
             let persistentConfig = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
             return try ModelContainer(for: schema, configurations: [persistentConfig])
         } catch {
-            logger.error("Could not create persistent ModelContainer (\(error)); falling back to in-memory storage.")
-            let inMemoryConfig = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+            logger.error("Could not create persistent ModelContainer (\(error)); deleting stale store and retrying.")
+            let storeURL = URL.applicationSupportDirectory.appending(path: "default.store")
+            let shmURL = storeURL.appendingPathExtension("store-shm")
+            let walURL = storeURL.appendingPathExtension("store-wal")
+            try? FileManager.default.removeItem(at: storeURL)
+            try? FileManager.default.removeItem(at: shmURL)
+            try? FileManager.default.removeItem(at: walURL)
             do {
-                return try ModelContainer(for: schema, configurations: [inMemoryConfig])
+                let persistentConfig = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+                return try ModelContainer(for: schema, configurations: [persistentConfig])
             } catch {
-                fatalError("Cannot create ModelContainer: \(error)")
+                logger.error("Retry also failed (\(error)); falling back to in-memory storage.")
+                let inMemoryConfig = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+                do {
+                    return try ModelContainer(for: schema, configurations: [inMemoryConfig])
+                } catch {
+                    fatalError("Cannot create ModelContainer: \(error)")
+                }
             }
         }
     }()
