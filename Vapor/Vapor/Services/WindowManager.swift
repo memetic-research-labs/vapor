@@ -19,7 +19,7 @@ final class WindowManager {
     }
 
     private let preferences: UserPreferences
-    private let expandedSize = CGSize(width: 640, height: 540)
+    private let expandedSize = CGSize(width: 683, height: 540)
     private let minimizedSize = CGSize(width: 320, height: 200)
     private let contextTrayWidth: CGFloat = 261
     private let testSidebarWidth: CGFloat = 351

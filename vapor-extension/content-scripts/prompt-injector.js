@@ -20,6 +20,7 @@
 
   const DEBUG = false;
   let platformConfig = null;
+  const platformConfigPromise = loadPlatformConfig();
 
   async function loadPlatformConfig() {
     try {
@@ -222,44 +223,43 @@
     console.log('[Vapor] Picker activation requested (not yet implemented — Phase 3)');
   }
 
-  // Load config and set up message listener
-  loadPlatformConfig().then(() => {
-    chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-      if (!message || !message.type) return;
+  // Register the listener immediately so fresh injections can receive messages.
+  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (!message || !message.type) return;
 
-      if (message.type === 'SET_PROMPT') {
-        (async () => {
-          try {
-            const target = await resolveTarget(window.location.hostname);
-            if (!target) {
-              sendResponse({ success: false, platform: 'unknown', error: 'No prompt input found' });
-              return;
-            }
-            setValue(target.element, message.text);
-
-            if (message.autoSubmit) {
-              simulateSubmit(target.element, platformConfig);
-            }
-
-            sendResponse({
-              success: true,
-              platform: target.platform,
-              selector: getSelectorForElement(target.element),
-              tag: target.element.tagName.toLowerCase()
-            });
-          } catch (err) {
-            sendResponse({ success: false, error: err.message || String(err) });
+    if (message.type === 'SET_PROMPT') {
+      (async () => {
+        try {
+          await platformConfigPromise;
+          const target = await resolveTarget(window.location.hostname);
+          if (!target) {
+            sendResponse({ success: false, platform: 'unknown', error: 'No prompt input found' });
+            return;
           }
-        })();
-        return true;
-      }
+          setValue(target.element, message.text);
 
-      if (message.type === 'ACTIVATE_PICKER') {
-        activatePicker();
-        sendResponse({ success: false, error: 'Not yet implemented' });
-        return false;
-      }
-    });
+          if (message.autoSubmit) {
+            simulateSubmit(target.element, platformConfig);
+          }
+
+          sendResponse({
+            success: true,
+            platform: target.platform,
+            selector: getSelectorForElement(target.element),
+            tag: target.element.tagName.toLowerCase()
+          });
+        } catch (err) {
+          sendResponse({ success: false, error: err.message || String(err) });
+        }
+      })();
+      return true;
+    }
+
+    if (message.type === 'ACTIVATE_PICKER') {
+      activatePicker();
+      sendResponse({ success: false, error: 'Not yet implemented' });
+      return false;
+    }
   });
 
   function getSelectorForElement(el) {

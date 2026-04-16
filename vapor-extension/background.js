@@ -23,6 +23,69 @@ let capturedThisSession = 0;
 
 let authTokenLoadPromise = null;
 
+function normalizeHost(urlString) {
+  try {
+    return new URL(urlString).hostname.toLowerCase().replace(/^www\./, '');
+  } catch {
+    return '';
+  }
+}
+
+function inferPlatform(urlString) {
+  const host = normalizeHost(urlString);
+  if (host.includes('chatgpt') || host.includes('openai')) return 'chatgpt';
+  if (host.includes('claude')) return 'claude';
+  if (host.includes('gemini')) return 'gemini';
+  if (host.includes('grok') || host === 'x.com') return 'grok';
+  if (host.includes('perplexity')) return 'perplexity';
+  return 'browser';
+}
+
+function isCandidateTab(tab) {
+  const url = tab.url || '';
+  if (!url) return false;
+  if (url.startsWith('chrome://')) return false;
+  if (url.startsWith('chrome-extension://')) return false;
+  if (url.startsWith('about:')) return false;
+  if (url.startsWith('edge://')) return false;
+  return true;
+}
+
+function serializeTab(tab) {
+  return {
+    tab_id: tab.id,
+    title: tab.title || '',
+    url: tab.url || '',
+    platform: inferPlatform(tab.url || '')
+  };
+}
+
+async function listCandidateTabs() {
+  const tabs = await chrome.tabs.query({ windowType: 'normal' });
+  return tabs.filter(isCandidateTab).map(serializeTab);
+}
+
+async function focusTab(tab) {
+  if (!tab || !tab.id) return;
+  if (typeof tab.windowId === 'number') {
+    await chrome.windows.update(tab.windowId, { focused: true });
+  }
+  await chrome.tabs.update(tab.id, { active: true });
+}
+
+async function resolvePromptTab(tabIdRaw) {
+  if (typeof tabIdRaw === 'number') {
+    try {
+      return await chrome.tabs.get(tabIdRaw);
+    } catch {
+      return null;
+    }
+  }
+
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  return tab || null;
+}
+
 function ensureAuthTokenLoaded() {
   if (authTokenLoadPromise) return authTokenLoadPromise;
 
@@ -70,6 +133,12 @@ async function connect() {
         const data = JSON.parse(e.data);
         if (data.type === 'PROMPT_INJECT') {
           await handlePromptInject(data);
+        } else if (data.type === 'QUERY_TABS') {
+          await handleQueryTabs();
+        } else if (data.type === 'VERIFY_TARGET') {
+          await handleVerifyTarget(data);
+        } else if (data.type === 'OPEN_TAB') {
+          await handleOpenTab(data);
         } else if (data.type === 'ACTIVATE_PICKER') {
           await handleActivatePicker();
         }
@@ -130,10 +199,11 @@ function updateBadge(status) {
 async function handlePromptInject(data) {
   const text = data.text || '';
   const autoSubmit = data.autoSubmit || false;
+  const requestedTabId = typeof data.tab_id === 'number' ? data.tab_id : null;
 
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const tab = await resolvePromptTab(requestedTabId);
   if (!tab) {
-    await postResponse({ type: 'PROMPT_INJECTED', success: false, error: 'No active tab' });
+    await postResponse({ type: 'PROMPT_INJECTED', success: false, error: 'Target tab unavailable', tabId: requestedTabId });
     return;
   }
 
@@ -149,18 +219,68 @@ async function handlePromptInject(data) {
       autoSubmit
     });
 
+    await focusTab(tab);
+
     await postResponse({
       type: 'PROMPT_INJECTED',
       success: result?.success ?? false,
       platform: result?.platform ?? 'unknown',
-      tabUrl: tab.url || ''
+      tabUrl: tab.url || '',
+      tabId: tab.id
     });
   } catch (err) {
     await postResponse({
       type: 'PROMPT_INJECTED',
       success: false,
-      error: err.message || String(err)
+      error: err.message || String(err),
+      tabId: tab.id
     });
+  }
+}
+
+async function handleQueryTabs() {
+  try {
+    const tabs = await listCandidateTabs();
+    await postResponse({ type: 'TABS_RESULT', tabs });
+  } catch (err) {
+    await postResponse({ type: 'TABS_RESULT', tabs: [], error: err.message || String(err) });
+  }
+}
+
+async function handleVerifyTarget(data) {
+  const host = (data.host || '').toLowerCase();
+  const url = data.url || '';
+
+  try {
+    const tabs = await listCandidateTabs();
+    const match = tabs.find((tab) => {
+      const tabHost = normalizeHost(tab.url);
+      if (host && tabHost === host) return true;
+      if (url && tab.url === url) return true;
+      return false;
+    });
+
+    await postResponse(match
+      ? { type: 'TARGET_VERIFY_RESULT', found: true, ...match }
+      : { type: 'TARGET_VERIFY_RESULT', found: false, host, url });
+  } catch (err) {
+    await postResponse({ type: 'TARGET_VERIFY_RESULT', found: false, host, url, error: err.message || String(err) });
+  }
+}
+
+async function handleOpenTab(data) {
+  const url = data.url || '';
+  if (!url) {
+    await postResponse({ type: 'TAB_OPENED', success: false, error: 'Missing URL' });
+    return;
+  }
+
+  try {
+    const tab = await chrome.tabs.create({ url, active: true });
+    await focusTab(tab);
+    await postResponse({ type: 'TAB_OPENED', success: true, ...serializeTab(tab) });
+  } catch (err) {
+    await postResponse({ type: 'TAB_OPENED', success: false, url, error: err.message || String(err) });
   }
 }
 
@@ -292,12 +412,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return false;
 });
 
+chrome.commands.onCommand.addListener((command) => {
+  if (command !== 'capture-page') return;
+
+  handleCaptureRequest('page').catch((err) => {
+    console.error('[Vapor] Keyboard capture failed:', err);
+  });
+});
+
 // Start
 connect();
-
-chrome.action.onClicked.addListener((tab) => {
-  chrome.sidePanel.open({ tabId: tab.id });
-});
 
 chrome.runtime.onInstalled.addListener(() => {
   updateBadge('disconnected');

@@ -32,6 +32,27 @@ struct ContentView: View {
     var body: some View {
         contentGroup
             .background(windowManager.windowState == .expanded ? Color(nsColor: .windowBackgroundColor) : Color.clear)
+            .sheet(
+                isPresented: .init(
+                    get: { browserBridge.isPresentingTabPicker },
+                    set: { if !$0 { browserBridge.dismissTabPicker() } }
+                ),
+                onDismiss: {
+                    refocusEditorAfterTransition()
+                },
+                content: {
+                TabPickerView(
+                    tabs: browserBridge.availableTabs,
+                    selectedTarget: browserBridge.selectedTarget,
+                    onSelect: { tab in
+                        browserBridge.selectTab(tab)
+                    },
+                    onCancel: {
+                        browserBridge.dismissTabPicker()
+                    }
+                )
+                }
+            )
             .onAppear { handleOnAppear() }
             .onChange(of: viewModel.content) { _, newValue in
                 UserDefaults.standard.set(newValue, forKey: "lastEditorContent")
@@ -149,6 +170,9 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .vaporSendToBrowser)) { _ in
             sendToBrowser()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .vaporChooseBrowserTarget)) { _ in
+            chooseBrowserTarget()
+        }
         .onReceive(NotificationCenter.default.publisher(for: .vaporInsertContextItem)) { notification in
             if let text = notification.object as? String {
                 viewModel.content += (viewModel.content.isEmpty ? "" : "\n\n") + text
@@ -213,6 +237,12 @@ struct ContentView: View {
         setupDictation()
         checkPermissions()
         windowManager.setupWindowOnAppear()
+        DispatchQueue.main.async {
+            windowManager.resizeForPanels(
+                showContextTray: showContextTray,
+                showTestSidebar: showTestSidebar
+            )
+        }
     }
 
     private func handleOnDisappear() {
@@ -223,10 +253,26 @@ struct ContentView: View {
 
     private var expandedContent: some View {
         HStack(spacing: 0) {
+            ToolSidebarView(
+                viewModel: viewModel,
+                dictationService: dictationService,
+                preferences: preferences,
+                onChooseTarget: {
+                    chooseBrowserTarget()
+                },
+                onPostToTarget: {
+                    sendToBrowser()
+                },
+                onToggleDictation: {
+                    toggleDictation()
+                }
+            )
+
+            Divider()
+
             VStack(spacing: 0) {
                 ToolbarView(
                     viewModel: viewModel,
-                    dictationService: dictationService,
                     preferences: preferences,
                     onCompressAndCopy: {
                         Task { await performCompressAndCopy() }
@@ -238,8 +284,8 @@ struct ContentView: View {
                     onClear: {
                         viewModel.clear()
                     },
-                    onToggleDictation: {
-                        toggleDictation()
+                    onShowHistory: {
+                        openWindow(id: "prompt-history")
                     },
                     onToggleTest: {
                         let willShow = !showTestSidebar
@@ -386,9 +432,24 @@ struct ContentView: View {
             return
         }
         guard !viewModel.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        viewModel.recordCurrentPromptInHistory()
         let text = viewModel.compressedContent.isEmpty ? viewModel.content : viewModel.compressedContent
-        browserBridge.sendPrompt(text, original: viewModel.content, autoSubmit: preferences.autoSubmitToAI)
-        toastService.showSuccess("Sent to browser")
+        let posted = browserBridge.sendPrompt(text, original: viewModel.content, autoSubmit: preferences.autoSubmitToAI)
+        if posted, let target = browserBridge.selectedTarget {
+            toastService.showSuccess("Posted to \(target.displayLabel)")
+        } else if browserBridge.selectedTarget != nil {
+            toastService.showInfo("Refreshing browser tab target")
+        } else {
+            toastService.showInfo("Choose a browser tab target")
+        }
+    }
+
+    private func chooseBrowserTarget() {
+        guard browserBridge.isExtensionConnected else {
+            toastService.showError("No browser extension connected")
+            return
+        }
+        browserBridge.queryTabs()
     }
 
     // Dictation is Fn-key only. No auto-start on expand.

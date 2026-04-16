@@ -94,7 +94,7 @@ struct VaporApp: App {
                 }
         }
         .modelContainer(sharedModelContainer)
-        .defaultSize(width: 640, height: 540)
+        .defaultSize(width: 683, height: 540)
         .commands {
             CommandGroup(replacing: .newItem) { }
 
@@ -138,10 +138,14 @@ struct VaporApp: App {
                 }
                 .keyboardShortcut(.return, modifiers: .command)
 
-                Button("Send to Browser") {
+                Button("Choose Browser Target") {
+                    NotificationCenter.default.post(name: .vaporChooseBrowserTarget, object: nil)
+                }
+
+                Button("Post to Selected Tab") {
                     NotificationCenter.default.post(name: .vaporSendToBrowser, object: nil)
                 }
-                .keyboardShortcut(.return, modifiers: [.command, .shift])
+                .keyboardShortcut("p", modifiers: [.command, .shift])
 
                 Button("Copy & Clear") {
                     NotificationCenter.default.post(name: .vaporCopyAndClear, object: nil)
@@ -151,12 +155,12 @@ struct VaporApp: App {
                 Divider()
 
                 Button("Prompt History") {
-                    NotificationCenter.default.post(name: .vaporShowHistory, object: nil)
+                    openWindow(id: "prompt-history")
                 }
                 .keyboardShortcut("y", modifiers: .command)
 
                 Button("Keyboard Shortcuts") {
-                    NotificationCenter.default.post(name: .vaporShowHelp, object: nil)
+                    openWindow(id: "keyboard-shortcuts")
                 }
                 .keyboardShortcut("/", modifiers: .command)
             }
@@ -185,7 +189,7 @@ struct VaporApp: App {
                 }
 
                 Button("Keyboard Shortcuts") {
-                    NotificationCenter.default.post(name: .vaporShowHelp, object: nil)
+                    openWindow(id: "keyboard-shortcuts")
                 }
                 .keyboardShortcut("/", modifiers: .command)
             }
@@ -198,14 +202,14 @@ struct VaporApp: App {
         .windowResizability(.contentSize)
         .defaultSize(width: 320, height: 240)
 
-        Window("Prompt History", id: "prompt-history") {
+        WindowGroup("Prompt History", id: "prompt-history") {
             PromptHistoryView()
         }
         .modelContainer(sharedModelContainer)
         .windowStyle(.titleBar)
         .defaultSize(width: 400, height: 500)
 
-        Window("Keyboard Shortcuts", id: "keyboard-shortcuts") {
+        WindowGroup("Keyboard Shortcuts", id: "keyboard-shortcuts") {
             KeyboardShortcutsHelpView()
         }
         .windowStyle(.titleBar)
