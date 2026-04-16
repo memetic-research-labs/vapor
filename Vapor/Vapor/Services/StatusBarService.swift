@@ -52,7 +52,7 @@ final class StatusBarService {
     }
 
     func updateContextIndicator(count: Int, hasProcessing: Bool) {
-        indicators.removeAll { $0 == .context(count: 0, hasProcessing: false) }
+        indicators.removeAll { if case .context = $0 { return true }; return false }
         indicators.append(.context(count: count, hasProcessing: hasProcessing))
     }
 

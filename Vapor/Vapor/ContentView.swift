@@ -281,9 +281,6 @@ struct ContentView: View {
                         viewModel.copyOriginalToClipboard()
                         toastService.showSuccess("Original copied to clipboard")
                     },
-                    onClear: {
-                        viewModel.clear()
-                    },
                     onShowHistory: {
                         openWindow(id: "prompt-history")
                     },

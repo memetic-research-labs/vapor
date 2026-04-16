@@ -88,6 +88,7 @@ final class ContextItem {
     var summaryData: Data?
     var extractionBackendRaw: String?
     var embeddingID: String?
+    var captureJobId: String?
 
     init(
         sourceURL: String = "",

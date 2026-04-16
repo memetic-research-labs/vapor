@@ -9,7 +9,8 @@ class VaporPopupApp extends HTMLElement {
       isSavingToken: false,
       isCapturing: null,
       capturedThisSession: 0,
-      message: null
+      message: null,
+      tokenInputValue: ''
     };
     this.statusTimer = null;
     this.messageTimer = null;
@@ -62,6 +63,12 @@ class VaporPopupApp extends HTMLElement {
         await this.clearToken();
       }
     });
+
+    root.addEventListener('input', (event) => {
+      if (event.target.id === 'tokenField') {
+        this.state.tokenInputValue = event.target.value;
+      }
+    });
   }
 
   setState(partial) {
@@ -99,14 +106,13 @@ class VaporPopupApp extends HTMLElement {
   }
 
   async saveToken() {
-    const tokenField = this.shadowRoot.getElementById('tokenField');
-    const token = tokenField.value.trim();
+    const token = (this.state.tokenInputValue || '').trim();
     if (!token) return;
 
     this.setState({ isSavingToken: true });
     try {
       await chrome.runtime.sendMessage({ type: 'SET_TOKEN', token });
-      tokenField.value = '';
+      this.setState({ tokenInputValue: '' });
       await this.refreshStatus();
       this.showMessage('success', 'Token saved');
     } catch (error) {
@@ -118,8 +124,7 @@ class VaporPopupApp extends HTMLElement {
   async clearToken() {
     try {
       await chrome.runtime.sendMessage({ type: 'SET_TOKEN', token: null });
-      const tokenField = this.shadowRoot.getElementById('tokenField');
-      if (tokenField) tokenField.value = '';
+      this.setState({ tokenInputValue: '' });
       await this.refreshStatus();
       this.showMessage('success', 'Token cleared');
     } catch (error) {
@@ -150,7 +155,8 @@ class VaporPopupApp extends HTMLElement {
       isSavingToken,
       isCapturing,
       capturedThisSession,
-      message
+      message,
+      tokenInputValue
     } = this.state;
 
     const captureCountText = capturedThisSession === 1
@@ -440,6 +446,7 @@ class VaporPopupApp extends HTMLElement {
                   class="field-input"
                   type="password"
                   autocomplete="off"
+                  value="${tokenInputValue.replace(/"/g, '&quot;')}"
                   placeholder="${hasToken ? 'Token saved' : 'Paste token from Vapor Settings'}"
                 />
                 <div class="token-note">Capture works once Vapor is running and the browser token matches Settings.</div>

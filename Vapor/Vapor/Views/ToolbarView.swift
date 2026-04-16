@@ -5,7 +5,6 @@ struct ToolbarView: View {
     let preferences: UserPreferences
     let onCompressAndCopy: () async -> Void
     let onCopyOriginal: () -> Void
-    let onClear: () -> Void
     let onShowHistory: () -> Void
     let onToggleTest: () -> Void
     let onToggleContextTray: () -> Void

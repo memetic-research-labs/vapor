@@ -69,7 +69,7 @@ final class ContextQueueService {
 
     func status(for jobId: String) -> String? {
         let all = queue + processing + ready + failed
-        return all.first { $0.id.uuidString == jobId }?.status.rawValue
+        return all.first { $0.captureJobId == jobId }?.status.rawValue
     }
 
     func ingest(_ payload: BrowserContextPayload) async throws -> ContextItem {
@@ -132,6 +132,7 @@ final class ContextQueueService {
             blobPath: blobPath,
             blobMimeType: payload.mimeType
         )
+        item.captureJobId = payload.jobId
 
         queue.append(item)
         logger.info("Ingested context item: \(item.id) kind=\(payload.kind)")
@@ -142,66 +143,69 @@ final class ContextQueueService {
     }
 
     func processNext() async {
-        guard !queue.isEmpty, !isProcessing else { return }
+        guard !isProcessing else { return }
         isProcessing = true
         defer { isProcessing = false }
-        let item = queue.removeFirst()
-        item.status = .processing
-        processing.append(item)
 
-        let title = item.sourceTitle.isEmpty ? "Untitled" : item.sourceTitle
-        logger.info("Processing context item: \(item.id) kind=\(item.kind.displayName) title=\(title.prefix(80)) textLen=\(item.textContent?.count ?? 0)")
-        StatusBarService.shared.setContextStatus("Processing: \"\(title.prefix(60))\"")
+        while !queue.isEmpty {
+            let item = queue.removeFirst()
+            item.status = .processing
+            processing.append(item)
 
-        do {
-            if let text = item.textContent, !text.isEmpty {
-                logger.info("Starting parallel extraction + summarization for \(item.id)")
-                StatusBarService.shared.setContextStatus("Extracting entities (\(entityExtractor.backend.displayName))...")
+            let title = item.sourceTitle.isEmpty ? "Untitled" : item.sourceTitle
+            logger.info("Processing context item: \(item.id) kind=\(item.kind.displayName) title=\(title.prefix(80)) textLen=\(item.textContent?.count ?? 0)")
+            StatusBarService.shared.setContextStatus("Processing: \"\(title.prefix(60))\"")
 
-                async let extractionResult = entityExtractor.extract(from: text)
-                async let summaryResult = summarizer.summarize(text: text)
+            do {
+                if let text = item.textContent, !text.isEmpty {
+                    logger.info("Starting parallel extraction + summarization for \(item.id)")
+                    StatusBarService.shared.setContextStatus("Extracting entities (\(entityExtractor.backend.displayName))...")
 
-                let result = await extractionResult
-                logger.info("Extraction complete for \(item.id): \(result.entities.count) entities via \(result.backend.displayName)")
-                item.entities = result.entities
-                item.extractionBackendRaw = result.backend.rawValue
+                    async let extractionResult = entityExtractor.extract(from: text)
+                    async let summaryResult = summarizer.summarize(text: text)
 
-                if let summary = await summaryResult {
-                    logger.info("Summarization complete for \(item.id): abstract=\(summary.abstract.prefix(100))")
-                    item.summary = summary
-                    StatusBarService.shared.setContextStatus("\(result.entities.count) entities · summary ready")
-                } else {
-                    logger.warning("Summarization returned nil for \(item.id)")
-                    StatusBarService.shared.setContextStatus("\(result.entities.count) entities extracted")
+                    let result = await extractionResult
+                    logger.info("Extraction complete for \(item.id): \(result.entities.count) entities via \(result.backend.displayName)")
+                    item.entities = result.entities
+                    item.extractionBackendRaw = result.backend.rawValue
+
+                    if let summary = await summaryResult {
+                        logger.info("Summarization complete for \(item.id): abstract=\(summary.abstract.prefix(100))")
+                        item.summary = summary
+                        StatusBarService.shared.setContextStatus("\(result.entities.count) entities · summary ready")
+                    } else {
+                        logger.warning("Summarization returned nil for \(item.id)")
+                        StatusBarService.shared.setContextStatus("\(result.entities.count) entities extracted")
+                    }
+
+                    let tags = tagger.tag(contextItem: item)
+                    item.tags = tags
+                    logger.info("Tagging complete for \(item.id): \(item.tags.count) tags")
                 }
 
-                let tags = tagger.tag(contextItem: item)
-                item.tags = tags
-                logger.info("Tagging complete for \(item.id): \(item.tags.count) tags")
-            }
+                if let citation = citationBuilder.build(for: item) {
+                    item.citation = citation
+                    logger.info("Citation built for \(item.id): format=\(citation.format.rawValue)")
+                }
 
-            if let citation = citationBuilder.build(for: item) {
-                item.citation = citation
-                logger.info("Citation built for \(item.id): format=\(citation.format.rawValue)")
+                if let ctx = modelContext {
+                    ctx.insert(item)
+                    try ctx.save()
+                }
+                processing.removeAll { $0.id == item.id }
+                item.status = .ready
+                ready.insert(item, at: 0)
+                let backendName = item.extractionBackendRaw ?? "unknown"
+                logger.info("Context item ready: \(item.id) with \(item.tags.count) tags, \(item.entities.count) entities (via \(backendName)), summary=\(item.summary != nil ? "yes" : "no")")
+                StatusBarService.shared.updateContextIndicator(count: ready.count, hasProcessing: !processing.isEmpty)
+            } catch {
+                processing.removeAll { $0.id == item.id }
+                item.status = .failed
+                failed.append(item)
+                logger.error("Context item failed: \(item.id) — \(error.localizedDescription)")
+                StatusBarService.shared.setContextStatus("Processing failed: \(error.localizedDescription)")
+                StatusBarService.shared.updateContextIndicator(count: ready.count, hasProcessing: !processing.isEmpty)
             }
-
-            if let ctx = modelContext {
-                ctx.insert(item)
-                try ctx.save()
-            }
-            processing.removeAll { $0.id == item.id }
-            item.status = .ready
-            ready.insert(item, at: 0)
-            let backendName = item.extractionBackendRaw ?? "unknown"
-            logger.info("Context item ready: \(item.id) with \(item.tags.count) tags, \(item.entities.count) entities (via \(backendName)), summary=\(item.summary != nil ? "yes" : "no")")
-            StatusBarService.shared.updateContextIndicator(count: ready.count, hasProcessing: !processing.isEmpty)
-        } catch {
-            processing.removeAll { $0.id == item.id }
-            item.status = .failed
-            failed.append(item)
-            logger.error("Context item failed: \(item.id) — \(error.localizedDescription)")
-            StatusBarService.shared.setContextStatus("Processing failed: \(error.localizedDescription)")
-            StatusBarService.shared.updateContextIndicator(count: ready.count, hasProcessing: !processing.isEmpty)
         }
     }
 
@@ -210,11 +214,30 @@ final class ContextQueueService {
         processing.removeAll { $0.id == item.id }
         ready.removeAll { $0.id == item.id }
         failed.removeAll { $0.id == item.id }
+
+        if let blobPath = item.blobPath {
+            try? blobStore.delete(relativePath: blobPath)
+        }
+        if let ctx = modelContext {
+            ctx.delete(item)
+            try? ctx.save()
+        }
     }
 
     func clearCompleted() {
+        let toRemove = ready + failed
         ready.removeAll()
         failed.removeAll()
+
+        if let ctx = modelContext {
+            for item in toRemove {
+                if let blobPath = item.blobPath {
+                    try? blobStore.delete(relativePath: blobPath)
+                }
+                ctx.delete(item)
+            }
+            try? ctx.save()
+        }
     }
 
     private func parseMimeFromDataURLHeader(_ header: String) -> String {

@@ -15,7 +15,7 @@ final class BlobStore {
         let blobsDir = vaporDir.appendingPathComponent("blobs", isDirectory: true)
 
         do {
-            try FileManager.default.createDirectory(at: blobsDir, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: blobsDir, withIntermediateDirectories: true, attributes: nil)
         } catch {
             blobLogger.error("Failed to create blob store directory: \(error.localizedDescription)")
         }
@@ -82,7 +82,7 @@ final class BlobStore {
     func clearAll() throws {
         if FileManager.default.fileExists(atPath: baseURL.path) {
             try FileManager.default.removeItem(at: baseURL)
-            try FileManager.default.createDirectory(at: baseURL, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: baseURL, withIntermediateDirectories: true, attributes: nil)
             blobLogger.debug("Cleared all blobs")
         }
     }

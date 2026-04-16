@@ -96,6 +96,7 @@ final class BrowserBridge {
         portConflict = false
 
         startTask = Task { [weak self] in
+            defer { self?.startTask = nil }
             guard let self else { return }
             let maxRetries = 2
             let retryDelay: UInt64 = 1_000_000_000
@@ -164,7 +165,6 @@ final class BrowserBridge {
                     return
                 }
             }
-            self.startTask = nil
         }
     }
 
@@ -478,12 +478,17 @@ final class BrowserBridge {
             capturedAt: json["capturedAt"] as? String
         )
 
+        contextStatusCache.set(jobId, "processing")
+
         Task {
             do {
                 let item = try await contextQueueService?.ingest(payload)
-                let itemId = item?.id.uuidString ?? jobId
-                contextStatusCache.set(itemId, "ready")
-                logger.info("Context item ingested: \(itemId)")
+                contextStatusCache.set(jobId, "ready")
+                if let itemId = item?.id.uuidString {
+                    logger.info("Context item ingested for job \(jobId): \(itemId)")
+                } else {
+                    logger.info("Context item ingested for job \(jobId)")
+                }
             } catch {
                 contextStatusCache.set(jobId, "failed")
                 logger.error("Context ingestion failed: \(error.localizedDescription)")
