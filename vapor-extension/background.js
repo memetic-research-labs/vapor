@@ -366,7 +366,7 @@ async function handleCaptureRequest(captureType) {
 
     const postResult = await postContextCapture(result.payload);
     if (!postResult.ok) {
-      return { success: false, error: postResult.error || `HTTP ${postResult.status}` };
+      return { success: false, error: postResult.error || (postResult.status ? `HTTP ${postResult.status}` : 'Post failed') };
     }
     return { success: true, jobId: result.payload.jobId, payload: result.payload };
   } catch (err) {

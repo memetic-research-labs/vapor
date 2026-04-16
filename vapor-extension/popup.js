@@ -1,3 +1,10 @@
+const escapeHtml = (str) => String(str)
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;');
+
 class VaporPopupApp extends HTMLElement {
   constructor() {
     super();
@@ -148,13 +155,6 @@ class VaporPopupApp extends HTMLElement {
   }
 
   render() {
-    const escapeHtml = (str) => String(str)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-
     const {
       connected,
       hasToken,
