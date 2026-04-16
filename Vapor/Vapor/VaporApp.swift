@@ -64,12 +64,16 @@ struct VaporApp: App {
             return try ModelContainer(for: schema, configurations: [persistentConfig])
         } catch {
             logger.error("Could not create persistent ModelContainer (\(error)); deleting stale store and retrying.")
-            let storeURL = URL.applicationSupportDirectory.appending(path: "default.store")
-            let shmURL = storeURL.appendingPathExtension("store-shm")
-            let walURL = storeURL.appendingPathExtension("store-wal")
-            try? FileManager.default.removeItem(at: storeURL)
-            try? FileManager.default.removeItem(at: shmURL)
-            try? FileManager.default.removeItem(at: walURL)
+            let appSupportURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            let bundleID = Bundle.main.bundleIdentifier ?? "lol.mrl.app.Vapor"
+            if let appSupportURL {
+                let storeURL = appSupportURL.appendingPathComponent(bundleID).appendingPathComponent("default.store")
+                let dirURL = storeURL.deletingLastPathComponent()
+                let storeName = storeURL.lastPathComponent
+                try? FileManager.default.removeItem(at: storeURL)
+                try? FileManager.default.removeItem(at: dirURL.appendingPathComponent(storeName + "-shm"))
+                try? FileManager.default.removeItem(at: dirURL.appendingPathComponent(storeName + "-wal"))
+            }
             do {
                 let persistentConfig = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
                 return try ModelContainer(for: schema, configurations: [persistentConfig])

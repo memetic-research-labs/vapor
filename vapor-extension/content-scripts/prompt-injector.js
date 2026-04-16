@@ -312,7 +312,7 @@
     return { method: 'enter', element: null, confidence: 'low' };
   }
 
-  function executeSubmit(mechanism) {
+  function executeSubmit(mechanism, inputEl) {
     if (!mechanism) return false;
 
     switch (mechanism.method) {
@@ -333,7 +333,10 @@
         break;
     }
 
-    const el = document.activeElement || document.body;
+    const el = inputEl || document.activeElement || document.body;
+    if (inputEl && document.activeElement !== inputEl) {
+      try { inputEl.focus(); } catch (_) {}
+    }
     el.dispatchEvent(new KeyboardEvent('keydown', {
       key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true
     }));
@@ -372,7 +375,7 @@
           let didSubmit = false;
 
           if (message.autoSubmit) {
-            didSubmit = executeSubmit(mechanism);
+            didSubmit = executeSubmit(mechanism, target.element);
           }
 
           sendResponse({

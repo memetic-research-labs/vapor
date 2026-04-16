@@ -328,11 +328,18 @@ async function postContextCapture(payload) {
     });
     if (response.ok) {
       capturedThisSession++;
+      return { ok: true };
     }
-    return response.ok;
+    let errorText = '';
+    try { errorText = await response.text(); } catch (_) {}
+    const hint = response.status === 401 || response.status === 403
+      ? 'Auth token missing or invalid'
+      : errorText || `HTTP ${response.status}`;
+    console.error('[Vapor] Context capture rejected:', response.status, hint);
+    return { ok: false, status: response.status, error: hint };
   } catch (err) {
     console.error('[Vapor] Failed to post context capture:', err);
-    return false;
+    return { ok: false, error: err.message || String(err) };
   }
 }
 
@@ -357,8 +364,11 @@ async function handleCaptureRequest(captureType) {
       return { success: false, error: result?.error || 'Capture failed' };
     }
 
-    const ok = await postContextCapture(result.payload);
-    return { success: ok, jobId: result.payload.jobId, payload: result.payload };
+    const postResult = await postContextCapture(result.payload);
+    if (!postResult.ok) {
+      return { success: false, error: postResult.error || `HTTP ${postResult.status}` };
+    }
+    return { success: true, jobId: result.payload.jobId, payload: result.payload };
   } catch (err) {
     return { success: false, error: err.message || String(err) };
   }
@@ -382,23 +392,31 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === 'CAPTURE_PAGE') {
-    handleCaptureRequest('page').then(sendResponse, sendResponse);
+    handleCaptureRequest('page')
+      .then(sendResponse)
+      .catch(err => sendResponse({ success: false, error: err?.message ?? String(err) }));
     return true;
   }
 
   if (message.type === 'CAPTURE_SELECTION') {
-    handleCaptureRequest('selection').then(sendResponse, sendResponse);
+    handleCaptureRequest('selection')
+      .then(sendResponse)
+      .catch(err => sendResponse({ success: false, error: err?.message ?? String(err) }));
     return true;
   }
 
   // Legacy support for old sidepanel versions
   if (message.type === 'CAPTURE_ARTICLE') {
-    handleCaptureRequest('page').then(sendResponse, sendResponse);
+    handleCaptureRequest('page')
+      .then(sendResponse)
+      .catch(err => sendResponse({ success: false, error: err?.message ?? String(err) }));
     return true;
   }
 
   if (message.type === 'CAPTURE_PAGE_SNAPSHOT') {
-    handleCaptureRequest('page').then(sendResponse, sendResponse);
+    handleCaptureRequest('page')
+      .then(sendResponse)
+      .catch(err => sendResponse({ success: false, error: err?.message ?? String(err) }));
     return true;
   }
 

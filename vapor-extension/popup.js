@@ -148,6 +148,13 @@ class VaporPopupApp extends HTMLElement {
   }
 
   render() {
+    const escapeHtml = (str) => String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+
     const {
       connected,
       hasToken,
@@ -459,7 +466,7 @@ class VaporPopupApp extends HTMLElement {
                 <button class="secondary-button" data-action="clear-token" ${!hasToken ? 'disabled' : ''}>Clear</button>
               </div>
 
-              ${message ? `<div class="message ${message.kind}">${message.text}</div>` : ''}
+              ${message ? `<div class="message ${escapeHtml(message.kind)}">${escapeHtml(message.text)}</div>` : ''}
             </div>
           ` : `
             <div class="view">
@@ -494,7 +501,7 @@ class VaporPopupApp extends HTMLElement {
 
               <div class="session-row">${captureCountText}</div>
 
-              ${message ? `<div class="message ${message.kind}">${message.text}</div>` : ''}
+              ${message ? `<div class="message ${escapeHtml(message.kind)}">${escapeHtml(message.text)}</div>` : ''}
             </div>
           `}
         </div>
