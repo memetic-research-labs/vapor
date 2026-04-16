@@ -301,9 +301,8 @@ struct ContextItemDetailView: View {
                 sectionHeader("Content")
                 Spacer()
                 Button {
-                    if let text = item.textContent {
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(String(text), forType: .string)
+                    if let content = item.markdownContent ?? item.textContent {
+                        copyToPasteboard(content)
                         flashCopyConfirmation()
                     }
                 } label: {
@@ -315,11 +314,17 @@ struct ContextItemDetailView: View {
                 .help("Copy content")
             }
 
-            if let text = item.textContent, !text.isEmpty {
-                Text(text)
-                    .font(.system(size: 12))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            let sections = contentSections(for: item)
+            if !sections.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(sections) { section in
+                        MarkdownSectionView(section: section) {
+                            copyToPasteboard(section.rawContent)
+                            flashCopyConfirmation()
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             } else {
                 Text("No text content")
                     .font(.system(size: 11))
@@ -404,6 +409,11 @@ struct ContextItemDetailView: View {
             try? await Task.sleep(for: .seconds(1.5))
             withAnimation { showCopyConfirmation = false }
         }
+    }
+
+    private func copyToPasteboard(_ content: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(content, forType: .string)
     }
 
     // MARK: - Summary
@@ -531,7 +541,9 @@ struct ContextItemDetailView: View {
             md += "---\n\n"
         }
 
-        if let text = item.textContent, !text.isEmpty {
+        if let markdown = item.markdownContent, !markdown.isEmpty {
+            md += "\(markdown)\n"
+        } else if let text = item.textContent, !text.isEmpty {
             md += "\(text)\n"
         }
 
@@ -551,13 +563,163 @@ struct ContextItemDetailView: View {
             md += "\(citation.rendered)\n"
         }
 
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(md, forType: .string)
+        copyToPasteboard(md)
         flashCopyConfirmation()
     }
 
     private func copyAllToClipboard(item: ContextItem) {
+        if let markdown = item.markdownContent, !markdown.isEmpty {
+            copyToPasteboard(markdown)
+            flashCopyConfirmation()
+            return
+        }
+
+        if let text = item.textContent, !text.isEmpty {
+            copyToPasteboard(text)
+            flashCopyConfirmation()
+            return
+        }
+
         copyAsMarkdown(item: item)
+    }
+
+    private func contentSections(for item: ContextItem) -> [MarkdownContentSection] {
+        let content = item.markdownContent ?? item.textContent ?? ""
+        guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return [] }
+        return MarkdownContentSection.sections(from: content, markdownPreferred: item.markdownContent != nil)
+    }
+}
+
+private struct MarkdownSectionView: View {
+    let section: MarkdownContentSection
+    let onCopy: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .top, spacing: 8) {
+                sectionBody
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                Button(action: onCopy) {
+                    Image(systemName: "doc.on.doc")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Copy section")
+            }
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .controlBackgroundColor)))
+    }
+
+    @ViewBuilder
+    private var sectionBody: some View {
+        switch section.kind {
+        case .code:
+            Text(section.displayContent)
+                .font(.system(size: 12, design: .monospaced))
+                .lineSpacing(4)
+                .textSelection(.enabled)
+        case .heading, .markdown:
+            if let attributed = try? AttributedString(markdown: section.displayContent) {
+                Text(attributed)
+                    .font(.system(size: 13))
+                    .lineSpacing(5)
+                    .textSelection(.enabled)
+            } else {
+                Text(section.displayContent)
+                    .font(.system(size: 13))
+                    .lineSpacing(5)
+                    .textSelection(.enabled)
+            }
+        }
+    }
+}
+
+private struct MarkdownContentSection: Identifiable {
+    enum Kind {
+        case heading
+        case markdown
+        case code
+    }
+
+    let id = UUID()
+    let kind: Kind
+    let rawContent: String
+    let displayContent: String
+
+    static func sections(from content: String, markdownPreferred: Bool) -> [MarkdownContentSection] {
+        markdownPreferred ? markdownSections(from: content) : plainTextSections(from: content)
+    }
+
+    private static func markdownSections(from content: String) -> [MarkdownContentSection] {
+        let lines = content.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
+        var sections: [MarkdownContentSection] = []
+        var current: [String] = []
+        var inCodeFence = false
+
+        func flushCurrent(as kind: Kind = .markdown) {
+            let raw = current.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+            current.removeAll()
+            guard !raw.isEmpty else { return }
+            let display = kind == .code ? stripCodeFence(raw) : raw
+            sections.append(MarkdownContentSection(kind: kind, rawContent: raw, displayContent: display))
+        }
+
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+
+            if trimmed.hasPrefix("```") {
+                current.append(line)
+                inCodeFence.toggle()
+                if !inCodeFence {
+                    flushCurrent(as: .code)
+                }
+                continue
+            }
+
+            if inCodeFence {
+                current.append(line)
+                continue
+            }
+
+            if trimmed.hasPrefix("#") {
+                flushCurrent()
+                sections.append(MarkdownContentSection(kind: .heading, rawContent: trimmed, displayContent: trimmed))
+                continue
+            }
+
+            if trimmed.isEmpty {
+                flushCurrent()
+                continue
+            }
+
+            current.append(line)
+        }
+
+        flushCurrent()
+        return sections
+    }
+
+    private static func plainTextSections(from content: String) -> [MarkdownContentSection] {
+        content
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .components(separatedBy: "\n\n")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .map { MarkdownContentSection(kind: .markdown, rawContent: $0, displayContent: $0) }
+    }
+
+    private static func stripCodeFence(_ raw: String) -> String {
+        var lines = raw.components(separatedBy: "\n")
+        if !lines.isEmpty, lines[0].trimmingCharacters(in: .whitespaces).hasPrefix("```") {
+            lines.removeFirst()
+        }
+        if !lines.isEmpty, lines[lines.count - 1].trimmingCharacters(in: .whitespaces) == "```" {
+            lines.removeLast()
+        }
+        return lines.joined(separator: "\n")
     }
 }
 

@@ -10,6 +10,7 @@ struct BrowserContextPayload: Sendable {
     var url: String
     var title: String
     var textContent: String?
+    var markdownContent: String?
     var mimeType: String?
     var dataURL: String?
     var author: String?
@@ -104,14 +105,30 @@ final class ContextQueueService {
             return nil
         }()
 
+        let capturedAt: Date = {
+            guard let dateStr = payload.capturedAt else { return Date() }
+            let formatters: [ISO8601DateFormatter] = {
+                let base = ISO8601DateFormatter()
+                let fractional = ISO8601DateFormatter()
+                fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                return [fractional, base]
+            }()
+            for formatter in formatters {
+                if let date = formatter.date(from: dateStr) { return date }
+            }
+            return Date()
+        }()
+
         let item = ContextItem(
             sourceURL: payload.url,
             sourceTitle: payload.title,
             sourceAuthor: payload.author,
             sourcePublishedDate: parsedDate,
             sourceSiteName: payload.siteName,
+            capturedAt: capturedAt,
             kind: kind,
             textContent: payload.textContent,
+            markdownContent: payload.markdownContent,
             blobPath: blobPath,
             blobMimeType: payload.mimeType
         )

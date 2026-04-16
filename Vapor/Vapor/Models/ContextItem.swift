@@ -77,6 +77,7 @@ final class ContextItem {
     var statusRaw: String
 
     var textContent: String?
+    var markdownContent: String?
     var blobPath: String?
     var blobMimeType: String?
     var thumbnailPath: String?
@@ -94,8 +95,10 @@ final class ContextItem {
         sourceAuthor: String? = nil,
         sourcePublishedDate: Date? = nil,
         sourceSiteName: String? = nil,
+        capturedAt: Date = Date(),
         kind: ContextItemKind,
         textContent: String? = nil,
+        markdownContent: String? = nil,
         blobPath: String? = nil,
         blobMimeType: String? = nil,
         thumbnailPath: String? = nil
@@ -106,10 +109,11 @@ final class ContextItem {
         self.sourceAuthor = sourceAuthor
         self.sourcePublishedDate = sourcePublishedDate
         self.sourceSiteName = sourceSiteName
-        self.capturedAt = Date()
+        self.capturedAt = capturedAt
         self.kindRaw = kind.rawValue
         self.statusRaw = ProcessingStatus.pending.rawValue
         self.textContent = textContent
+        self.markdownContent = markdownContent
         self.blobPath = blobPath
         self.blobMimeType = blobMimeType
         self.thumbnailPath = thumbnailPath

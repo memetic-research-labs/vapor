@@ -231,8 +231,12 @@ final class BrowserBridge {
             url: json["url"] as? String ?? "",
             title: json["title"] as? String ?? "",
             textContent: json["textContent"] as? String,
+            markdownContent: json["markdownContent"] as? String,
             mimeType: json["mimeType"] as? String,
             dataURL: json["dataURL"] as? String,
+            author: json["author"] as? String,
+            publishedDate: json["publishedDate"] as? String,
+            siteName: json["siteName"] as? String,
             capturedAt: json["capturedAt"] as? String
         )
 
