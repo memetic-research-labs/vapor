@@ -5,7 +5,7 @@ import CryptoKit
 @Model
 final class PromptRecord {
     var id: UUID
-    var contentHash: String
+    var contentHash: String = ""
     var originalText: String
     var compressedText: String
     var originalTokenCount: Int
