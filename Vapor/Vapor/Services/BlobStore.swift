@@ -1,5 +1,6 @@
 import Foundation
 import OSLog
+import CryptoKit
 
 nonisolated private let blobLogger = Logger(subsystem: "lol.mrl.app.Vapor", category: "BlobStore")
 
@@ -42,6 +43,36 @@ final class BlobStore {
     func retrieve(relativePath: String) -> Data? {
         let fileURL = baseURL.appendingPathComponent(relativePath)
         return try? Data(contentsOf: fileURL)
+    }
+
+    func fileURL(relativePath: String) -> URL {
+        baseURL.appendingPathComponent(relativePath)
+    }
+
+    func exists(relativePath: String) -> Bool {
+        FileManager.default.fileExists(atPath: fileURL(relativePath: relativePath).path)
+    }
+
+    func storeContentAddressed(data: Data, mimeType: String, namespace: String = "assets") throws -> (relativePath: String, contentHash: String) {
+        let contentHash = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        let ext = extensionFor(mimeType: mimeType)
+        let relativePath = [namespace, String(contentHash.prefix(2)), "\(contentHash)\(ext)"]
+            .joined(separator: "/")
+        let fileURL = baseURL.appendingPathComponent(relativePath)
+
+        if FileManager.default.fileExists(atPath: fileURL.path) {
+            return (relativePath, contentHash)
+        }
+
+        do {
+            try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try data.write(to: fileURL, options: .atomic)
+            blobLogger.debug("Stored content-addressed blob: \(relativePath) (\(data.count) bytes, \(mimeType))")
+            return (relativePath, contentHash)
+        } catch {
+            blobLogger.error("Failed to store content-addressed blob \(relativePath): \(error.localizedDescription)")
+            throw error
+        }
     }
 
     func delete(relativePath: String) throws {

@@ -11,6 +11,7 @@ struct ContentView: View {
     @Environment(CompressionService.self) private var compressionService
     @Environment(BrowserBridge.self) private var browserBridge
     @Environment(ContextQueueService.self) private var contextQueue
+    @Environment(ScreenshotShelfStore.self) private var screenshotShelf
     @Environment(StatusBarService.self) private var statusBar
     @State private var viewModel = EditorViewModel()
     @State private var historyService = PromptHistoryService()
@@ -360,6 +361,10 @@ struct ContentView: View {
                     }
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                     .animation(.easeInOut(duration: 0.2), value: viewModel.compressedContent.isEmpty)
+                }
+
+                if windowManager.windowState == .expanded {
+                    ScreenshotShelfView()
                 }
             }
             .frame(width: 640)

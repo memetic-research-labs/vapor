@@ -87,6 +87,9 @@ final class ContextItem {
     @Relationship(deleteRule: .cascade, inverse: \ContextItemEntityLink.contextItem)
     var entityLinks: [ContextItemEntityLink] = []
 
+    @Relationship(deleteRule: .cascade, inverse: \ContextItemImageLink.contextItem)
+    var imageLinks: [ContextItemImageLink] = []
+
     init(
         sourceURL: String = "",
         sourceTitle: String = "",
@@ -182,5 +185,18 @@ final class ContextItem {
 
     var entityCount: Int {
         sortedEntityLinks.count
+    }
+
+    var sortedImageLinks: [ContextItemImageLink] {
+        imageLinks.sorted {
+            if $0.role.sortOrder == $1.role.sortOrder {
+                return $0.sortIndex < $1.sortIndex
+            }
+            return $0.role.sortOrder < $1.role.sortOrder
+        }
+    }
+
+    var primaryImageAsset: ImageAsset? {
+        sortedImageLinks.first(where: { $0.role == .primary })?.imageAsset ?? sortedImageLinks.first?.imageAsset
     }
 }

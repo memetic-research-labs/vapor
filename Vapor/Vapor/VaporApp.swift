@@ -7,7 +7,7 @@ private let logger = Logger(subsystem: "lol.mrl.app.Vapor", category: "App")
 
 @main
 struct VaporApp: App {
-    private static let persistentSchemaVersion = 3
+    private static let persistentSchemaVersion = 4
     private static let persistentSchemaVersionKey = "persistentSchemaVersion"
 
     @State private var preferences = UserPreferences()
@@ -17,6 +17,7 @@ struct VaporApp: App {
     @State private var contextQueueService = ContextQueueService()
     @State private var vectorizationService = VectorizationService.shared
     @State private var contextExplorerStore = ContextExplorerStore.shared
+    @State private var screenshotShelfStore = ScreenshotShelfStore.shared
     @Environment(\.openWindow) private var openWindow
 
     init() {
@@ -134,7 +135,9 @@ struct VaporApp: App {
             URLRecord.self,
             ContextItemURLLink.self,
             EntityRecord.self,
-            ContextItemEntityLink.self
+            ContextItemEntityLink.self,
+            ImageAsset.self,
+            ContextItemImageLink.self
         ])
         do {
             let persistentConfig = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
@@ -167,10 +170,14 @@ struct VaporApp: App {
                 .environment(contextQueueService)
                 .environment(vectorizationService)
                 .environment(contextExplorerStore)
+                .environment(screenshotShelfStore)
                 .environment(StatusBarService.shared)
                 .onAppear {
                     browserBridge.setContextQueueService(contextQueueService)
                     contextQueueService.setModelContext(sharedModelContainer.mainContext)
+                    screenshotShelfStore.setModelContext(sharedModelContainer.mainContext)
+                    screenshotShelfStore.setContextQueueService(contextQueueService)
+                    screenshotShelfStore.start()
                     Task { @MainActor in await vectorizationService.initialize() }
                     setupBrowserBridge()
                     KeyboardShortcuts.onKeyUp(for: .toggleVapor) { windowManager.focus() }

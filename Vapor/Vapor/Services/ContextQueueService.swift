@@ -455,9 +455,7 @@ final class ContextQueueService {
         ready.removeAll { $0.id == item.id }
         failed.removeAll { $0.id == item.id }
 
-        if let blobPath = item.blobPath {
-            try? blobStore.delete(relativePath: blobPath)
-        }
+        deleteOwnedBlobIfNeeded(for: item)
         if let embeddingID = item.embeddingID {
             Task { @MainActor in
                 await vectorizationService.removeEmbedding(id: embeddingID)
@@ -476,9 +474,7 @@ final class ContextQueueService {
 
         if let ctx = modelContext {
             for item in toRemove {
-                if let blobPath = item.blobPath {
-                    try? blobStore.delete(relativePath: blobPath)
-                }
+                deleteOwnedBlobIfNeeded(for: item)
                 if let embeddingID = item.embeddingID {
                     Task { @MainActor in
                         await vectorizationService.removeEmbedding(id: embeddingID)
@@ -488,6 +484,23 @@ final class ContextQueueService {
             }
             try? ctx.save()
         }
+    }
+
+    private func deleteOwnedBlobIfNeeded(for item: ContextItem) {
+        guard item.imageLinks.isEmpty, let blobPath = item.blobPath else { return }
+        try? blobStore.delete(relativePath: blobPath)
+    }
+
+    func addReadyItem(_ item: ContextItem) {
+        queue.removeAll { $0.id == item.id }
+        processing.removeAll { $0.id == item.id }
+        failed.removeAll { $0.id == item.id }
+
+        if !ready.contains(where: { $0.id == item.id }) {
+            ready.insert(item, at: 0)
+        }
+
+        refreshContextIndicator()
     }
 
     private func parseMimeFromDataURLHeader(_ header: String) -> String {
