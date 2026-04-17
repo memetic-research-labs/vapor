@@ -43,6 +43,14 @@ struct PromptHistoryCardView: View {
                     .font(.system(size: 10))
                     .foregroundColor(.secondary)
 
+                Text(record.shortHash)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.secondary.opacity(0.08))
+                    .clipShape(Capsule())
+
                 Spacer()
 
                 Text(formattedTime)

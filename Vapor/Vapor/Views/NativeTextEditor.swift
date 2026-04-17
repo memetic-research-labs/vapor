@@ -30,7 +30,7 @@ struct NativeTextEditor: NSViewRepresentable {
         textView.isAutomaticTextReplacementEnabled = false
         textView.drawsBackground = true
         textView.backgroundColor = .textBackgroundColor
-        textView.textContainerInset = NSSize(width: 8, height: 8)
+        textView.textContainerInset = NSSize(width: 12, height: 10)
         textView.focusRingType = .none
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
@@ -147,6 +147,16 @@ final class EditorTextViewRegistry {
         guard let textView = current else { return }
         DispatchQueue.main.async {
             textView.window?.makeFirstResponder(textView)
+        }
+    }
+
+    static func refocusAtEnd() {
+        guard let textView = current else { return }
+        DispatchQueue.main.async {
+            textView.window?.makeFirstResponder(textView)
+            let length = textView.string.count
+            textView.setSelectedRange(NSRange(location: length, length: 0))
+            textView.scrollRangeToVisible(NSRange(location: length, length: 0))
         }
     }
 }

@@ -1,0 +1,802 @@
+import SwiftUI
+import SwiftData
+
+struct ContextItemDetailView: View {
+    @Environment(\.modelContext) private var modelContext
+    let itemID: UUID
+
+    @State private var item: ContextItem?
+    @State private var showCopyConfirmation = false
+    @State private var isSummarizing = false
+    @State private var isRegeneratingCitation = false
+    private let summarizer = SummarizationService()
+    private let citationBuilder = CitationBuilder()
+
+    var body: some View {
+        Group {
+            if let item {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        headerSection(item: item)
+
+                        Divider()
+
+                        sourceSection(item: item)
+
+                        summarySection(item: item)
+
+                        if item.citation != nil {
+                            Divider()
+                            citationSection(item: item)
+                        }
+
+                        if !item.entities.isEmpty {
+                            Divider()
+                            entitiesSection(item: item)
+                        }
+
+                        if !item.tags.isEmpty {
+                            Divider()
+                            tagsSection(item: item)
+                        }
+
+                        Divider()
+
+                        contentSection(item: item)
+
+                        Divider()
+
+                        actionButtons(item: item)
+                    }
+                    .padding(20)
+                }
+            } else {
+                VStack(spacing: 8) {
+                    Spacer()
+                    Text("Item not found")
+                        .font(.system(size: 13))
+                        .foregroundColor(.secondary)
+                    Spacer()
+                }
+            }
+        }
+        .frame(minWidth: 480, minHeight: 400)
+        .background(Color(nsColor: .windowBackgroundColor))
+        .onAppear {
+            fetchItem()
+        }
+        .overlay(alignment: .top) {
+            if showCopyConfirmation {
+                VStack {
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.green)
+                        Text("Copied to clipboard")
+                            .font(.system(size: 12))
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(.regularMaterial)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    Spacer()
+                }
+                .padding(.top, 40)
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: showCopyConfirmation)
+    }
+
+    private func fetchItem() {
+        let descriptor = FetchDescriptor<ContextItem>(predicate: #Predicate { $0.id == itemID })
+        if let results = try? modelContext.fetch(descriptor), let found = results.first {
+            item = found
+        }
+    }
+
+    // MARK: - Sections
+
+    @ViewBuilder
+    private func headerSection(item: ContextItem) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: item.kind.systemImage)
+                .font(.system(size: 24))
+                .foregroundColor(.secondary)
+                .frame(width: 32)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(item.sourceTitle.isEmpty ? "Untitled" : item.sourceTitle)
+                    .font(.system(size: 16, weight: .semibold))
+
+                HStack(spacing: 8) {
+                    Text(item.kind.displayName)
+                        .font(.system(size: 11))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Capsule().fill(Color.accentColor.opacity(0.15)))
+                        .foregroundColor(.accentColor)
+
+                    statusBadge(item: item)
+
+                    Text(formattedDate(item.capturedAt))
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+
+                    if let text = item.textContent {
+                        Text("\(text.count) chars")
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func sourceSection(item: ContextItem) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            sectionHeader("Source")
+
+            if !item.sourceURL.isEmpty {
+                HStack(spacing: 4) {
+                    Image(systemName: "link")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                    if let url = URL(string: item.sourceURL) {
+                        Link(item.sourceURL, destination: url)
+                            .font(.system(size: 11))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    } else {
+                        Text(item.sourceURL)
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                    }
+                }
+            } else {
+                Text("No source URL")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            }
+
+            if item.sourceAuthor != nil || item.sourcePublishedDate != nil {
+                HStack(spacing: 12) {
+                    if let author = item.sourceAuthor {
+                        HStack(spacing: 4) {
+                            Image(systemName: "person")
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
+                            Text(author)
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    if let pubDate = item.sourcePublishedDate {
+                        HStack(spacing: 4) {
+                            Image(systemName: "calendar")
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
+                            Text(formattedDate(pubDate))
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func citationSection(item: ContextItem) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                sectionHeader("Citation")
+                Spacer()
+                Button {
+                    regenerateCitation(for: item)
+                } label: {
+                    if isRegeneratingCitation {
+                        ProgressView()
+                            .scaleEffect(0.5)
+                            .frame(width: 14, height: 14)
+                    } else {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .buttonStyle(.plain)
+                .help("Regenerate citation")
+                Button {
+                    if let rendered = item.citation?.rendered {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(rendered, forType: .string)
+                        flashCopyConfirmation()
+                    }
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Copy citation")
+            }
+
+            if let citation = item.citation {
+                Text(citation.rendered)
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                    .textSelection(.enabled)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func entitiesSection(item: ContextItem) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                sectionHeader("Entities (\(item.entities.count))")
+
+                if let backend = item.extractionBackend {
+                    backendBadge(backend)
+                }
+            }
+
+            FlowLayout(spacing: 6) {
+                ForEach(groupedEntities(item.entities)) { group in
+                    HStack(spacing: 3) {
+                        Image(systemName: group.kind.systemImage)
+                            .font(.system(size: 9))
+                            .foregroundColor(.secondary)
+                        Text(group.text)
+                            .font(.system(size: 10))
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(RoundedRectangle(cornerRadius: 4).fill(Color(nsColor: .controlBackgroundColor)))
+                    .help("\(group.kind.displayName) · \(Int(group.confidence * 100))%")
+                }
+            }
+        }
+    }
+
+    private func backendBadge(_ backend: EntityExtractionBackend) -> some View {
+        let (color, label): (Color, String) = {
+            switch backend {
+            case .openRouter: (.green, "OpenRouter")
+            case .ollama: (.blue, "Ollama")
+            case .nlTagger: (.orange, "NLTagger")
+            }
+        }()
+        return Text(label)
+            .font(.system(size: 9, weight: .medium))
+            .foregroundColor(color)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Capsule().fill(color.opacity(0.12)))
+    }
+
+    @ViewBuilder
+    private func tagsSection(item: ContextItem) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            sectionHeader("Tags (\(item.tags.count))")
+
+            FlowLayout(spacing: 6) {
+                ForEach(item.tags, id: \.self) { tag in
+                    Text(tag)
+                        .font(.system(size: 10))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(Capsule().fill(Color.accentColor.opacity(0.1)))
+                        .foregroundColor(.accentColor)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func contentSection(item: ContextItem) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                sectionHeader("Content")
+                Spacer()
+                Button {
+                    if let content = item.markdownContent ?? item.textContent {
+                        copyToPasteboard(content)
+                        flashCopyConfirmation()
+                    }
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Copy content")
+            }
+
+            let sections = contentSections(for: item)
+            if !sections.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(sections) { section in
+                        MarkdownSectionView(section: section) {
+                            copyToPasteboard(section.rawContent)
+                            flashCopyConfirmation()
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                Text("No text content")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func actionButtons(item: ContextItem) -> some View {
+        HStack(spacing: 10) {
+            Button {
+                copyAsMarkdown(item: item)
+            } label: {
+                Label("Copy as Markdown", systemImage: "doc.text.magnifyingglass")
+            }
+            .buttonStyle(.bordered)
+
+            Button {
+                copyAllToClipboard(item: item)
+            } label: {
+                Label("Copy All", systemImage: "doc.on.doc")
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+        }
+    }
+
+    // MARK: - Helpers
+
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title.uppercased())
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundColor(.secondary)
+            .tracking(0.05)
+    }
+
+    @ViewBuilder
+    private func statusBadge(item: ContextItem) -> some View {
+        switch item.status {
+        case .pending:
+            Text("Pending")
+                .font(.system(size: 10))
+                .foregroundColor(.secondary)
+        case .processing:
+            HStack(spacing: 3) {
+                ProgressView().scaleEffect(0.4)
+                Text("Processing")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+            }
+        case .ready:
+            Text("Ready")
+                .font(.system(size: 10))
+                .foregroundColor(.green)
+        case .failed:
+            Text("Failed")
+                .font(.system(size: 10))
+                .foregroundColor(.red)
+        }
+    }
+
+    private func formattedDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d, yyyy · h:mm a"
+        return formatter.string(from: date)
+    }
+
+    private func groupedEntities(_ entities: [ExtractedEntity]) -> [ExtractedEntity] {
+        let seen = NSMutableSet()
+        return entities.filter { entity in
+            let key = "\(entity.kind.rawValue):\(entity.text.lowercased())"
+            if seen.contains(key) { return false }
+            seen.add(key)
+            return true
+        }
+    }
+
+    private func flashCopyConfirmation() {
+        showCopyConfirmation = true
+        Task {
+            try? await Task.sleep(for: .seconds(1.5))
+            withAnimation { showCopyConfirmation = false }
+        }
+    }
+
+    private func copyToPasteboard(_ content: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(content, forType: .string)
+    }
+
+    // MARK: - Summary
+
+    @ViewBuilder
+    private func summarySection(item: ContextItem) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                sectionHeader("Summary")
+                Spacer()
+                if item.summary != nil {
+                    Button {
+                        if let summary = item.summary, !summary.abstract.isEmpty {
+                            let points = summary.keyPoints.map { "• \($0)" }.joined(separator: "\n")
+                            let full = points.isEmpty ? summary.abstract : "\(summary.abstract)\n\n\(points)"
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(full, forType: .string)
+                            flashCopyConfirmation()
+                        }
+                    } label: {
+                        Image(systemName: "doc.on.doc")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Copy summary")
+                }
+            }
+
+            if let summary = item.summary {
+                VStack(alignment: .leading, spacing: 6) {
+                    if !summary.abstract.isEmpty {
+                        Text(summary.abstract)
+                            .font(.system(size: 12))
+                            .foregroundColor(.primary)
+                            .textSelection(.enabled)
+                    }
+
+                    if !summary.keyPoints.isEmpty {
+                        VStack(alignment: .leading, spacing: 3) {
+                            ForEach(summary.keyPoints, id: \.self) { point in
+                                HStack(alignment: .top, spacing: 6) {
+                                    Text("•")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(.secondary)
+                                    Text(point)
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.secondary)
+                                        .textSelection(.enabled)
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                Button {
+                    generateSummary(for: item)
+                } label: {
+                    HStack(spacing: 4) {
+                        if isSummarizing {
+                            ProgressView()
+                                .scaleEffect(0.5)
+                                .frame(width: 14, height: 14)
+                        } else {
+                            Image(systemName: "sparkles")
+                                .font(.system(size: 10))
+                        }
+                        Text(isSummarizing ? "Generating…" : "Generate Summary")
+                            .font(.system(size: 11))
+                    }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(isSummarizing)
+            }
+        }
+    }
+
+    private func generateSummary(for item: ContextItem) {
+        guard let text = item.textContent, !text.isEmpty else { return }
+        isSummarizing = true
+        Task { @MainActor in
+            if let summary = await summarizer.summarize(text: text) {
+                item.summary = summary
+                try? modelContext.save()
+            }
+            isSummarizing = false
+        }
+    }
+
+    private func regenerateCitation(for item: ContextItem) {
+        isRegeneratingCitation = true
+        Task { @MainActor in
+            item.citation = citationBuilder.build(for: item, format: .apa)
+            try? modelContext.save()
+            isRegeneratingCitation = false
+        }
+    }
+
+    // MARK: - Markdown Export
+
+    private func copyAsMarkdown(item: ContextItem) {
+        var md = "# \(item.sourceTitle.isEmpty ? "Untitled" : item.sourceTitle)\n\n"
+        md += "**Source:** \(item.sourceURL.isEmpty ? "None" : item.sourceURL)  \n"
+        md += "**Captured:** \(formattedDate(item.capturedAt))  \n"
+        md += "**Kind:** \(item.kind.displayName)  \n"
+
+        if !item.tags.isEmpty {
+            md += "**Tags:** \(item.tags.joined(separator: ", "))  \n"
+        }
+
+        md += "\n---\n\n"
+
+        if let summary = item.summary {
+            md += "## Summary\n\n"
+            if !summary.abstract.isEmpty {
+                md += "\(summary.abstract)\n\n"
+            }
+            if !summary.keyPoints.isEmpty {
+                for point in summary.keyPoints {
+                    md += "- \(point)\n"
+                }
+                md += "\n"
+            }
+            md += "---\n\n"
+        }
+
+        if let markdown = item.markdownContent, !markdown.isEmpty {
+            md += "\(markdown)\n"
+        } else if let text = item.textContent, !text.isEmpty {
+            md += "\(text)\n"
+        }
+
+        md += "\n---\n\n"
+
+        if !item.entities.isEmpty {
+            md += "## Entities\n\n"
+            let grouped = Dictionary(grouping: item.entities, by: \.kind)
+            for (kind, entities) in grouped.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
+                md += "- **\(kind.displayName):** \(entities.map(\.text).joined(separator: ", "))\n"
+            }
+            md += "\n"
+        }
+
+        if let citation = item.citation {
+            md += "## Citation\n\n"
+            md += "\(citation.rendered)\n"
+        }
+
+        copyToPasteboard(md)
+        flashCopyConfirmation()
+    }
+
+    private func copyAllToClipboard(item: ContextItem) {
+        if let markdown = item.markdownContent, !markdown.isEmpty {
+            copyToPasteboard(markdown)
+            flashCopyConfirmation()
+            return
+        }
+
+        if let text = item.textContent, !text.isEmpty {
+            copyToPasteboard(text)
+            flashCopyConfirmation()
+            return
+        }
+
+        copyAsMarkdown(item: item)
+    }
+
+    private func contentSections(for item: ContextItem) -> [MarkdownContentSection] {
+        let content = item.markdownContent ?? item.textContent ?? ""
+        guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return [] }
+        return MarkdownContentSection.sections(from: content, markdownPreferred: item.markdownContent != nil)
+    }
+}
+
+private struct MarkdownSectionView: View {
+    let section: MarkdownContentSection
+    let onCopy: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .top, spacing: 8) {
+                sectionBody
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                Button(action: onCopy) {
+                    Image(systemName: "doc.on.doc")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Copy section")
+            }
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .controlBackgroundColor)))
+    }
+
+    @ViewBuilder
+    private var sectionBody: some View {
+        switch section.kind {
+        case .code:
+            Text(section.displayContent)
+                .font(.system(size: 12, design: .monospaced))
+                .lineSpacing(4)
+                .textSelection(.enabled)
+        case .heading, .markdown:
+            if let attributed = try? AttributedString(markdown: section.displayContent) {
+                Text(attributed)
+                    .font(.system(size: 13))
+                    .lineSpacing(5)
+                    .textSelection(.enabled)
+            } else {
+                Text(section.displayContent)
+                    .font(.system(size: 13))
+                    .lineSpacing(5)
+                    .textSelection(.enabled)
+            }
+        }
+    }
+}
+
+private struct MarkdownContentSection: Identifiable {
+    enum Kind {
+        case heading
+        case markdown
+        case code
+    }
+
+    let id = UUID()
+    let kind: Kind
+    let rawContent: String
+    let displayContent: String
+
+    static func sections(from content: String, markdownPreferred: Bool) -> [MarkdownContentSection] {
+        markdownPreferred ? markdownSections(from: content) : plainTextSections(from: content)
+    }
+
+    private static func markdownSections(from content: String) -> [MarkdownContentSection] {
+        let lines = content.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
+        var sections: [MarkdownContentSection] = []
+        var current: [String] = []
+        var inCodeFence = false
+
+        func flushCurrent(as kind: Kind = .markdown) {
+            let raw = current.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+            current.removeAll()
+            guard !raw.isEmpty else { return }
+            let display = kind == .code ? stripCodeFence(raw) : raw
+            sections.append(MarkdownContentSection(kind: kind, rawContent: raw, displayContent: display))
+        }
+
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+
+            if trimmed.hasPrefix("```") {
+                current.append(line)
+                inCodeFence.toggle()
+                if !inCodeFence {
+                    flushCurrent(as: .code)
+                }
+                continue
+            }
+
+            if inCodeFence {
+                current.append(line)
+                continue
+            }
+
+            if trimmed.hasPrefix("#") {
+                flushCurrent()
+                sections.append(MarkdownContentSection(kind: .heading, rawContent: trimmed, displayContent: trimmed))
+                continue
+            }
+
+            if trimmed.isEmpty {
+                flushCurrent()
+                continue
+            }
+
+            current.append(line)
+        }
+
+        flushCurrent()
+        return sections
+    }
+
+    private static func plainTextSections(from content: String) -> [MarkdownContentSection] {
+        content
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .components(separatedBy: "\n\n")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .map { MarkdownContentSection(kind: .markdown, rawContent: $0, displayContent: $0) }
+    }
+
+    private static func stripCodeFence(_ raw: String) -> String {
+        var lines = raw.components(separatedBy: "\n")
+        if !lines.isEmpty, lines[0].trimmingCharacters(in: .whitespaces).hasPrefix("```") {
+            lines.removeFirst()
+        }
+        if !lines.isEmpty, lines[lines.count - 1].trimmingCharacters(in: .whitespaces) == "```" {
+            lines.removeLast()
+        }
+        return lines.joined(separator: "\n")
+    }
+}
+
+// MARK: - FlowLayout
+
+struct FlowLayout: Layout {
+    var spacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let result = computeLayout(proposal: proposal, subviews: subviews)
+        return result.size
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let result = computeLayout(proposal: ProposedViewSize(width: bounds.width, height: bounds.height), subviews: subviews)
+        for (index, position) in result.positions.enumerated() {
+            subviews[index].place(at: CGPoint(x: bounds.minX + position.x, y: bounds.minY + position.y), proposal: .unspecified)
+        }
+    }
+
+    private struct LayoutResult {
+        var size: CGSize
+        var positions: [CGPoint]
+    }
+
+    private func computeLayout(proposal: ProposedViewSize, subviews: Subviews) -> LayoutResult {
+        let maxWidth = proposal.width ?? .infinity
+        var positions: [CGPoint] = []
+        var currentX: CGFloat = 0
+        var currentY: CGFloat = 0
+        var lineHeight: CGFloat = 0
+        var maxX: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if currentX + size.width > maxWidth, currentX > 0 {
+                currentX = 0
+                currentY += lineHeight + spacing
+                lineHeight = 0
+            }
+            positions.append(CGPoint(x: currentX, y: currentY))
+            lineHeight = max(lineHeight, size.height)
+            currentX += size.width + spacing
+            maxX = max(maxX, currentX)
+        }
+
+        let totalHeight = currentY + lineHeight
+        return LayoutResult(size: CGSize(width: min(maxX, maxWidth), height: totalHeight), positions: positions)
+    }
+}
+
+extension EntityKind {
+    var systemImage: String {
+        switch self {
+        case .person: "person"
+        case .organization: "building.2"
+        case .product: "box"
+        case .location: "mappin"
+        case .date: "calendar"
+        case .url: "link"
+        case .number: "number"
+        case .code: "chevron.left.forwardslash.chevron.right"
+        case .concept: "lightbulb"
+        }
+    }
+
+    var displayName: String {
+        switch self {
+        case .person: "Person"
+        case .organization: "Org"
+        case .product: "Product"
+        case .location: "Location"
+        case .date: "Date"
+        case .url: "URL"
+        case .number: "Number"
+        case .code: "Code"
+        case .concept: "Concept"
+        }
+    }
+}

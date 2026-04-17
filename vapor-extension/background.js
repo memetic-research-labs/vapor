@@ -19,8 +19,72 @@ let eventSource = null;
 let reconnectAttempts = 0;
 let isConnected = false;
 let authToken = null;
+let capturedThisSession = 0;
 
 let authTokenLoadPromise = null;
+
+function normalizeHost(urlString) {
+  try {
+    return new URL(urlString).hostname.toLowerCase().replace(/^www\./, '');
+  } catch {
+    return '';
+  }
+}
+
+function inferPlatform(urlString) {
+  const host = normalizeHost(urlString);
+  if (host.includes('chatgpt') || host.includes('openai')) return 'chatgpt';
+  if (host.includes('claude')) return 'claude';
+  if (host.includes('gemini')) return 'gemini';
+  if (host.includes('grok') || host === 'x.com') return 'grok';
+  if (host.includes('perplexity')) return 'perplexity';
+  return 'browser';
+}
+
+function isCandidateTab(tab) {
+  const url = tab.url || '';
+  if (!url) return false;
+  if (url.startsWith('chrome://')) return false;
+  if (url.startsWith('chrome-extension://')) return false;
+  if (url.startsWith('about:')) return false;
+  if (url.startsWith('edge://')) return false;
+  return true;
+}
+
+function serializeTab(tab) {
+  return {
+    tab_id: tab.id,
+    title: tab.title || '',
+    url: tab.url || '',
+    platform: inferPlatform(tab.url || '')
+  };
+}
+
+async function listCandidateTabs() {
+  const tabs = await chrome.tabs.query({ windowType: 'normal' });
+  return tabs.filter(isCandidateTab).map(serializeTab);
+}
+
+async function focusTab(tab) {
+  if (!tab || !tab.id) return;
+  if (typeof tab.windowId === 'number') {
+    await chrome.windows.update(tab.windowId, { focused: true });
+  }
+  await chrome.tabs.update(tab.id, { active: true });
+}
+
+async function resolvePromptTab(tabIdRaw) {
+  if (typeof tabIdRaw === 'number') {
+    try {
+      return await chrome.tabs.get(tabIdRaw);
+    } catch {
+      return null;
+    }
+  }
+
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  return tab || null;
+}
 
 function ensureAuthTokenLoaded() {
   if (authTokenLoadPromise) return authTokenLoadPromise;
@@ -69,6 +133,12 @@ async function connect() {
         const data = JSON.parse(e.data);
         if (data.type === 'PROMPT_INJECT') {
           await handlePromptInject(data);
+        } else if (data.type === 'QUERY_TABS') {
+          await handleQueryTabs();
+        } else if (data.type === 'VERIFY_TARGET') {
+          await handleVerifyTarget(data);
+        } else if (data.type === 'OPEN_TAB') {
+          await handleOpenTab(data);
         } else if (data.type === 'ACTIVATE_PICKER') {
           await handleActivatePicker();
         }
@@ -129,10 +199,11 @@ function updateBadge(status) {
 async function handlePromptInject(data) {
   const text = data.text || '';
   const autoSubmit = data.autoSubmit || false;
+  const requestedTabId = typeof data.tab_id === 'number' ? data.tab_id : null;
 
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const tab = await resolvePromptTab(requestedTabId);
   if (!tab) {
-    await postResponse({ type: 'PROMPT_INJECTED', success: false, error: 'No active tab' });
+    await postResponse({ type: 'PROMPT_INJECTED', success: false, error: 'Target tab unavailable', tabId: requestedTabId });
     return;
   }
 
@@ -148,18 +219,68 @@ async function handlePromptInject(data) {
       autoSubmit
     });
 
+    await focusTab(tab);
+
     await postResponse({
       type: 'PROMPT_INJECTED',
       success: result?.success ?? false,
       platform: result?.platform ?? 'unknown',
-      tabUrl: tab.url || ''
+      tabUrl: tab.url || '',
+      tabId: tab.id
     });
   } catch (err) {
     await postResponse({
       type: 'PROMPT_INJECTED',
       success: false,
-      error: err.message || String(err)
+      error: err.message || String(err),
+      tabId: tab.id
     });
+  }
+}
+
+async function handleQueryTabs() {
+  try {
+    const tabs = await listCandidateTabs();
+    await postResponse({ type: 'TABS_RESULT', tabs });
+  } catch (err) {
+    await postResponse({ type: 'TABS_RESULT', tabs: [], error: err.message || String(err) });
+  }
+}
+
+async function handleVerifyTarget(data) {
+  const host = (data.host || '').toLowerCase();
+  const url = data.url || '';
+
+  try {
+    const tabs = await listCandidateTabs();
+    const match = tabs.find((tab) => {
+      const tabHost = normalizeHost(tab.url);
+      if (host && tabHost === host) return true;
+      if (url && tab.url === url) return true;
+      return false;
+    });
+
+    await postResponse(match
+      ? { type: 'TARGET_VERIFY_RESULT', found: true, ...match }
+      : { type: 'TARGET_VERIFY_RESULT', found: false, host, url });
+  } catch (err) {
+    await postResponse({ type: 'TARGET_VERIFY_RESULT', found: false, host, url, error: err.message || String(err) });
+  }
+}
+
+async function handleOpenTab(data) {
+  const url = data.url || '';
+  if (!url) {
+    await postResponse({ type: 'TAB_OPENED', success: false, error: 'Missing URL' });
+    return;
+  }
+
+  try {
+    const tab = await chrome.tabs.create({ url, active: true });
+    await focusTab(tab);
+    await postResponse({ type: 'TAB_OPENED', success: true, ...serializeTab(tab) });
+  } catch (err) {
+    await postResponse({ type: 'TAB_OPENED', success: false, url, error: err.message || String(err) });
   }
 }
 
@@ -194,6 +315,65 @@ async function postResponse(body) {
   }
 }
 
+async function postContextCapture(payload) {
+  try {
+    const headers = { 'Content-Type': 'application/json' };
+    if (authToken) {
+      headers['Authorization'] = `Bearer ${authToken}`;
+    }
+    const response = await fetch(`${SERVER_URL}/api/context`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload)
+    });
+    if (response.ok) {
+      capturedThisSession++;
+      return { ok: true };
+    }
+    let errorText = '';
+    try { errorText = await response.text(); } catch (_) {}
+    const hint = response.status === 401 || response.status === 403
+      ? 'Auth token missing or invalid'
+      : errorText || `HTTP ${response.status}`;
+    console.error('[Vapor] Context capture rejected:', response.status, hint);
+    return { ok: false, status: response.status, error: hint };
+  } catch (err) {
+    console.error('[Vapor] Failed to post context capture:', err);
+    return { ok: false, error: err.message || String(err) };
+  }
+}
+
+async function handleCaptureRequest(captureType) {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab) return { success: false, error: 'No active tab' };
+
+  if (!isConnected) return { success: false, error: 'Not connected to Vapor' };
+
+  try {
+    const scriptsToInject = ['libs/readability.js', 'content-scripts/context-capture.js'];
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: scriptsToInject
+    });
+
+    const msgType = captureType === 'selection' ? 'CAPTURE_SELECTION' : 'CAPTURE_PAGE';
+
+    const result = await chrome.tabs.sendMessage(tab.id, { type: msgType });
+
+    if (!result || !result.success) {
+      return { success: false, error: result?.error || 'Capture failed' };
+    }
+
+    const postResult = await postContextCapture(result.payload);
+    if (!postResult.ok) {
+      return { success: false, error: postResult.error || (postResult.status ? `HTTP ${postResult.status}` : 'Post failed') };
+    }
+    return { success: true, jobId: result.payload.jobId, payload: result.payload };
+  } catch (err) {
+    return { success: false, error: err.message || String(err) };
+  }
+}
+
 // Listen for messages from popup (token management)
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || !message.type) return;
@@ -207,7 +387,36 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === 'GET_STATUS') {
-    sendResponse({ connected: isConnected, hasToken: !!authToken });
+    sendResponse({ connected: isConnected, hasToken: !!authToken, capturedThisSession });
+    return true;
+  }
+
+  if (message.type === 'CAPTURE_PAGE') {
+    handleCaptureRequest('page')
+      .then(sendResponse)
+      .catch(err => sendResponse({ success: false, error: err?.message ?? String(err) }));
+    return true;
+  }
+
+  if (message.type === 'CAPTURE_SELECTION') {
+    handleCaptureRequest('selection')
+      .then(sendResponse)
+      .catch(err => sendResponse({ success: false, error: err?.message ?? String(err) }));
+    return true;
+  }
+
+  // Legacy support for old sidepanel versions
+  if (message.type === 'CAPTURE_ARTICLE') {
+    handleCaptureRequest('page')
+      .then(sendResponse)
+      .catch(err => sendResponse({ success: false, error: err?.message ?? String(err) }));
+    return true;
+  }
+
+  if (message.type === 'CAPTURE_PAGE_SNAPSHOT') {
+    handleCaptureRequest('page')
+      .then(sendResponse)
+      .catch(err => sendResponse({ success: false, error: err?.message ?? String(err) }));
     return true;
   }
 
@@ -219,6 +428,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   return false;
+});
+
+chrome.commands.onCommand.addListener((command) => {
+  if (command !== 'capture-page') return;
+
+  handleCaptureRequest('page').catch((err) => {
+    console.error('[Vapor] Keyboard capture failed:', err);
+  });
 });
 
 // Start

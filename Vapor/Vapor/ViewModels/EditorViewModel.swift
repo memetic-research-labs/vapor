@@ -18,7 +18,7 @@ final class EditorViewModel {
     var activeDictationRange: NSRange?
     var selectedCompressor: CompressorType = .foundationModels
     var isCompressing: Bool = false
-    var lastSavedContent: String = ""
+    var lastSavedHistoryHash: String = ""
 
     private let clipboardService = ClipboardService()
     private var compressionService: CompressionService?
@@ -41,6 +41,7 @@ final class EditorViewModel {
     }
 
     func copyOriginalToClipboard() {
+        saveCurrentPromptToHistory()
         clipboardService.copy(content)
     }
 
@@ -76,18 +77,7 @@ final class EditorViewModel {
             )
         }
 
-        if let historyService, content != lastSavedContent {
-            let record = PromptRecord(
-                originalText: content,
-                compressedText: compressedContent,
-                originalTokenCount: originalTokenCount,
-                compressedTokenCount: compressedTokenCount,
-                compressionRatio: compressionRatio,
-                compressorUsed: selectedCompressor
-            )
-            try? historyService.save(record)
-            lastSavedContent = content
-        }
+        saveCurrentPromptToHistory()
     }
 
     func clear() {
@@ -102,26 +92,26 @@ final class EditorViewModel {
     /// Copies the original text to the clipboard, then clears the buffer.
     func copyAndClear() {
         if !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            saveCurrentPromptToHistory()
             clipboardService.copy(content)
         }
         clear()
+    }
+
+    func recordCurrentPromptInHistory() {
+        saveCurrentPromptToHistory()
     }
 
     /// Auto-saves the current content (if any), then replaces with the restored record's original text.
     func restoreFromHistory(_ record: PromptRecord) {
         // Auto-save current content before replacing
         if !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-           content != lastSavedContent,
            let historyService {
-            let autoSaveRecord = PromptRecord(
-                originalText: content,
-                compressedText: compressedContent,
-                originalTokenCount: originalTokenCount,
-                compressedTokenCount: compressedTokenCount,
-                compressionRatio: compressionRatio,
-                compressorUsed: selectedCompressor
-            )
-            try? historyService.save(autoSaveRecord)
+            do {
+                _ = try historyService.saveSnapshot(currentPromptSnapshot())
+            } catch {
+                logger.error("Failed to auto-save before restore: \(error)")
+            }
         }
 
         // Replace editor content with restored text
@@ -131,7 +121,7 @@ final class EditorViewModel {
         compressedTokenCount = record.compressedTokenCount
         compressionRatio = record.compressionRatio
         isDirty = false
-        lastSavedContent = record.originalText
+        lastSavedHistoryHash = record.stableIdentifier
     }
 
     /// Whether the next dictation segment should have its first letter lowercased.
@@ -176,5 +166,36 @@ final class EditorViewModel {
         } else {
             activeDictationRange = NSRange(location: range.location, length: (adjustedText as NSString).length)
         }
+    }
+
+    private func saveCurrentPromptToHistory() {
+        guard let historyService else { return }
+        guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+
+        let snapshotHash = PromptRecord.makeContentHash(
+            originalText: content,
+            compressedText: compressedContent,
+            compressorUsed: selectedCompressor.rawValue
+        )
+        guard snapshotHash != lastSavedHistoryHash else { return }
+
+        do {
+            if let record = try historyService.saveSnapshot(currentPromptSnapshot()) {
+                lastSavedHistoryHash = record.stableIdentifier
+            }
+        } catch {
+            logger.error("Failed to save prompt to history: \(error)")
+        }
+    }
+
+    private func currentPromptSnapshot() -> PromptHistorySnapshot {
+        PromptHistorySnapshot(
+            originalText: content,
+            compressedText: compressedContent,
+            originalTokenCount: originalTokenCount,
+            compressedTokenCount: compressedTokenCount,
+            compressionRatio: compressionRatio,
+            compressorUsed: selectedCompressor
+        )
     }
 }

@@ -2,8 +2,6 @@ import AVFoundation
 import Speech
 import SwiftUI
 
-// MARK: - OnboardingView
-
 struct OnboardingView: View {
     @State private var store = OnboardingStore.shared
     @State private var currentStep: Int = 0
@@ -18,7 +16,6 @@ struct OnboardingView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Step content with slide transition
             ZStack {
                 stepView(for: currentStep)
                     .id(currentStep)
@@ -29,9 +26,7 @@ struct OnboardingView: View {
 
             Divider()
 
-            // Bottom navigation bar
             HStack(alignment: .center) {
-                // Back button
                 Button {
                     withAnimation {
                         slideDirection = .backward
@@ -47,7 +42,6 @@ struct OnboardingView: View {
 
                 Spacer()
 
-                // Progress dots
                 HStack(spacing: 8) {
                     ForEach(0 ..< totalSteps, id: \.self) { index in
                         Circle()
@@ -59,70 +53,110 @@ struct OnboardingView: View {
 
                 Spacer()
 
-                // Next / Finish / Skip button
-                if currentStep == totalSteps - 1 {
-                    Button {
-                        completeOnboarding()
-                    } label: {
-                        Text("Start Using Vapor")
-                            .font(.system(size: 13, weight: .semibold))
-                    }
-                    .buttonStyle(.borderedProminent)
-                } else if currentStep == 0 {
-                    Color.clear
-                        .frame(width: 1, height: 1)
-                } else if currentStep == 1 {
-                    // Permissions step: Next disabled until both granted
-                    Button {
-                        withAnimation {
-                            slideDirection = .forward
-                            currentStep += 1
-                        }
-                    } label: {
-                        Text("Next →")
-                            .font(.system(size: 13))
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(!store.bothPermissionsGranted)
-                } else if currentStep == 4 {
-                    // LLM download step: can skip
-                    Button {
-                        withAnimation {
-                            slideDirection = .forward
-                            currentStep += 1
-                        }
-                    } label: {
-                        Text("Next →")
-                            .font(.system(size: 13))
-                    }
-                    .buttonStyle(.bordered)
-                } else {
-                    Button {
-                        withAnimation {
-                            slideDirection = .forward
-                            currentStep += 1
-                        }
-                    } label: {
-                        Text("Next →")
-                            .font(.system(size: 13))
-                    }
-                    .buttonStyle(.borderedProminent)
-                }
+                nextButton
             }
             .padding(.horizontal, 24)
             .padding(.vertical, 14)
             .background(.bar)
         }
-        .frame(width: 480, height: 540)
+        .frame(width: 520, height: 560)
         .background(Color(nsColor: .windowBackgroundColor))
         .onAppear {
             store.refreshPermissions()
-            // Pause the main Fn monitor to avoid audio engine conflicts with the dictation demo
             FnDictationMonitor.shared.pauseForOnboarding()
         }
         .onDisappear {
-            // Restart the main Fn monitor when the onboarding window closes
             FnDictationMonitor.shared.resumeAfterOnboarding()
+        }
+    }
+
+    @ViewBuilder
+    private var nextButton: some View {
+        if currentStep == totalSteps - 1 {
+            Button {
+                completeOnboarding()
+            } label: {
+                Text("Start Using Vapor")
+                    .font(.system(size: 13, weight: .semibold))
+            }
+            .buttonStyle(.borderedProminent)
+        } else if currentStep == 0 {
+            Color.clear
+                .frame(width: 1, height: 1)
+        } else if currentStep == 1 {
+            Button {
+                withAnimation {
+                    slideDirection = .forward
+                    currentStep += 1
+                }
+            } label: {
+                Text("Next →")
+                    .font(.system(size: 13))
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(!store.bothPermissionsGranted)
+        } else if currentStep == 4 {
+            if store.selectedLLMPath == .localGGUF && !store.localLLMReady && !store.isDownloading {
+                Button {
+                    withAnimation {
+                        slideDirection = .forward
+                        currentStep += 1
+                    }
+                } label: {
+                    Text("Skip →")
+                        .font(.system(size: 13))
+                }
+                .buttonStyle(.bordered)
+            } else if store.selectedLLMPath == .ollama && !store.isOllamaRunning {
+                Button {
+                    withAnimation {
+                        slideDirection = .forward
+                        currentStep += 1
+                    }
+                } label: {
+                    Text("Skip →")
+                        .font(.system(size: 13))
+                }
+                .buttonStyle(.bordered)
+            } else {
+                Button {
+                    withAnimation {
+                        slideDirection = .forward
+                        currentStep += 1
+                    }
+                } label: {
+                    Text("Next →")
+                        .font(.system(size: 13))
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        } else if currentStep == 5 {
+            Button {
+                if !store.openRouterApiKey.isEmpty {
+                    store.saveOpenRouterConfig()
+                } else {
+                    store.skipOpenRouter()
+                }
+                withAnimation {
+                    slideDirection = .forward
+                    currentStep += 1
+                }
+            } label: {
+                Text("Next →")
+                    .font(.system(size: 13))
+            }
+            .buttonStyle(.borderedProminent)
+        } else {
+            Button {
+                withAnimation {
+                    slideDirection = .forward
+                    currentStep += 1
+                }
+            } label: {
+                Text("Next →")
+                    .font(.system(size: 13))
+            }
+            .buttonStyle(.borderedProminent)
         }
     }
 
@@ -157,11 +191,11 @@ struct OnboardingView: View {
         case 2:
             DictationStepView()
         case 3:
-            CompressStepView()
+            CompressAndCopyStepView()
         case 4:
-            LLMDownloadStepView(store: store)
+            LLMSetupStepView(store: store)
         case 5:
-            CopyAndClearStepView()
+            OpenRouterSetupStepView(store: store)
         case 6:
             WindowManagementStepView()
         case 7:
@@ -174,7 +208,6 @@ struct OnboardingView: View {
 
 // MARK: - Shared Components
 
-/// A pill-shaped keyboard key badge.
 private struct KeyBadge: View {
     let label: String
 
@@ -192,7 +225,6 @@ private struct KeyBadge: View {
     }
 }
 
-/// A shortcut row: key badge + description label.
 private struct ShortcutRow: View {
     let key: String
     let label: String
@@ -208,7 +240,6 @@ private struct ShortcutRow: View {
     }
 }
 
-/// Standard step card with title, icon, description, and body content.
 private struct StepCard<Content: View>: View {
     let icon: String
     let iconColor: Color
@@ -234,7 +265,7 @@ private struct StepCard<Content: View>: View {
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: 380)
+                        .frame(maxWidth: 400)
                 }
 
                 content
@@ -245,7 +276,44 @@ private struct StepCard<Content: View>: View {
     }
 }
 
-// MARK: - Step 1: Welcome
+private struct SelectionCard<Content: View>: View {
+    let selected: Bool
+    let icon: String
+    let title: String
+    let subtitle: String
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.system(size: 16))
+                    .foregroundStyle(selected ? Color.accentColor : .secondary)
+                Text(title)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(selected ? Color.accentColor : .primary)
+            }
+
+            Text(subtitle)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+
+            content
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(selected ? Color.accentColor.opacity(0.08) : Color.secondary.opacity(0.05))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(selected ? Color.accentColor : Color.secondary.opacity(0.2), lineWidth: selected ? 2 : 1)
+        )
+    }
+}
+
+// MARK: - Step 0: Welcome
 
 private struct WelcomeStepView: View {
     let onGetStarted: () -> Void
@@ -286,7 +354,7 @@ private struct WelcomeStepView: View {
     }
 }
 
-// MARK: - Step 2: Permissions
+// MARK: - Step 1: Permissions
 
 private struct PermissionsStepView: View {
     var store: OnboardingStore
@@ -372,7 +440,7 @@ private struct PermissionsStepView: View {
     }
 }
 
-// MARK: - Step 3: Dictation
+// MARK: - Step 2: Dictation
 
 @MainActor
 @Observable
@@ -424,7 +492,6 @@ private struct DictationStepView: View {
         ) {
             ShortcutRow(key: "Fn (hold)", label: "Start recording")
 
-            // Live demo area
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Circle()
@@ -473,9 +540,9 @@ private struct DictationStepView: View {
     }
 }
 
-// MARK: - Step 4: Compress & Copy
+// MARK: - Step 3: Compress & Copy (merged)
 
-private struct CompressStepView: View {
+private struct CompressAndCopyStepView: View {
     var body: some View {
         StepCard(
             icon: "bolt.fill",
@@ -485,6 +552,7 @@ private struct CompressStepView: View {
         ) {
             ShortcutRow(key: "⌘ ↩", label: "Compress & copy")
             ShortcutRow(key: "⌘ ⇧ C", label: "Copy original (no compression)")
+            ShortcutRow(key: "⌘ K", label: "Copy original & clear editor")
 
             VStack(alignment: .leading, spacing: 8) {
                 exampleRow(
@@ -522,82 +590,137 @@ private struct CompressStepView: View {
     }
 }
 
-// MARK: - Step 5: Download Local LLM
+// MARK: - Step 4: LLM Setup (two-card)
 
-private struct LLMDownloadStepView: View {
-    var store: OnboardingStore
+private struct LLMSetupStepView: View {
+    @Bindable var store: OnboardingStore
     @State private var downloadError: String?
 
     var body: some View {
         StepCard(
             icon: "cpu.fill",
             iconColor: .purple,
-            title: "Download the Local LLM",
-            description: "The on-device LLM produces significantly better compression. It's free, runs locally, and your data never leaves your Mac."
+            title: "Choose an LLM",
+            description: "Vapor uses an LLM for compression and entity extraction. Pick one — or both."
         ) {
-            // Feature pills
-            HStack(spacing: 12) {
-                featurePill(icon: "dollarsign.circle", label: "Free")
-                featurePill(icon: "lock.shield", label: "Private")
-                featurePill(icon: "sparkles", label: "Best Quality")
-            }
+            VStack(spacing: 12) {
+                SelectionCard(
+                    selected: store.selectedLLMPath == .ollama,
+                    icon: "desktopcomputer",
+                    title: "Ollama (Recommended)",
+                    subtitle: "Free, fast, uses your Mac's GPU"
+                ) {
+                    if store.isOllamaRunning {
+                        HStack(spacing: 6) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                                .font(.system(size: 12))
+                            Text("Ollama running")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.green)
+                        }
 
-            VStack(spacing: 10) {
-                Text("Qwen2.5-7B-Instruct · 4.7 GB download")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
+                        if !store.ollamaModels.isEmpty {
+                            Picker("Model", selection: $store.selectedOllamaModel) {
+                                Text("Choose a model…").tag(String?.none)
+                                ForEach(store.ollamaModels, id: \.self) { model in
+                                    Text(model).tag(Optional(model))
+                                }
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.menu)
+                            .frame(maxWidth: 200, alignment: .leading)
+                        }
+                    } else {
+                        VStack(spacing: 8) {
+                            Text("Ollama not detected")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                            HStack(spacing: 8) {
+                                Button {
+                                    if let url = URL(string: "https://ollama.com") {
+                                        NSWorkspace.shared.open(url)
+                                    }
+                                } label: {
+                                    Text("Install Ollama")
+                                        .font(.system(size: 11))
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
 
-                if store.localLLMReady {
-                    Label("Model ready!", systemImage: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
-                        .font(.system(size: 14, weight: .semibold))
-                } else if store.isDownloading {
-                    VStack(spacing: 6) {
-                        ProgressView(value: store.downloadProgress, total: 1.0)
-                            .progressViewStyle(.linear)
-                            .frame(maxWidth: 300)
-
-                        let pct = Int(store.downloadProgress * 100)
-                        let downloaded = String(format: "%.1f", store.downloadProgress * 4.7)
-                        Text("\(pct)% — \(downloaded) / 4.7 GB")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
+                                Button {
+                                    store.checkOllama()
+                                } label: {
+                                    Text("Retry")
+                                        .font(.system(size: 11))
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                            }
+                        }
                     }
-                } else {
-                    Button {
-                        startDownload()
-                    } label: {
-                        Label("Download Now", systemImage: "arrow.down.circle.fill")
-                            .font(.system(size: 14, weight: .semibold))
-                            .frame(maxWidth: 240)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
+                }
+                .onTapGesture {
+                    store.selectedLLMPath = .ollama
                 }
 
-                if let error = downloadError {
-                    Label(error, systemImage: "exclamationmark.triangle.fill")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.red)
-                        .multilineTextAlignment(.center)
+                SelectionCard(
+                    selected: store.selectedLLMPath == .localGGUF,
+                    icon: "cube.box",
+                    title: "Local GGUF (Offline)",
+                    subtitle: "No daemon needed, but slower startup"
+                ) {
+                    if store.localLLMReady {
+                        HStack(spacing: 6) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                                .font(.system(size: 12))
+                            Text("Qwen2.5-7B ready")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.green)
+                        }
+                    } else if store.isDownloading {
+                        VStack(spacing: 6) {
+                            ProgressView(value: store.downloadProgress, total: 1.0)
+                                .progressViewStyle(.linear)
+                                .frame(maxWidth: 280)
+
+                            let pct = Int(store.downloadProgress * 100)
+                            let downloaded = String(format: "%.1f", store.downloadProgress * 4.7)
+                            Text("\(pct)% — \(downloaded) / 4.7 GB")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+                    } else {
+                        VStack(spacing: 8) {
+                            Text("Qwen2.5-7B-Instruct · 4.7 GB download")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                            Button {
+                                startDownload()
+                            } label: {
+                                Label("Download Now", systemImage: "arrow.down.circle.fill")
+                                    .font(.system(size: 12))
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                        }
+                    }
+
+                    if let error = downloadError {
+                        Label(error, systemImage: "exclamationmark.triangle.fill")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.red)
+                    }
+                }
+                .onTapGesture {
+                    store.selectedLLMPath = .localGGUF
                 }
             }
-            .padding(.horizontal, 8)
         }
-    }
-
-    private func featurePill(icon: String, label: String) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: icon)
-                .font(.system(size: 12))
-            Text(label)
-                .font(.system(size: 12, weight: .medium))
+        .onAppear {
+            store.checkOllama()
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(Color.accentColor.opacity(0.1))
-        .foregroundStyle(Color.accentColor)
-        .cornerRadius(20)
     }
 
     private func startDownload() {
@@ -612,23 +735,100 @@ private struct LLMDownloadStepView: View {
     }
 }
 
-// MARK: - Step 6: Copy & Clear
+// MARK: - Step 5: OpenRouter Setup (skippable)
 
-private struct CopyAndClearStepView: View {
+private struct OpenRouterSetupStepView: View {
+    @Bindable var store: OnboardingStore
+
     var body: some View {
         StepCard(
-            icon: "trash.fill",
-            iconColor: .orange,
-            title: "Copy & Clear",
-            description: "Press ⌘ K to copy your original text and clear the editor. Your text is never lost — it's automatically saved to prompt history."
+            icon: "cloud.fill",
+            iconColor: .indigo,
+            title: "Cloud AI (Optional)",
+            description: "OpenRouter adds cloud-based AI for compression and entity extraction. It's fast and works even without a local GPU. We recommend using both a local LLM and OpenRouter together."
         ) {
-            ShortcutRow(key: "⌘ K", label: "Copy original & clear")
-            ShortcutRow(key: "⌘ ⇧ C", label: "Copy original (keep text)")
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 6) {
+                    SecureField("Enter your OpenRouter API key", text: $store.openRouterApiKey)
+                        .frame(maxWidth: 320)
+                    Button {
+                        store.testOpenRouterAPIKey()
+                    } label: {
+                        if store.isTestingOpenRouter {
+                            ProgressView()
+                                .scaleEffect(0.6)
+                                .frame(width: 16, height: 16)
+                        } else {
+                            Text("Test")
+                                .font(.system(size: 11))
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(store.openRouterApiKey.isEmpty || store.isTestingOpenRouter)
+                }
+
+                if let result = store.openRouterTestResult {
+                    Label(result, systemImage: result.contains("Valid") ? "checkmark.circle.fill" : "xmark.circle.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(result.contains("Valid") ? .green : .red)
+                }
+
+                Text("Get a free API key at openrouter.ai → Settings → API Keys")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+
+                Divider()
+
+                Text("Entity Extraction Model")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.secondary)
+
+                Picker("NER Model", selection: $store.selectedNERModel) {
+                    ForEach(NERModel.curatedModels) { model in
+                        HStack {
+                            Text(model.displayName)
+                            Spacer()
+                            Text(model.priceLabel)
+                                .foregroundStyle(.secondary)
+                        }
+                        .tag(model)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .frame(maxWidth: 320, alignment: .leading)
+
+                Toggle("Use custom model", isOn: $store.useCustomNERModel)
+                    .toggleStyle(.checkbox)
+                    .controlSize(.small)
+
+                if store.useCustomNERModel {
+                    TextField("Custom model ID (e.g. google/gemma-4-31b-it)", text: $store.customNERModel)
+                        .frame(maxWidth: 320)
+                        .textFieldStyle(.roundedBorder)
+                }
+
+                Divider()
+
+                Text("Compression Model")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.secondary)
+
+                TextField("Model name", text: $store.openRouterCompressionModel)
+                    .frame(maxWidth: 320)
+                    .textFieldStyle(.roundedBorder)
+
+                Text("Default: glm-5 (cheap, fast)")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 8)
         }
     }
 }
 
-// MARK: - Step 7: Window Management
+// MARK: - Step 6: Window Management
 
 private struct WindowManagementStepView: View {
     var body: some View {
@@ -646,7 +846,7 @@ private struct WindowManagementStepView: View {
     }
 }
 
-// MARK: - Step 8: All Set
+// MARK: - Step 7: All Set
 
 private struct AllSetStepView: View {
     var body: some View {

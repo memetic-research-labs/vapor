@@ -1,5 +1,17 @@
 import Foundation
 import SwiftData
+import OSLog
+
+nonisolated private let logger = Logger(subsystem: "lol.mrl.app.Vapor", category: "PromptHistory")
+
+struct PromptHistorySnapshot {
+    let originalText: String
+    let compressedText: String
+    let originalTokenCount: Int
+    let compressedTokenCount: Int
+    let compressionRatio: Double
+    let compressorUsed: CompressorType
+}
 
 @MainActor
 @Observable
@@ -14,6 +26,49 @@ final class PromptHistoryService {
         guard let modelContext else { return }
         modelContext.insert(record)
         try modelContext.save()
+    }
+
+    @discardableResult
+    func saveSnapshot(_ snapshot: PromptHistorySnapshot) throws -> PromptRecord? {
+        guard let modelContext else {
+            logger.error("saveSnapshot called but modelContext is nil")
+            return nil
+        }
+
+        let trimmedOriginal = snapshot.originalText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedOriginal.isEmpty else { return nil }
+
+        let hash = PromptRecord.makeContentHash(
+            originalText: snapshot.originalText,
+            compressedText: snapshot.compressedText,
+            compressorUsed: snapshot.compressorUsed.rawValue
+        )
+
+        let predicate = #Predicate<PromptRecord> { record in
+            record.contentHash == hash
+        }
+        var descriptor = FetchDescriptor<PromptRecord>(predicate: predicate)
+        descriptor.fetchLimit = 1
+
+        if let existing = try modelContext.fetch(descriptor).first {
+            existing.modifiedAt = Date()
+            try modelContext.save()
+            logger.info("Updated existing prompt record (hash: \(String(hash.prefix(8))))")
+            return existing
+        }
+
+        let record = PromptRecord(
+            originalText: snapshot.originalText,
+            compressedText: snapshot.compressedText,
+            originalTokenCount: snapshot.originalTokenCount,
+            compressedTokenCount: snapshot.compressedTokenCount,
+            compressionRatio: snapshot.compressionRatio,
+            compressorUsed: snapshot.compressorUsed
+        )
+        modelContext.insert(record)
+        try modelContext.save()
+        logger.info("Saved new prompt record (hash: \(String(hash.prefix(8))))")
+        return record
     }
 
     func fetchRecent(limit: Int = 50) throws -> [PromptRecord] {

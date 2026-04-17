@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Vapor – Prompt Injector",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Injects compressed prompts from Vapor into AI chat interfaces.",
   "permissions": [
     "tabs",
@@ -15,17 +15,27 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "config/platform-config.js"
+        "config/platform-config.js",
+        "libs/readability.js"
       ],
       "matches": ["*://*/*"]
     }
   ],
   "action": {
-    "default_popup": "popup.html",
-    "default_title": "Vapor"
+    "default_title": "Vapor",
+    "default_popup": "popup.html"
   },
   "background": {
     "service_worker": "background.js"
+  },
+  "commands": {
+    "capture-page": {
+      "suggested_key": {
+        "default": "Alt+Shift+C",
+        "mac": "Command+Shift+C"
+      },
+      "description": "Capture current page"
+    }
   },
   "icons": {
     "16": "icons/icon16.png",

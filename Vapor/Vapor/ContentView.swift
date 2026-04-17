@@ -10,11 +10,14 @@ struct ContentView: View {
     @Environment(UserPreferences.self) private var preferences
     @Environment(CompressionService.self) private var compressionService
     @Environment(BrowserBridge.self) private var browserBridge
+    @Environment(ContextQueueService.self) private var contextQueue
+    @Environment(StatusBarService.self) private var statusBar
     @State private var viewModel = EditorViewModel()
     @State private var historyService = PromptHistoryService()
     @State private var toastService = ToastService()
     @State private var dictationService = SpeechDictationService()
     @State private var showTestSidebar = false
+    @State private var showContextTray = false
     @State private var isEditorFocused = false
     @State private var sidebarPrompt: String = ""
     @State private var speechAuthStatus: SFSpeechRecognizerAuthorizationStatus = .notDetermined
@@ -29,6 +32,27 @@ struct ContentView: View {
     var body: some View {
         contentGroup
             .background(windowManager.windowState == .expanded ? Color(nsColor: .windowBackgroundColor) : Color.clear)
+            .sheet(
+                isPresented: .init(
+                    get: { browserBridge.isPresentingTabPicker },
+                    set: { if !$0 { browserBridge.dismissTabPicker() } }
+                ),
+                onDismiss: {
+                    refocusEditorAfterTransition()
+                },
+                content: {
+                TabPickerView(
+                    tabs: browserBridge.availableTabs,
+                    selectedTarget: browserBridge.selectedTarget,
+                    onSelect: { tab in
+                        browserBridge.selectTab(tab)
+                    },
+                    onCancel: {
+                        browserBridge.dismissTabPicker()
+                    }
+                )
+                }
+            )
             .onAppear { handleOnAppear() }
             .onChange(of: viewModel.content) { _, newValue in
                 UserDefaults.standard.set(newValue, forKey: "lastEditorContent")
@@ -60,13 +84,25 @@ struct ContentView: View {
             }
         .safeAreaInset(edge: .bottom) {
             if windowManager.windowState == .expanded {
-                Text(compressionService.statusMessage)
-                    .font(.system(size: 10))
-                    .foregroundColor(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 4)
-                    .background(Color(NSColor.controlBackgroundColor))
+                HStack(spacing: 0) {
+                    Text(statusBar.statusMessage)
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+
+                    Spacer()
+
+                    HStack(spacing: 8) {
+                        ForEach(Array(statusBar.indicators.enumerated()), id: \.offset) { _, indicator in
+                            statusIndicatorView(indicator)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 4)
+                .background(Color(NSColor.controlBackgroundColor))
             }
         }
         .alert("Browser Server Error", isPresented: .init(
@@ -74,7 +110,7 @@ struct ContentView: View {
             set: { if !$0 { browserBridge.portConflict = false } }
         )) {
             Button("Open Settings", role: nil) {
-                openWindow(id: "settings")
+                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
                 browserBridge.portConflict = false
             }
             Button("Dismiss", role: .cancel) {
@@ -97,6 +133,15 @@ struct ContentView: View {
                 minimizedView
             case .expanded:
                 expandedView
+            }
+        }
+        .onChange(of: windowManager.windowState) { _, newState in
+            if newState == .expanded {
+                windowManager.resizeForPanels(
+                    showContextTray: showContextTray,
+                    showTestSidebar: showTestSidebar
+                )
+                refocusEditorAfterTransition()
             }
         }
         .onChange(of: HistoryStore.shared.pendingRestore?.persistentModelID) { _, newID in
@@ -125,6 +170,14 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .vaporSendToBrowser)) { _ in
             sendToBrowser()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .vaporChooseBrowserTarget)) { _ in
+            chooseBrowserTarget()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .vaporInsertContextItem)) { notification in
+            if let text = notification.object as? String {
+                viewModel.content += (viewModel.content.isEmpty ? "" : "\n\n") + text
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .vaporLLMDownloadCompleted)) { _ in
             Task { await compressionService.reloadLocalLLMIfNeeded() }
         }
@@ -132,7 +185,13 @@ struct ContentView: View {
 
     private var minimizedView: some View {
         MinimizedPillView(
-            onExpand: { windowManager.expand() },
+            onExpand: {
+                windowManager.expand(
+                    showContextTray: showContextTray,
+                    showTestSidebar: showTestSidebar
+                )
+                refocusEditorAfterTransition()
+            },
             onCompressAndCopy: { Task { await performCompressAndCopy() } },
             onCopyOriginal: {
                 viewModel.copyOriginalToClipboard()
@@ -178,6 +237,12 @@ struct ContentView: View {
         setupDictation()
         checkPermissions()
         windowManager.setupWindowOnAppear()
+        DispatchQueue.main.async {
+            windowManager.resizeForPanels(
+                showContextTray: showContextTray,
+                showTestSidebar: showTestSidebar
+            )
+        }
     }
 
     private func handleOnDisappear() {
@@ -188,10 +253,26 @@ struct ContentView: View {
 
     private var expandedContent: some View {
         HStack(spacing: 0) {
+            ToolSidebarView(
+                viewModel: viewModel,
+                dictationService: dictationService,
+                preferences: preferences,
+                onChooseTarget: {
+                    chooseBrowserTarget()
+                },
+                onPostToTarget: {
+                    sendToBrowser()
+                },
+                onToggleDictation: {
+                    toggleDictation()
+                }
+            )
+
+            Divider()
+
             VStack(spacing: 0) {
                 ToolbarView(
                     viewModel: viewModel,
-                    dictationService: dictationService,
                     preferences: preferences,
                     onCompressAndCopy: {
                         Task { await performCompressAndCopy() }
@@ -200,16 +281,30 @@ struct ContentView: View {
                         viewModel.copyOriginalToClipboard()
                         toastService.showSuccess("Original copied to clipboard")
                     },
-                    onClear: {
-                        viewModel.clear()
-                    },
-                    onToggleDictation: {
-                        toggleDictation()
+                    onShowHistory: {
+                        openWindow(id: "prompt-history")
                     },
                     onToggleTest: {
+                        let willShow = !showTestSidebar
+                        windowManager.resizeForPanels(
+                            showContextTray: showContextTray,
+                            showTestSidebar: willShow
+                        )
                         withAnimation {
                             showTestSidebar.toggle()
                         }
+                        refocusEditorAfterTransition()
+                    },
+                    onToggleContextTray: {
+                        let willShow = !showContextTray
+                        windowManager.resizeForPanels(
+                            showContextTray: willShow,
+                            showTestSidebar: showTestSidebar
+                        )
+                        withAnimation {
+                            showContextTray.toggle()
+                        }
+                        refocusEditorAfterTransition()
                     },
                     onMinimize: {
                         windowManager.minimize()
@@ -222,7 +317,7 @@ struct ContentView: View {
                         isDictating: viewModel.isDictating,
                         inputLevel: dictationService.inputLevel
                     )
-                    .padding(EdgeInsets(top: 6, leading: 6, bottom: 12, trailing: 6))
+                    .padding(EdgeInsets(top: 8, leading: 16, bottom: 12, trailing: 16))
                     .frame(maxHeight: .infinity)
 
                 if viewModel.originalTokenCount > 0 {
@@ -256,7 +351,13 @@ struct ContentView: View {
                     .animation(.easeInOut(duration: 0.2), value: viewModel.compressedContent.isEmpty)
                 }
             }
-            .frame(minWidth: 400, minHeight: 300)
+            .frame(width: 640)
+            .frame(minHeight: 300)
+
+            if showContextTray {
+                Divider()
+                ContextTrayView()
+            }
 
             if showTestSidebar {
                 Divider()
@@ -328,9 +429,29 @@ struct ContentView: View {
             return
         }
         guard !viewModel.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        viewModel.recordCurrentPromptInHistory()
         let text = viewModel.compressedContent.isEmpty ? viewModel.content : viewModel.compressedContent
-        browserBridge.sendPrompt(text, original: viewModel.content, autoSubmit: preferences.autoSubmitToAI)
-        toastService.showSuccess("Sent to browser")
+        let autoSubmit = preferences.autoSubmitToAI
+        let posted = browserBridge.sendPrompt(text, original: viewModel.content, autoSubmit: autoSubmit)
+        if posted, let target = browserBridge.selectedTarget {
+            if autoSubmit {
+                toastService.showSuccess("Sent to \(target.displayLabel)")
+            } else {
+                toastService.showSuccess("Injected into \(target.displayLabel) — press Enter to send")
+            }
+        } else if browserBridge.selectedTarget != nil {
+            toastService.showInfo("Refreshing browser tab target")
+        } else {
+            toastService.showInfo("Choose a browser tab target")
+        }
+    }
+
+    private func chooseBrowserTarget() {
+        guard browserBridge.isExtensionConnected else {
+            toastService.showError("No browser extension connected")
+            return
+        }
+        browserBridge.queryTabs()
     }
 
     // Dictation is Fn-key only. No auto-start on expand.
@@ -366,8 +487,39 @@ struct ContentView: View {
                     dictationService.pauseDictation()
                     viewModel.isDictating = false
                     EditorTextViewRegistry.refocus()
-                }
+                 }
+             }
+         }
+     }
+
+    private func refocusEditorAfterTransition() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            EditorTextViewRegistry.refocusAtEnd()
+        }
+    }
+
+    // MARK: - Status Bar Indicators
+
+    @ViewBuilder
+    func statusIndicatorView(_ indicator: StatusBarIndicator) -> some View {
+        switch indicator {
+        case .context(let count, let hasProcessing):
+            HStack(spacing: 3) {
+                Circle()
+                    .fill(hasProcessing ? .orange : .green)
+                    .frame(width: 6, height: 6)
+                Text("\(count)")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundColor(.secondary)
             }
+        case .browser(let connected):
+            Image(systemName: connected ? "link" : "link.slash")
+                .font(.system(size: 10))
+                .foregroundColor(connected ? .blue : .secondary.opacity(0.5))
+        case .llm(let available):
+            Image(systemName: available ? "cpu" : "cpu.badge.xmark")
+                .font(.system(size: 10))
+                .foregroundColor(available ? .green : .secondary.opacity(0.5))
         }
     }
 }

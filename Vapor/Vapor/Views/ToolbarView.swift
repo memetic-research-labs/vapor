@@ -2,20 +2,16 @@ import SwiftUI
 
 struct ToolbarView: View {
     @Bindable var viewModel: EditorViewModel
-    let dictationService: SpeechDictationService
     let preferences: UserPreferences
-    @Environment(BrowserBridge.self) private var browserBridge
     let onCompressAndCopy: () async -> Void
     let onCopyOriginal: () -> Void
-    let onClear: () -> Void
-    let onToggleDictation: () -> Void
+    let onShowHistory: () -> Void
     let onToggleTest: () -> Void
+    let onToggleContextTray: () -> Void
     let onMinimize: () -> Void
 
     var body: some View {
-        HStack(spacing: 10) {
-            dictationButton
-
+        HStack(spacing: 8) {
             Button {
                 Task { await onCompressAndCopy() }
             } label: {
@@ -50,42 +46,26 @@ struct ToolbarView: View {
             .disabled(viewModel.content.isEmpty)
             .help("Copy Original ( ⌘ ⇧ C )")
 
-            if browserBridge.isRunning {
-                Button {
-                    browserBridge.sendPrompt(
-                        viewModel.compressedContent.isEmpty ? viewModel.content : viewModel.compressedContent,
-                        original: viewModel.content,
-                        autoSubmit: preferences.autoSubmitToAI
-                    )
-                } label: {
-                    if browserBridge.isExtensionConnected {
-                        Image(systemName: "safari.fill")
-                            .font(.system(size: 13))
-                            .foregroundColor(.blue)
-                    } else {
-                        Image(systemName: "safari.fill")
-                            .font(.system(size: 13))
-                            .foregroundColor(.orange)
-                            .symbolEffect(.pulse, options: .repeating)
-                    }
-                }
-                .buttonStyle(.plain)
-                .disabled(viewModel.content.isEmpty || !browserBridge.isExtensionConnected)
-                .help(browserBridge.isExtensionConnected
-                      ? "Send to browser ( ⌘⇧↩ )"
-                      : "Waiting for browser extension…")
+            Button {
+                onShowHistory()
+            } label: {
+                Image(systemName: "clock.arrow.circlepath")
+                    .foregroundColor(.primary)
             }
+            .buttonStyle(.plain)
+            .help("Prompt History ( ⌘ Y )")
 
             Spacer()
 
             Button {
-                onClear()
+                onToggleContextTray()
             } label: {
-                Text("Clear")
+                Image(systemName: "sidebar.trailing")
+                    .font(.system(size: 12))
                     .foregroundColor(.primary)
             }
             .buttonStyle(.plain)
-            .disabled(viewModel.content.isEmpty)
+            .help("Toggle context tray")
 
             SettingsLink {
                 Image(systemName: "gearshape")
@@ -117,46 +97,5 @@ struct ToolbarView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .frame(height: 44)
-    }
-
-    private var dictationButton: some View {
-        Button {
-            onToggleDictation()
-        } label: {
-            HStack(spacing: 4) {
-                ZStack(alignment: .topTrailing) {
-                    if viewModel.isDictating {
-                        Image(systemName: "mic.fill")
-                            .foregroundColor(.red)
-                    } else {
-                        Image(systemName: "mic")
-                            .foregroundColor(.secondary)
-                    }
-
-                    if preferences.autoCompressEnabled {
-                        Image(systemName: "bolt.fill")
-                            .font(.system(size: 8))
-                            .foregroundColor(.orange)
-                            .offset(x: 6, y: -4)
-                    }
-                }
-
-                if viewModel.isDictating {
-                    AudioLevelView(
-                        inputLevel: dictationService.inputLevel,
-                        isActive: true
-                    )
-                }
-            }
-        }
-        .buttonStyle(.bordered)
-        .help(dictationHelpText)
-    }
-
-    private var dictationHelpText: String {
-        if viewModel.isDictating {
-            return "Listening… (release Fn to stop)"
-        }
-        return "Hold Fn key to dictate"
     }
 }

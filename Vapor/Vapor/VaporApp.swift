@@ -11,6 +11,7 @@ struct VaporApp: App {
     @State private var windowManager: WindowManager
     @State private var compressionService = CompressionService()
     @State private var browserBridge = BrowserBridge()
+    @State private var contextQueueService = ContextQueueService()
     @Environment(\.openWindow) private var openWindow
 
     init() {
@@ -19,6 +20,7 @@ struct VaporApp: App {
         _preferences = State(initialValue: prefs)
         _windowManager = State(initialValue: WindowManager.shared)
         _browserBridge = State(initialValue: BrowserBridge())
+        _contextQueueService = State(initialValue: ContextQueueService())
     }
 
     private static var hasSetupBrowserBridge = false
@@ -29,6 +31,9 @@ struct VaporApp: App {
 
         let prefs = preferences
         let bridge = browserBridge
+
+        NSApp.delegate = VaporAppDelegate(bridge: bridge)
+
         Task {
             do {
                 try await OllamaDaemonManager.shared.start()
@@ -38,14 +43,6 @@ struct VaporApp: App {
             } catch {
                 logger.warning("Ollama daemon did not start: \(error.localizedDescription)")
             }
-        }
-        NotificationCenter.default.addObserver(
-            forName: NSApplication.willTerminateNotification,
-            object: nil,
-            queue: .main
-        ) { _ in
-            Task { await OllamaDaemonManager.shared.stop() }
-            Task { await bridge.stop() }
         }
         NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.willPowerOffNotification,
@@ -59,18 +56,35 @@ struct VaporApp: App {
 
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
-            PromptRecord.self
+            PromptRecord.self,
+            ContextItem.self
         ])
         do {
             let persistentConfig = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
             return try ModelContainer(for: schema, configurations: [persistentConfig])
         } catch {
-            logger.error("Could not create persistent ModelContainer (\(error)); falling back to in-memory storage.")
-            let inMemoryConfig = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+            logger.error("Could not create persistent ModelContainer (\(error)); deleting stale store and retrying.")
+            let appSupportURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            let bundleID = Bundle.main.bundleIdentifier ?? "lol.mrl.app.Vapor"
+            if let appSupportURL {
+                let storeURL = appSupportURL.appendingPathComponent(bundleID).appendingPathComponent("default.store")
+                let dirURL = storeURL.deletingLastPathComponent()
+                let storeName = storeURL.lastPathComponent
+                try? FileManager.default.removeItem(at: storeURL)
+                try? FileManager.default.removeItem(at: dirURL.appendingPathComponent(storeName + "-shm"))
+                try? FileManager.default.removeItem(at: dirURL.appendingPathComponent(storeName + "-wal"))
+            }
             do {
-                return try ModelContainer(for: schema, configurations: [inMemoryConfig])
+                let persistentConfig = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+                return try ModelContainer(for: schema, configurations: [persistentConfig])
             } catch {
-                fatalError("Cannot create ModelContainer: \(error)")
+                logger.error("Retry also failed (\(error)); falling back to in-memory storage.")
+                let inMemoryConfig = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+                do {
+                    return try ModelContainer(for: schema, configurations: [inMemoryConfig])
+                } catch {
+                    fatalError("Cannot create ModelContainer: \(error)")
+                }
             }
         }
     }()
@@ -82,7 +96,11 @@ struct VaporApp: App {
                 .environment(preferences)
                 .environment(compressionService)
                 .environment(browserBridge)
+                .environment(contextQueueService)
+                .environment(StatusBarService.shared)
                 .onAppear {
+                    browserBridge.setContextQueueService(contextQueueService)
+                    contextQueueService.setModelContext(sharedModelContainer.mainContext)
                     setupBrowserBridge()
                     KeyboardShortcuts.onKeyUp(for: .toggleVapor) { windowManager.focus() }
                     windowManager.setupWindowOnAppear()
@@ -92,7 +110,7 @@ struct VaporApp: App {
                 }
         }
         .modelContainer(sharedModelContainer)
-        .defaultSize(width: 500, height: 400)
+        .defaultSize(width: 683, height: 540)
         .commands {
             CommandGroup(replacing: .newItem) { }
 
@@ -136,10 +154,14 @@ struct VaporApp: App {
                 }
                 .keyboardShortcut(.return, modifiers: .command)
 
-                Button("Send to Browser") {
+                Button("Choose Browser Target") {
+                    NotificationCenter.default.post(name: .vaporChooseBrowserTarget, object: nil)
+                }
+
+                Button("Post to Selected Tab") {
                     NotificationCenter.default.post(name: .vaporSendToBrowser, object: nil)
                 }
-                .keyboardShortcut(.return, modifiers: [.command, .shift])
+                .keyboardShortcut("p", modifiers: [.command, .shift])
 
                 Button("Copy & Clear") {
                     NotificationCenter.default.post(name: .vaporCopyAndClear, object: nil)
@@ -149,12 +171,12 @@ struct VaporApp: App {
                 Divider()
 
                 Button("Prompt History") {
-                    NotificationCenter.default.post(name: .vaporShowHistory, object: nil)
+                    openWindow(id: "prompt-history")
                 }
                 .keyboardShortcut("y", modifiers: .command)
 
                 Button("Keyboard Shortcuts") {
-                    NotificationCenter.default.post(name: .vaporShowHelp, object: nil)
+                    openWindow(id: "keyboard-shortcuts")
                 }
                 .keyboardShortcut("/", modifiers: .command)
             }
@@ -183,7 +205,7 @@ struct VaporApp: App {
                 }
 
                 Button("Keyboard Shortcuts") {
-                    NotificationCenter.default.post(name: .vaporShowHelp, object: nil)
+                    openWindow(id: "keyboard-shortcuts")
                 }
                 .keyboardShortcut("/", modifiers: .command)
             }
@@ -196,14 +218,14 @@ struct VaporApp: App {
         .windowResizability(.contentSize)
         .defaultSize(width: 320, height: 240)
 
-        Window("Prompt History", id: "prompt-history") {
+        WindowGroup("Prompt History", id: "prompt-history") {
             PromptHistoryView()
         }
         .modelContainer(sharedModelContainer)
         .windowStyle(.titleBar)
         .defaultSize(width: 400, height: 500)
 
-        Window("Keyboard Shortcuts", id: "keyboard-shortcuts") {
+        WindowGroup("Keyboard Shortcuts", id: "keyboard-shortcuts") {
             KeyboardShortcutsHelpView()
         }
         .windowStyle(.titleBar)
@@ -222,8 +244,40 @@ struct VaporApp: App {
                 .environment(browserBridge)
         }
 
+        WindowGroup("Context Item", for: ContextItemDetailPayload.self) { $payload in
+            Group {
+                if let payload, let itemID = $payload.wrappedValue?.itemID {
+                    ContextItemDetailView(itemID: itemID)
+                }
+            }
+        }
+        .modelContainer(sharedModelContainer)
+        .windowStyle(.titleBar)
+        .defaultSize(width: 560, height: 600)
+
         MenuBarExtra("Vapor", systemImage: "waveform.circle") {
             MenuBarView()
         }
+    }
+}
+
+final class VaporAppDelegate: NSObject, NSApplicationDelegate {
+    private let bridge: BrowserBridge
+
+    init(bridge: BrowserBridge) {
+        self.bridge = bridge
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        Task { @MainActor [weak self] in
+            guard let self else {
+                NSApp.reply(toApplicationShouldTerminate: true)
+                return
+            }
+            await self.bridge.stop()
+            await OllamaDaemonManager.shared.stop()
+            NSApp.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
     }
 }

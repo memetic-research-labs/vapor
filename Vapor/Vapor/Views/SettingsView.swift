@@ -18,9 +18,17 @@ struct SettingsView: View {
     @State private var isConnecting: Bool = false
     @State private var selectedTab: SettingsTab = .compression
     @State private var displayedAuthToken: String = ""
+    @State private var extractionBackend: EntityExtractionBackend = .ollama
+    @State private var selectedNERModel: NERModel = NERModel.curatedModels.first ?? NERModel(id: NERModel.defaultModel, displayName: NERModel.defaultModel, priceLabel: "")
+    @State private var useCustomNERModel: Bool = false
+    @State private var customNERModel: String = ""
+    @State private var selectedSummarizationModel: NERModel = NERModel.curatedModels.first ?? NERModel(id: NERModel.defaultModel, displayName: NERModel.defaultModel, priceLabel: "")
+    @State private var useCustomSummarizationModel: Bool = false
+    @State private var customSummarizationModel: String = ""
 
     enum SettingsTab: String, CaseIterable, Identifiable {
         case compression = "Compression"
+        case extraction = "Entity Extraction"
         case browser = "Browser"
         case ollama = "Ollama Models"
         case openRouter = "OpenRouter"
@@ -32,6 +40,7 @@ struct SettingsView: View {
         var icon: String {
             switch self {
             case .compression: return "arrow.left.arrow.right"
+            case .extraction: return "tag.circle"
             case .browser: return "globe"
             case .ollama: return "cpu"
             case .openRouter: return "cloud"
@@ -53,6 +62,8 @@ struct SettingsView: View {
                 switch selectedTab {
                 case .compression:
                     compressionTab
+                case .extraction:
+                    extractionTab
                 case .browser:
                     browserTab
                 case .ollama:
@@ -821,6 +832,214 @@ struct SettingsView: View {
         }
         .onAppear {
             Task { await startOllamaDaemon() }
+        }
+    }
+
+    // MARK: - Entity Extraction Tab
+
+    private var extractionTab: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                GroupBox("Entity Extraction Backend") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        ForEach(EntityExtractionBackend.allCases, id: \.rawValue) { backend in
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(backend.displayName)
+                                        .font(.system(size: 13, weight: .medium))
+                                    Text(backendDescription(for: backend))
+                                        .font(.system(size: 10))
+                                        .foregroundColor(.secondary)
+                                }
+                                Spacer()
+                                if extractionBackend == backend {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundColor(.accentColor)
+                                }
+                            }
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                extractionBackend = backend
+                                UserDefaults.standard.set(backend.rawValue, forKey: "entityExtractionBackend")
+                            }
+                            .padding(6)
+                            .background(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill(extractionBackend == backend ? Color.accentColor.opacity(0.08) : Color.clear)
+                            )
+                        }
+                    }
+                    .padding(8)
+                }
+
+                if extractionBackend == .openRouter {
+                    GroupBox("OpenRouter NER Model") {
+                        VStack(alignment: .leading, spacing: 12) {
+                            let hasKey = !(UserDefaults.standard.string(forKey: "openRouterApiKey") ?? "").isEmpty
+
+                            if !hasKey {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .foregroundColor(.orange)
+                                        .font(.system(size: 11))
+                                    Text("No OpenRouter API key set. Add one in the OpenRouter tab.")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+
+                            Picker("Model", selection: $selectedNERModel) {
+                                ForEach(NERModel.curatedModels) { model in
+                                    HStack {
+                                        Text(model.displayName)
+                                        Spacer()
+                                        Text(model.priceLabel)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    .tag(model)
+                                }
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.menu)
+                            .frame(maxWidth: 300, alignment: .leading)
+                            .onChange(of: selectedNERModel) { _, newValue in
+                                if !useCustomNERModel {
+                                    UserDefaults.standard.set(newValue.id, forKey: "entityExtractionModel")
+                                }
+                            }
+
+                            Toggle("Use custom model", isOn: $useCustomNERModel)
+                                .toggleStyle(.checkbox)
+                                .controlSize(.small)
+
+                            if useCustomNERModel {
+                                TextField("Custom model ID", text: $customNERModel)
+                                    .textFieldStyle(.roundedBorder)
+                                    .onChange(of: customNERModel) { _, newValue in
+                                        UserDefaults.standard.set(newValue, forKey: "entityExtractionModel")
+                                    }
+                            }
+                        }
+                        .padding(8)
+                    }
+                }
+
+                if extractionBackend == .ollama {
+                    GroupBox("Ollama NER Model") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            let saved = UserDefaults.standard.string(forKey: "ollamaSelectedModel") ?? "qwen2.5:7b"
+                            Text("Using: \(saved)")
+                                .font(.system(size: 12))
+                                .foregroundColor(.secondary)
+                            Text("Entity extraction uses the same Ollama model configured for compression.")
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(8)
+                    }
+                }
+
+                GroupBox("Summarization Model") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Used for generating document summaries. Defaults to the NER model if not set.")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+
+                        Picker("Model", selection: $selectedSummarizationModel) {
+                            Text("Same as NER model").tag(NERModel(id: "", displayName: "Same as NER", priceLabel: ""))
+                            ForEach(NERModel.curatedModels) { model in
+                                HStack {
+                                    Text(model.displayName)
+                                    Spacer()
+                                    Text(model.priceLabel)
+                                        .foregroundColor(.secondary)
+                                }
+                                .tag(model)
+                            }
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.menu)
+                        .frame(maxWidth: 300, alignment: .leading)
+                        .onChange(of: selectedSummarizationModel) { _, newValue in
+                            if !useCustomSummarizationModel {
+                                UserDefaults.standard.set(newValue.id, forKey: "summarizationModel")
+                            }
+                        }
+
+                        Toggle("Use custom model", isOn: $useCustomSummarizationModel)
+                            .toggleStyle(.checkbox)
+                            .controlSize(.small)
+
+                        if useCustomSummarizationModel {
+                            TextField("Custom model ID", text: $customSummarizationModel)
+                                .textFieldStyle(.roundedBorder)
+                                .onChange(of: customSummarizationModel) { _, newValue in
+                                    UserDefaults.standard.set(newValue, forKey: "summarizationModel")
+                                }
+                        }
+                    }
+                    .padding(8)
+                }
+
+                GroupBox("Fallback Chain") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(fallbackDescription)
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(8)
+                }
+            }
+            .padding(20)
+        }
+        .onAppear {
+            if let raw = UserDefaults.standard.string(forKey: "entityExtractionBackend"),
+               let val = EntityExtractionBackend(rawValue: raw) {
+                extractionBackend = val
+            } else if let key = UserDefaults.standard.string(forKey: "openRouterApiKey"), !key.isEmpty {
+                extractionBackend = .openRouter
+            }
+
+            let savedNERModel = UserDefaults.standard.string(forKey: "entityExtractionModel") ?? NERModel.defaultModel
+            if let match = NERModel.curatedModels.first(where: { $0.id == savedNERModel }) {
+                selectedNERModel = match
+                useCustomNERModel = false
+            } else {
+                customNERModel = savedNERModel
+                useCustomNERModel = true
+            }
+
+            let savedSummaryModel = UserDefaults.standard.string(forKey: "summarizationModel") ?? ""
+            if savedSummaryModel.isEmpty {
+                selectedSummarizationModel = NERModel(id: "", displayName: "Same as NER", priceLabel: "")
+                useCustomSummarizationModel = false
+            } else if let match = NERModel.curatedModels.first(where: { $0.id == savedSummaryModel }) {
+                selectedSummarizationModel = match
+                useCustomSummarizationModel = false
+            } else {
+                customSummarizationModel = savedSummaryModel
+                useCustomSummarizationModel = true
+            }
+        }
+    }
+
+    private func backendDescription(for backend: EntityExtractionBackend) -> String {
+        switch backend {
+        case .ollama: "Uses your local Ollama instance. Free but requires GPU."
+        case .openRouter: "Uses cheap cloud models. Fast, no local GPU needed."
+        case .nlTagger: "Built-in macOS NLP. No setup, but lower accuracy."
+        }
+    }
+
+    private var fallbackDescription: String {
+        switch extractionBackend {
+        case .openRouter:
+            return "OpenRouter → Ollama (fallback) → NLTagger (last resort). If the cloud model returns no entities, Ollama is tried, then the built-in tagger."
+        case .ollama:
+            return "Ollama → NLTagger (fallback). If Ollama returns no entities or is unavailable, the built-in tagger is used."
+        case .nlTagger:
+            return "NLTagger only. No fallback — uses Apple's built-in NLP for entity extraction."
         }
     }
 
