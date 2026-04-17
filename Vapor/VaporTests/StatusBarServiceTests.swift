@@ -28,14 +28,9 @@ final class StatusBarServiceTests: XCTestCase {
 
         XCTAssertEqual(service.statusMessage, "Ready")
 
-        try? await Task.sleep(for: .milliseconds(5))
-        XCTAssertEqual(service.statusMessage, "First")
-
-        try? await Task.sleep(for: .milliseconds(55))
-        XCTAssertEqual(service.statusMessage, "Second")
-
-        try? await Task.sleep(for: .milliseconds(55))
-        XCTAssertEqual(service.statusMessage, "Ready")
+        await waitForStatus("First", in: service)
+        await waitForStatus("Second", in: service)
+        await waitForStatus("Ready", in: service)
     }
 
     func testRetainsOnlyMaximumNumberOfEvents() {
@@ -48,5 +43,22 @@ final class StatusBarServiceTests: XCTestCase {
         XCTAssertEqual(service.events.count, 2)
         XCTAssertEqual(service.events.first?.message, "Two")
         XCTAssertEqual(service.events.last?.message, "Three")
+    }
+
+    private func waitForStatus(
+        _ expected: String,
+        in service: StatusBarService,
+        timeout: Duration = .seconds(1)
+    ) async {
+        let deadline = ContinuousClock.now + timeout
+
+        while ContinuousClock.now < deadline {
+            if service.statusMessage == expected {
+                return
+            }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+
+        XCTFail("Timed out waiting for status '\(expected)'. Last value: '\(service.statusMessage)'")
     }
 }

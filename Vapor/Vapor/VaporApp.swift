@@ -31,11 +31,15 @@ struct VaporApp: App {
     private static var hasSetupBrowserBridge = false
 
     private static func ensureFreshPersistentStores() {
+#if !DEBUG
+        return
+#endif
+
         let defaults = UserDefaults.standard
         let storedVersion = defaults.integer(forKey: persistentSchemaVersionKey)
         guard storedVersion < persistentSchemaVersion else { return }
 
-        logger.info("Resetting persistent stores for schema version \(persistentSchemaVersion)")
+        logger.info("Resetting persistent stores for debug schema version \(persistentSchemaVersion)")
 
         do {
             try deleteSwiftDataStoreFiles()

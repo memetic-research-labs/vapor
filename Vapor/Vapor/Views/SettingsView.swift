@@ -33,6 +33,8 @@ struct SettingsView: View {
     @State private var customSummarizationOpenRouterModel: String = ""
     @State private var cloudModelSearchText: String = ""
 
+    private let validPortRange = 1...65_535
+
     enum SettingsTab: String, CaseIterable, Identifiable {
         case compression = "Compression"
         case contextProcessing = "Context Processing"
@@ -177,9 +179,16 @@ struct SettingsView: View {
                                 },
                                 set: { newValue in
                                     let digits = String(newValue.filter(\.isNumber).prefix(5))
-                                    embeddedServerPortText = digits
-                                    if let port = Int(digits), !digits.isEmpty {
+                                    guard !digits.isEmpty else {
+                                        embeddedServerPortText = ""
+                                        return
+                                    }
+
+                                    if let port = Int(digits), validPortRange.contains(port) {
+                                        embeddedServerPortText = digits
                                         preferences.embeddedServerPort = port
+                                    } else {
+                                        embeddedServerPortText = String(preferences.embeddedServerPort)
                                     }
                                 }
                             ))

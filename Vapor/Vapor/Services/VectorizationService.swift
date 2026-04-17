@@ -127,13 +127,18 @@ final class VectorizationService {
         do {
             let records = try context.fetch(descriptor)
             var didChange = false
+            var didIndexNewEmbeddings = false
             for record in records where record.embeddingID == nil {
                 if try await ensureEmbedding(for: record) != nil {
                     didChange = true
+                    didIndexNewEmbeddings = true
                 }
             }
             if didChange {
                 try context.save()
+            }
+            if didIndexNewEmbeddings {
+                await refreshVectorCount()
             }
             StatusBarService.shared.log(
                 "Prompt embedding backfill complete",
@@ -167,13 +172,18 @@ final class VectorizationService {
         do {
             let items = try context.fetch(descriptor)
             var didChange = false
+            var didIndexNewEmbeddings = false
             for item in items where item.embeddingID == nil && item.status == .ready {
                 if try await ensureEmbedding(for: item) != nil {
                     didChange = true
+                    didIndexNewEmbeddings = true
                 }
             }
             if didChange {
                 try context.save()
+            }
+            if didIndexNewEmbeddings {
+                await refreshVectorCount()
             }
             StatusBarService.shared.log(
                 "Context embedding backfill complete",
@@ -241,6 +251,7 @@ final class VectorizationService {
 
     private func upsert(embedding: [Float], id: String) async throws {
         let database = try await Self.sharedDatabase()
+        let existed = try await embeddingExists(id: id)
         try await database.execute("DELETE FROM \(Self.tableName) WHERE embedding_id = ?", params: [id])
         try await database.execute(
             "INSERT INTO \(Self.tableName)(embedding, embedding_id) VALUES (?, ?)",
@@ -251,7 +262,9 @@ final class VectorizationService {
             domain: .vectorization,
             metadata: ["embeddingID": id, "dimensions": String(embedding.count)]
         )
-        await refreshVectorCount()
+        if !existed {
+            indexedVectorCount += 1
+        }
     }
 
     private func embeddingExists(id: String) async throws -> Bool {

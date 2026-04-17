@@ -22,6 +22,8 @@ struct ContextExplorerView: View {
 
     @State private var semanticResultIDs: [UUID] = []
     @State private var isRunningSemanticSearch = false
+    @State private var semanticSearchTask: Task<Void, Never>?
+    @State private var semanticSearchRequestID = 0
 
     private let mainPaneBackground = Color(nsColor: .windowBackgroundColor)
     private let cardBackground = Color(nsColor: .controlBackgroundColor)
@@ -252,6 +254,10 @@ struct ContextExplorerView: View {
         }
         .onChange(of: explorerStore.selectedSection) { _, _ in
             runSemanticSearchIfNeeded()
+        }
+        .onDisappear {
+            semanticSearchTask?.cancel()
+            semanticSearchTask = nil
         }
     }
 
@@ -943,21 +949,51 @@ struct ContextExplorerView: View {
     }
 
     private func runSemanticSearchIfNeeded() {
+        semanticSearchTask?.cancel()
+        semanticSearchTask = nil
+
         guard explorerStore.semanticMode == .semantic else {
+            semanticSearchRequestID += 1
             semanticResultIDs = []
+            isRunningSemanticSearch = false
             return
         }
 
         let query = explorerStore.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else {
+            semanticSearchRequestID += 1
             semanticResultIDs = []
+            isRunningSemanticSearch = false
             return
         }
 
-        isRunningSemanticSearch = true
-        Task { @MainActor in
-            semanticResultIDs = await vectorizationService.searchContextItemIDs(matching: query, limit: 50)
+        guard vectorizationService.isReady else {
+            semanticSearchRequestID += 1
+            semanticResultIDs = []
             isRunningSemanticSearch = false
+            return
+        }
+
+        semanticSearchRequestID += 1
+        let requestID = semanticSearchRequestID
+        isRunningSemanticSearch = true
+
+        semanticSearchTask = Task { @MainActor in
+            do {
+                try await Task.sleep(for: .milliseconds(250))
+            } catch {
+                return
+            }
+
+            guard !Task.isCancelled, requestID == semanticSearchRequestID else { return }
+
+            let resultIDs = await vectorizationService.searchContextItemIDs(matching: query, limit: 50)
+
+            guard !Task.isCancelled, requestID == semanticSearchRequestID else { return }
+
+            semanticResultIDs = resultIDs
+            isRunningSemanticSearch = false
+            semanticSearchTask = nil
         }
     }
 }

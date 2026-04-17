@@ -9,11 +9,13 @@ struct ContextItemDetailView: View {
 
     @State private var item: ContextItem?
     @State private var refreshTask: Task<Void, Never>?
+    @State private var hasTimedOutLoadingItem = false
     @State private var showCopyConfirmation = false
     @State private var isSummarizing = false
     @State private var isRegeneratingCitation = false
     private let summarizer = SummarizationService()
     private let citationBuilder = CitationBuilder()
+    private let missingItemRetryLimit = 15
 
     var body: some View {
         Group {
@@ -65,14 +67,27 @@ struct ContextItemDetailView: View {
             } else {
                 VStack(spacing: 10) {
                     Spacer()
-                    ProgressView()
-                        .controlSize(.small)
-                    Text("Loading captured item")
-                        .font(.system(size: 13))
-                        .foregroundColor(.secondary)
-                    Text("This window will update as the document is saved and processed.")
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
+                    if hasTimedOutLoadingItem {
+                        Image(systemName: "exclamationmark.triangle")
+                            .font(.system(size: 18))
+                            .foregroundColor(.secondary)
+                        Text("Item not found")
+                            .font(.system(size: 13))
+                            .foregroundColor(.secondary)
+                        Text("The captured item could not be loaded. It may have been removed or never finished saving.")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                    } else {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("Loading captured item")
+                            .font(.system(size: 13))
+                            .foregroundColor(.secondary)
+                        Text("This window will update as the document is saved and processed.")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                    }
                     Spacer()
                 }
             }
@@ -80,6 +95,7 @@ struct ContextItemDetailView: View {
         .frame(minWidth: 480, minHeight: 400)
         .background(Color(nsColor: .windowBackgroundColor))
         .onAppear {
+            hasTimedOutLoadingItem = false
             fetchItem()
             startRefreshingItem()
         }
@@ -119,14 +135,31 @@ struct ContextItemDetailView: View {
     private func startRefreshingItem() {
         refreshTask?.cancel()
         refreshTask = Task { @MainActor in
+            var missingItemAttempts = 0
+
             while !Task.isCancelled {
                 fetchItem()
 
-                if let item, item.status != .processing && item.status != .pending {
-                    break
+                if let item {
+                    missingItemAttempts = 0
+                    hasTimedOutLoadingItem = false
+
+                    if item.status != .processing && item.status != .pending {
+                        break
+                    }
+                } else {
+                    missingItemAttempts += 1
+                    if missingItemAttempts >= missingItemRetryLimit {
+                        hasTimedOutLoadingItem = true
+                        break
+                    }
                 }
 
-                try? await Task.sleep(for: .seconds(1))
+                do {
+                    try await Task.sleep(for: .seconds(1))
+                } catch {
+                    break
+                }
             }
 
             refreshTask = nil

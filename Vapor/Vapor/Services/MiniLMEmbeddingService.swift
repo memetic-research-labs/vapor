@@ -41,14 +41,67 @@ final class MiniLMEmbeddingService {
     func initialize() async throws {
         guard model == nil else { return }
 
-        guard let modelURL = Bundle.main.url(forResource: "paraphrase-multilingual-MiniLM-L12-v2-512tokens", withExtension: "mlmodelc") else {
+        guard let modelURL = resolveModelURL() else {
+            miniLMLogger.error("MiniLM model not found in bundle or fallback locations")
             throw MiniLMEmbeddingError.modelNotFound
         }
 
+        model = try loadModel(from: modelURL)
+        miniLMLogger.info("Loaded MiniLM model from \(modelURL.path, privacy: .public)")
+    }
+
+    private func resolveModelURL() -> URL? {
+        let modelName = "paraphrase-multilingual-MiniLM-L12-v2-512tokens"
+
+        if let compiledURL = Bundle.main.url(forResource: modelName, withExtension: "mlmodelc") {
+            return compiledURL
+        }
+
+        if let sourceURL = Bundle.main.url(forResource: modelName, withExtension: "mlmodel") {
+            return sourceURL
+        }
+
+        return candidateModelURLs().first { FileManager.default.fileExists(atPath: $0.path) }
+    }
+
+    private func loadModel(from modelURL: URL) throws -> MLModel {
         let configuration = MLModelConfiguration()
         configuration.computeUnits = .all
-        model = try MLModel(contentsOf: modelURL, configuration: configuration)
-        miniLMLogger.info("Loaded MiniLM model from \(modelURL.path, privacy: .public)")
+
+        if modelURL.pathExtension == "mlmodel" {
+            let compiledURL = try MLModel.compileModel(at: modelURL)
+            return try MLModel(contentsOf: compiledURL, configuration: configuration)
+        }
+
+        return try MLModel(contentsOf: modelURL, configuration: configuration)
+    }
+
+    private func candidateModelURLs() -> [URL] {
+        let modelName = "paraphrase-multilingual-MiniLM-L12-v2-512tokens"
+        let environment = ProcessInfo.processInfo.environment
+        var candidates: [URL] = []
+
+        if let overridePath = environment["MINILM_MODEL_PATH"], !overridePath.isEmpty {
+            candidates.append(URL(fileURLWithPath: overridePath))
+        }
+
+        let currentDirectory = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
+        let executableDirectory = Bundle.main.executableURL?.deletingLastPathComponent()
+        let resourceDirectories = [
+            Bundle.main.resourceURL,
+            executableDirectory,
+            executableDirectory?.appendingPathComponent("Resources", isDirectory: true),
+            currentDirectory,
+            currentDirectory.appendingPathComponent("Resources", isDirectory: true),
+            currentDirectory.appendingPathComponent("Vapor/Vapor/Resources", isDirectory: true)
+        ]
+
+        for directory in resourceDirectories.compactMap({ $0 }) {
+            candidates.append(directory.appendingPathComponent("\(modelName).mlmodelc", isDirectory: true))
+            candidates.append(directory.appendingPathComponent("\(modelName).mlmodel"))
+        }
+
+        return candidates
     }
 
     func embed(text: String) async throws -> [Float] {
