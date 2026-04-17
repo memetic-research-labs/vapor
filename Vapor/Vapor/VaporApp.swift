@@ -7,11 +7,16 @@ private let logger = Logger(subsystem: "lol.mrl.app.Vapor", category: "App")
 
 @main
 struct VaporApp: App {
+    private static let persistentSchemaVersion = 3
+    private static let persistentSchemaVersionKey = "persistentSchemaVersion"
+
     @State private var preferences = UserPreferences()
     @State private var windowManager: WindowManager
     @State private var compressionService = CompressionService()
     @State private var browserBridge = BrowserBridge()
     @State private var contextQueueService = ContextQueueService()
+    @State private var vectorizationService = VectorizationService.shared
+    @State private var contextExplorerStore = ContextExplorerStore.shared
     @Environment(\.openWindow) private var openWindow
 
     init() {
@@ -24,6 +29,72 @@ struct VaporApp: App {
     }
 
     private static var hasSetupBrowserBridge = false
+
+    private static func ensureFreshPersistentStores() {
+#if !DEBUG
+        return
+#endif
+
+        let defaults = UserDefaults.standard
+        let storedVersion = defaults.integer(forKey: persistentSchemaVersionKey)
+        guard storedVersion < persistentSchemaVersion else { return }
+
+        logger.info("Resetting persistent stores for debug schema version \(persistentSchemaVersion)")
+
+        do {
+            try deleteSwiftDataStoreFiles()
+        } catch {
+            logger.error("Failed to reset SwiftData store: \(error.localizedDescription)")
+        }
+
+        do {
+            try deleteVectorStoreFiles()
+        } catch {
+            logger.error("Failed to reset vector store: \(error.localizedDescription)")
+        }
+
+        do {
+            try BlobStore.shared.clearAll()
+        } catch {
+            logger.error("Failed to clear blob store: \(error.localizedDescription)")
+        }
+
+        defaults.set(persistentSchemaVersion, forKey: persistentSchemaVersionKey)
+    }
+
+    private static func deleteSwiftDataStoreFiles() throws {
+        guard let appSupportURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            return
+        }
+
+        let bundleID = Bundle.main.bundleIdentifier ?? "lol.mrl.app.Vapor"
+        let candidateStoreURLs = [
+            appSupportURL.appendingPathComponent("default.store"),
+            appSupportURL.appendingPathComponent(bundleID).appendingPathComponent("default.store")
+        ]
+
+        for storeURL in candidateStoreURLs {
+            let dirURL = storeURL.deletingLastPathComponent()
+            let storeName = storeURL.lastPathComponent
+
+            try? FileManager.default.removeItem(at: storeURL)
+            try? FileManager.default.removeItem(at: dirURL.appendingPathComponent(storeName + "-shm"))
+            try? FileManager.default.removeItem(at: dirURL.appendingPathComponent(storeName + "-wal"))
+        }
+    }
+
+    private static func deleteVectorStoreFiles() throws {
+        guard let appSupportURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            return
+        }
+
+        let vectorDirectory = appSupportURL.appendingPathComponent("Vapor", isDirectory: true)
+        let vectorStoreURL = vectorDirectory.appendingPathComponent("vectors.db")
+
+        try? FileManager.default.removeItem(at: vectorStoreURL)
+        try? FileManager.default.removeItem(at: vectorDirectory.appendingPathComponent("vectors.db-shm"))
+        try? FileManager.default.removeItem(at: vectorDirectory.appendingPathComponent("vectors.db-wal"))
+    }
 
     private func setupBrowserBridge() {
         guard !Self.hasSetupBrowserBridge else { return }
@@ -55,25 +126,22 @@ struct VaporApp: App {
     }
 
     var sharedModelContainer: ModelContainer = {
+        ensureFreshPersistentStores()
+
         let schema = Schema([
             PromptRecord.self,
-            ContextItem.self
+            ContextItem.self,
+            URLRecord.self,
+            ContextItemURLLink.self,
+            EntityRecord.self,
+            ContextItemEntityLink.self
         ])
         do {
             let persistentConfig = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
             return try ModelContainer(for: schema, configurations: [persistentConfig])
         } catch {
             logger.error("Could not create persistent ModelContainer (\(error)); deleting stale store and retrying.")
-            let appSupportURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            let bundleID = Bundle.main.bundleIdentifier ?? "lol.mrl.app.Vapor"
-            if let appSupportURL {
-                let storeURL = appSupportURL.appendingPathComponent(bundleID).appendingPathComponent("default.store")
-                let dirURL = storeURL.deletingLastPathComponent()
-                let storeName = storeURL.lastPathComponent
-                try? FileManager.default.removeItem(at: storeURL)
-                try? FileManager.default.removeItem(at: dirURL.appendingPathComponent(storeName + "-shm"))
-                try? FileManager.default.removeItem(at: dirURL.appendingPathComponent(storeName + "-wal"))
-            }
+            try? deleteSwiftDataStoreFiles()
             do {
                 let persistentConfig = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
                 return try ModelContainer(for: schema, configurations: [persistentConfig])
@@ -97,10 +165,13 @@ struct VaporApp: App {
                 .environment(compressionService)
                 .environment(browserBridge)
                 .environment(contextQueueService)
+                .environment(vectorizationService)
+                .environment(contextExplorerStore)
                 .environment(StatusBarService.shared)
                 .onAppear {
                     browserBridge.setContextQueueService(contextQueueService)
                     contextQueueService.setModelContext(sharedModelContainer.mainContext)
+                    Task { @MainActor in await vectorizationService.initialize() }
                     setupBrowserBridge()
                     KeyboardShortcuts.onKeyUp(for: .toggleVapor) { windowManager.focus() }
                     windowManager.setupWindowOnAppear()
@@ -175,6 +246,18 @@ struct VaporApp: App {
                 }
                 .keyboardShortcut("y", modifiers: .command)
 
+                Button("Context Explorer") {
+                    contextExplorerStore.openOverview()
+                    openWindow(id: "context-explorer")
+                    NSApp.activate(ignoringOtherApps: true)
+                }
+                .keyboardShortcut("e", modifiers: [.command, .shift])
+
+                Button("Activity Log") {
+                    openWindow(id: "activity-log")
+                }
+                .keyboardShortcut("l", modifiers: [.command, .shift])
+
                 Button("Keyboard Shortcuts") {
                     openWindow(id: "keyboard-shortcuts")
                 }
@@ -187,6 +270,13 @@ struct VaporApp: App {
             // Add our items to the system Window menu instead of creating a duplicate
             CommandGroup(after: .windowArrangement) {
                 Divider()
+
+                Button("Context Explorer") {
+                    contextExplorerStore.openOverview()
+                    openWindow(id: "context-explorer")
+                    NSApp.activate(ignoringOtherApps: true)
+                }
+                .keyboardShortcut("e", modifiers: [.command, .shift])
 
                 Button("Toggle Compact / Full") {
                     windowManager.toggleState()
@@ -220,10 +310,18 @@ struct VaporApp: App {
 
         WindowGroup("Prompt History", id: "prompt-history") {
             PromptHistoryView()
+                .environment(vectorizationService)
         }
         .modelContainer(sharedModelContainer)
         .windowStyle(.titleBar)
         .defaultSize(width: 400, height: 500)
+
+        WindowGroup("Activity Log", id: "activity-log") {
+            ActivityLogView()
+                .environment(StatusBarService.shared)
+        }
+        .windowStyle(.titleBar)
+        .defaultSize(width: 760, height: 420)
 
         WindowGroup("Keyboard Shortcuts", id: "keyboard-shortcuts") {
             KeyboardShortcutsHelpView()
@@ -242,6 +340,7 @@ struct VaporApp: App {
         Settings {
             SettingsView(compressionService: compressionService, preferences: preferences)
                 .environment(browserBridge)
+                .environment(vectorizationService)
         }
 
         WindowGroup("Context Item", for: ContextItemDetailPayload.self) { $payload in
@@ -252,8 +351,18 @@ struct VaporApp: App {
             }
         }
         .modelContainer(sharedModelContainer)
+        .environment(contextExplorerStore)
         .windowStyle(.titleBar)
         .defaultSize(width: 560, height: 600)
+
+        WindowGroup("Context Explorer", id: "context-explorer") {
+            ContextExplorerView()
+                .environment(contextExplorerStore)
+                .environment(vectorizationService)
+        }
+        .modelContainer(sharedModelContainer)
+        .windowStyle(.titleBar)
+        .defaultSize(width: 940, height: 720)
 
         MenuBarExtra("Vapor", systemImage: "waveform.circle") {
             MenuBarView()

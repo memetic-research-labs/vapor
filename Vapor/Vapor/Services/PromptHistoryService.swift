@@ -17,15 +17,20 @@ struct PromptHistorySnapshot {
 @Observable
 final class PromptHistoryService {
     private var modelContext: ModelContext?
+    private let vectorizationService = VectorizationService.shared
 
     func setModelContext(_ context: ModelContext) {
         self.modelContext = context
+        Task { @MainActor in
+            await vectorizationService.backfillMissingPromptEmbeddings(in: context)
+        }
     }
 
     func save(_ record: PromptRecord) throws {
         guard let modelContext else { return }
         modelContext.insert(record)
         try modelContext.save()
+        scheduleEmbedding(for: record)
     }
 
     @discardableResult
@@ -53,6 +58,9 @@ final class PromptHistoryService {
         if let existing = try modelContext.fetch(descriptor).first {
             existing.modifiedAt = Date()
             try modelContext.save()
+            if existing.embeddingID == nil {
+                scheduleEmbedding(for: existing)
+            }
             logger.info("Updated existing prompt record (hash: \(String(hash.prefix(8))))")
             return existing
         }
@@ -67,6 +75,7 @@ final class PromptHistoryService {
         )
         modelContext.insert(record)
         try modelContext.save()
+        scheduleEmbedding(for: record)
         logger.info("Saved new prompt record (hash: \(String(hash.prefix(8))))")
         return record
     }
@@ -95,13 +104,32 @@ final class PromptHistoryService {
 
     func delete(_ record: PromptRecord) throws {
         guard let modelContext else { return }
+        let embeddingID = record.embeddingID
         modelContext.delete(record)
         try modelContext.save()
+        if let embeddingID {
+            Task { @MainActor in
+                await vectorizationService.removeEmbedding(id: embeddingID)
+            }
+        }
     }
 
     func toggleFavorite(_ record: PromptRecord) throws {
         record.isFavorite.toggle()
         record.modifiedAt = Date()
         try modelContext?.save()
+    }
+
+    private func scheduleEmbedding(for record: PromptRecord) {
+        guard modelContext != nil else { return }
+        Task { @MainActor in
+            do {
+                if try await vectorizationService.ensureEmbedding(for: record) != nil {
+                    try self.modelContext?.save()
+                }
+            } catch {
+                logger.error("Failed to vectorize prompt record: \(error.localizedDescription)")
+            }
+        }
     }
 }

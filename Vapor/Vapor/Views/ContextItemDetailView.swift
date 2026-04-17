@@ -3,14 +3,19 @@ import SwiftData
 
 struct ContextItemDetailView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.openWindow) private var openWindow
+    @Environment(ContextExplorerStore.self) private var contextExplorerStore
     let itemID: UUID
 
     @State private var item: ContextItem?
+    @State private var refreshTask: Task<Void, Never>?
+    @State private var hasTimedOutLoadingItem = false
     @State private var showCopyConfirmation = false
     @State private var isSummarizing = false
     @State private var isRegeneratingCitation = false
     private let summarizer = SummarizationService()
     private let citationBuilder = CitationBuilder()
+    private let missingItemRetryLimit = 15
 
     var body: some View {
         Group {
@@ -19,23 +24,27 @@ struct ContextItemDetailView: View {
                     VStack(alignment: .leading, spacing: 16) {
                         headerSection(item: item)
 
+                        if item.status == .processing || item.status == .pending {
+                            processingBanner(item: item)
+                        }
+
                         Divider()
 
                         sourceSection(item: item)
 
                         summarySection(item: item)
 
-                        if item.citation != nil {
+                        if item.citation != nil || item.status == .processing {
                             Divider()
                             citationSection(item: item)
                         }
 
-                        if !item.entities.isEmpty {
+                        if item.entityCount > 0 || item.status == .processing {
                             Divider()
                             entitiesSection(item: item)
                         }
 
-                        if !item.tags.isEmpty {
+                        if !item.tags.isEmpty || item.status == .processing {
                             Divider()
                             tagsSection(item: item)
                         }
@@ -44,6 +53,11 @@ struct ContextItemDetailView: View {
 
                         contentSection(item: item)
 
+                        if !item.sortedURLLinks.isEmpty || item.status == .processing {
+                            Divider()
+                            urlsSection(item: item)
+                        }
+
                         Divider()
 
                         actionButtons(item: item)
@@ -51,11 +65,29 @@ struct ContextItemDetailView: View {
                     .padding(20)
                 }
             } else {
-                VStack(spacing: 8) {
+                VStack(spacing: 10) {
                     Spacer()
-                    Text("Item not found")
-                        .font(.system(size: 13))
-                        .foregroundColor(.secondary)
+                    if hasTimedOutLoadingItem {
+                        Image(systemName: "exclamationmark.triangle")
+                            .font(.system(size: 18))
+                            .foregroundColor(.secondary)
+                        Text("Item not found")
+                            .font(.system(size: 13))
+                            .foregroundColor(.secondary)
+                        Text("The captured item could not be loaded. It may have been removed or never finished saving.")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                    } else {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("Loading captured item")
+                            .font(.system(size: 13))
+                            .foregroundColor(.secondary)
+                        Text("This window will update as the document is saved and processed.")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                    }
                     Spacer()
                 }
             }
@@ -63,7 +95,13 @@ struct ContextItemDetailView: View {
         .frame(minWidth: 480, minHeight: 400)
         .background(Color(nsColor: .windowBackgroundColor))
         .onAppear {
+            hasTimedOutLoadingItem = false
             fetchItem()
+            startRefreshingItem()
+        }
+        .onDisappear {
+            refreshTask?.cancel()
+            refreshTask = nil
         }
         .overlay(alignment: .top) {
             if showCopyConfirmation {
@@ -91,6 +129,40 @@ struct ContextItemDetailView: View {
         let descriptor = FetchDescriptor<ContextItem>(predicate: #Predicate { $0.id == itemID })
         if let results = try? modelContext.fetch(descriptor), let found = results.first {
             item = found
+        }
+    }
+
+    private func startRefreshingItem() {
+        refreshTask?.cancel()
+        refreshTask = Task { @MainActor in
+            var missingItemAttempts = 0
+
+            while !Task.isCancelled {
+                fetchItem()
+
+                if let item {
+                    missingItemAttempts = 0
+                    hasTimedOutLoadingItem = false
+
+                    if item.status != .processing && item.status != .pending {
+                        break
+                    }
+                } else {
+                    missingItemAttempts += 1
+                    if missingItemAttempts >= missingItemRetryLimit {
+                        hasTimedOutLoadingItem = true
+                        break
+                    }
+                }
+
+                do {
+                    try await Task.sleep(for: .seconds(1))
+                } catch {
+                    break
+                }
+            }
+
+            refreshTask = nil
         }
     }
 
@@ -133,24 +205,51 @@ struct ContextItemDetailView: View {
     }
 
     @ViewBuilder
+    private func processingBanner(item: ContextItem) -> some View {
+        HStack(spacing: 8) {
+            ProgressView()
+                .controlSize(.small)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.status == .pending ? "Queued for processing" : "Processing captured content")
+                    .font(.system(size: 11, weight: .medium))
+                Text("You can read the captured content now. This window will fill in the summary, entities, tags, and citation as they finish.")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+            }
+            Spacer()
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.accentColor.opacity(0.08)))
+    }
+
+    @ViewBuilder
     private func sourceSection(item: ContextItem) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             sectionHeader("Source")
 
-            if !item.sourceURL.isEmpty {
+            if let sourceLink = item.sortedURLLinks.first(where: { $0.role == .source }),
+               !sourceLink.urlDisplayText.isEmpty {
                 HStack(spacing: 4) {
                     Image(systemName: "link")
                         .font(.system(size: 10))
                         .foregroundColor(.secondary)
-                    if let url = URL(string: item.sourceURL) {
-                        Link(item.sourceURL, destination: url)
-                            .font(.system(size: 11))
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                    } else {
-                        Text(item.sourceURL)
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
+                    Button(sourceLink.urlDisplayText) {
+                        openExplorer(for: sourceLink)
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+
+                    if let url = URL(string: sourceLink.urlDisplayText) {
+                        Button {
+                            NSWorkspace.shared.open(url)
+                        } label: {
+                            Image(systemName: "arrow.up.right.square")
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
             } else {
@@ -166,9 +265,25 @@ struct ContextItemDetailView: View {
                             Image(systemName: "person")
                                 .font(.system(size: 10))
                                 .foregroundColor(.secondary)
-                            Text(author)
+                            Button(author) {
+                                openExplorerForAuthor(author)
+                            }
+                            .buttonStyle(.plain)
                                 .font(.system(size: 11))
                                 .foregroundColor(.secondary)
+                        }
+                    }
+                    if let domain = item.sortedURLLinks.first(where: { $0.role == .source })?.domain, !domain.isEmpty {
+                        HStack(spacing: 4) {
+                            Image(systemName: "globe")
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
+                            Button(domain) {
+                                openExplorerForDomain(domain)
+                            }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
                         }
                     }
                     if let pubDate = item.sourcePublishedDate {
@@ -180,6 +295,68 @@ struct ContextItemDetailView: View {
                                 .font(.system(size: 11))
                                 .foregroundColor(.secondary)
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func urlsSection(item: ContextItem) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            sectionHeader("URLs (\(item.sortedURLLinks.count))")
+
+            if item.sortedURLLinks.isEmpty, item.status == .processing {
+                processingPlaceholder("Extracting URLs...")
+            } else {
+                ForEach(item.sortedURLLinks) { link in
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: link.role == .source ? "link.circle.fill" : "link")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                            .frame(width: 12, alignment: .leading)
+
+                        VStack(alignment: .leading, spacing: 3) {
+                            HStack(spacing: 6) {
+                                Text(link.role.displayName)
+                                    .font(.system(size: 10, weight: .medium))
+                                    .foregroundColor(.secondary)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Capsule().fill(Color.secondary.opacity(0.12)))
+
+                                if !link.domain.isEmpty {
+                                    Button(link.domain) {
+                                        openExplorerForDomain(link.domain)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.secondary)
+                                }
+                            }
+
+                            HStack(spacing: 6) {
+                                Button(link.urlDisplayText) {
+                                    openExplorer(for: link)
+                                }
+                                .buttonStyle(.plain)
+                                .font(.system(size: 11))
+                                .lineLimit(2)
+                                .truncationMode(.middle)
+
+                                if let url = URL(string: link.urlDisplayText) {
+                                    Button {
+                                        NSWorkspace.shared.open(url)
+                                    } label: {
+                                        Image(systemName: "arrow.up.right.square")
+                                            .font(.system(size: 10))
+                                            .foregroundColor(.secondary)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+                        Spacer()
                     }
                 }
             }
@@ -227,6 +404,8 @@ struct ContextItemDetailView: View {
                     .font(.system(size: 11))
                     .foregroundColor(.secondary)
                     .textSelection(.enabled)
+            } else if item.status == .processing {
+                processingPlaceholder("Building citation...")
             }
         }
     }
@@ -235,26 +414,35 @@ struct ContextItemDetailView: View {
     private func entitiesSection(item: ContextItem) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
-                sectionHeader("Entities (\(item.entities.count))")
+                sectionHeader("Entities (\(item.sortedEntityLinks.count))")
 
                 if let backend = item.extractionBackend {
                     backendBadge(backend)
                 }
             }
 
-            FlowLayout(spacing: 6) {
-                ForEach(groupedEntities(item.entities)) { group in
-                    HStack(spacing: 3) {
-                        Image(systemName: group.kind.systemImage)
-                            .font(.system(size: 9))
-                            .foregroundColor(.secondary)
-                        Text(group.text)
-                            .font(.system(size: 10))
+            if item.sortedEntityLinks.isEmpty, item.status == .processing {
+                processingPlaceholder("Extracting entities...")
+            } else {
+                FlowLayout(spacing: 6) {
+                    ForEach(item.sortedEntityLinks) { link in
+                        Button {
+                            openExplorer(for: link)
+                        } label: {
+                            HStack(spacing: 3) {
+                                Image(systemName: link.entityKind.systemImage)
+                                    .font(.system(size: 9))
+                                    .foregroundColor(.secondary)
+                                Text(link.displayText)
+                                    .font(.system(size: 10))
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(RoundedRectangle(cornerRadius: 4).fill(Color(nsColor: .controlBackgroundColor)))
+                        .help("\(link.entityKind.displayName) · \(Int(link.confidence * 100))%")
                     }
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
-                    .background(RoundedRectangle(cornerRadius: 4).fill(Color(nsColor: .controlBackgroundColor)))
-                    .help("\(group.kind.displayName) · \(Int(group.confidence * 100))%")
                 }
             }
         }
@@ -281,14 +469,24 @@ struct ContextItemDetailView: View {
         VStack(alignment: .leading, spacing: 6) {
             sectionHeader("Tags (\(item.tags.count))")
 
-            FlowLayout(spacing: 6) {
-                ForEach(item.tags, id: \.self) { tag in
-                    Text(tag)
-                        .font(.system(size: 10))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 3)
-                        .background(Capsule().fill(Color.accentColor.opacity(0.1)))
+            if item.tags.isEmpty, item.status == .processing {
+                processingPlaceholder("Generating tags...")
+            } else {
+                FlowLayout(spacing: 6) {
+                    ForEach(item.tags, id: \.self) { tag in
+                        Button {
+                            openExplorerForTag(tag)
+                        } label: {
+                            Text(tag)
+                                .font(.system(size: 10))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 3)
+                                .background(Capsule().fill(Color.accentColor.opacity(0.1)))
+                        }
+                        .buttonStyle(.plain)
                         .foregroundColor(.accentColor)
+                        .contentShape(Rectangle())
+                    }
                 }
             }
         }
@@ -393,16 +591,6 @@ struct ContextItemDetailView: View {
         return formatter.string(from: date)
     }
 
-    private func groupedEntities(_ entities: [ExtractedEntity]) -> [ExtractedEntity] {
-        let seen = NSMutableSet()
-        return entities.filter { entity in
-            let key = "\(entity.kind.rawValue):\(entity.text.lowercased())"
-            if seen.contains(key) { return false }
-            seen.add(key)
-            return true
-        }
-    }
-
     private func flashCopyConfirmation() {
         showCopyConfirmation = true
         Task {
@@ -467,6 +655,15 @@ struct ContextItemDetailView: View {
                             }
                         }
                     }
+                }
+            } else if item.status == .processing {
+                HStack(spacing: 6) {
+                    ProgressView()
+                        .scaleEffect(0.5)
+                        .frame(width: 14, height: 14)
+                    Text("Generating summary...")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
                 }
             } else {
                 Button {
@@ -549,11 +746,23 @@ struct ContextItemDetailView: View {
 
         md += "\n---\n\n"
 
-        if !item.entities.isEmpty {
+        if !item.sortedURLLinks.isEmpty {
+            md += "## URLs\n\n"
+            for link in item.sortedURLLinks {
+                md += "- **\(link.role.displayName):** \(link.urlDisplayText)"
+                if !link.domain.isEmpty {
+                    md += " (\(link.domain))"
+                }
+                md += "\n"
+            }
+            md += "\n"
+        }
+
+        if !item.sortedEntityLinks.isEmpty {
             md += "## Entities\n\n"
-            let grouped = Dictionary(grouping: item.entities, by: \.kind)
+            let grouped = Dictionary(grouping: item.sortedEntityLinks, by: \.entityKind)
             for (kind, entities) in grouped.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
-                md += "- **\(kind.displayName):** \(entities.map(\.text).joined(separator: ", "))\n"
+                md += "- **\(kind.displayName):** \(entities.map(\.displayText).joined(separator: ", "))\n"
             }
             md += "\n"
         }
@@ -581,6 +790,47 @@ struct ContextItemDetailView: View {
         }
 
         copyAsMarkdown(item: item)
+    }
+
+    @ViewBuilder
+    private func processingPlaceholder(_ text: String) -> some View {
+        HStack(spacing: 6) {
+            ProgressView()
+                .controlSize(.small)
+            Text(text)
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+        }
+    }
+
+    private func openExplorer(for link: ContextItemURLLink) {
+        contextExplorerStore.focusOnURL(link)
+        openWindow(id: "context-explorer")
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func openExplorer(for link: ContextItemEntityLink) {
+        contextExplorerStore.focusOnEntity(link)
+        openWindow(id: "context-explorer")
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func openExplorerForAuthor(_ author: String) {
+        contextExplorerStore.focusOnAuthor(author)
+        openWindow(id: "context-explorer")
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func openExplorerForDomain(_ domain: String) {
+        contextExplorerStore.focusOnDomain(domain)
+        openWindow(id: "context-explorer")
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func openExplorerForTag(_ tag: String) {
+        contextExplorerStore.focusOnTag(tag)
+        openWindow(id: "context-explorer")
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     private func contentSections(for item: ContextItem) -> [MarkdownContentSection] {

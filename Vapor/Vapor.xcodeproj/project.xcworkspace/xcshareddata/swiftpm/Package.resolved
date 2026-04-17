@@ -1,5 +1,5 @@
 {
-  "originHash" : "8dc1e15392f44fa6205cf8b5ab9c1789d8a60fd772523f5944ffb2251654e08d",
+  "originHash" : "04fa95d34349e74850d76a10eb2d70025dcf4e060bf8fc962789981982e253b5",
   "pins" : [
     {
       "identity" : "keyboardshortcuts",
@@ -8,6 +8,15 @@
       "state" : {
         "revision" : "1aef85578fdd4f9eaeeb8d53b7b4fc31bf08fe27",
         "version" : "2.4.0"
+      }
+    },
+    {
+      "identity" : "sqlitevec",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/jkrukowski/SQLiteVec",
+      "state" : {
+        "revision" : "1504246d0900db950a5065f43fce964bf4adceda",
+        "version" : "0.0.14"
       }
     },
     {

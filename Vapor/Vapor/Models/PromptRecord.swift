@@ -16,6 +16,7 @@ final class PromptRecord {
     var modifiedAt: Date
     var isFavorite: Bool
     var tags: [String]
+    var embeddingID: String?
     
     init(
         originalText: String,
@@ -41,6 +42,7 @@ final class PromptRecord {
         self.modifiedAt = Date()
         self.isFavorite = false
         self.tags = []
+        self.embeddingID = nil
     }
 
     var stableIdentifier: String {

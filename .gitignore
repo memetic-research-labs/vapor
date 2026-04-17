@@ -19,4 +19,5 @@ xcuserdata/
 *~
 Vapor/Resources/ollama
 Vapor/Vapor/Resources/ollama
+Vapor/Vapor/Resources/paraphrase-multilingual-MiniLM-L12-v2-512tokens.mlmodel
 *.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved

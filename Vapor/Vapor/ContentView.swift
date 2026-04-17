@@ -84,26 +84,37 @@ struct ContentView: View {
             }
         .safeAreaInset(edge: .bottom) {
             if windowManager.windowState == .expanded {
-                HStack(spacing: 0) {
-                    Text(statusBar.statusMessage)
-                        .font(.system(size: 10))
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
+                Button(
+                    action: { openWindow(id: "activity-log") },
+                    label: {
+                        HStack(spacing: 0) {
+                            Text(statusBar.statusMessage)
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
 
-                    Spacer()
+                            Spacer()
 
-                    HStack(spacing: 8) {
-                        ForEach(Array(statusBar.indicators.enumerated()), id: \.offset) { _, indicator in
-                            statusIndicatorView(indicator)
+                            HStack(spacing: 8) {
+                                ForEach(Array(statusBar.indicators.enumerated()), id: \.offset) { _, indicator in
+                                    statusIndicatorView(indicator)
+                                }
+                            }
                         }
                     }
-                }
+                )
+                .buttonStyle(.plain)
+                .help("Show activity log")
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 4)
                 .background(Color(NSColor.controlBackgroundColor))
             }
+        }
+        .onChange(of: compressionService.statusMessage) { _, newValue in
+            guard !newValue.isEmpty, newValue != "Ready" else { return }
+            statusBar.setCompressionStatus(newValue)
         }
         .alert("Browser Server Error", isPresented: .init(
             get: { browserBridge.portConflict },

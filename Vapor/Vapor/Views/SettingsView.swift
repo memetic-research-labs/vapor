@@ -8,8 +8,12 @@ struct SettingsView: View {
     let compressionService: CompressionService
     let preferences: UserPreferences
     @Environment(BrowserBridge.self) private var browserBridge
+    @Environment(VectorizationService.self) private var vectorizationService
+    @State private var openRouterModelService = OpenRouterModelService()
     @State private var openRouterApiKey: String = ""
-    @State private var openRouterModel: String = "glm-5"
+    @State private var compressionOpenRouterModel: String = "glm-5"
+    @State private var useCustomCompressionOpenRouterModel: Bool = false
+    @State private var customCompressionOpenRouterModel: String = ""
     @State private var isLocalLLMAvailable: Bool = false
     @State private var isOllamaAvailable: Bool = false
     @State private var ollamaError: String = ""
@@ -18,21 +22,26 @@ struct SettingsView: View {
     @State private var isConnecting: Bool = false
     @State private var selectedTab: SettingsTab = .compression
     @State private var displayedAuthToken: String = ""
+    @State private var embeddedServerPortText: String = ""
     @State private var extractionBackend: EntityExtractionBackend = .ollama
-    @State private var selectedNERModel: NERModel = NERModel.curatedModels.first ?? NERModel(id: NERModel.defaultModel, displayName: NERModel.defaultModel, priceLabel: "")
-    @State private var useCustomNERModel: Bool = false
-    @State private var customNERModel: String = ""
-    @State private var selectedSummarizationModel: NERModel = NERModel.curatedModels.first ?? NERModel(id: NERModel.defaultModel, displayName: NERModel.defaultModel, priceLabel: "")
-    @State private var useCustomSummarizationModel: Bool = false
-    @State private var customSummarizationModel: String = ""
+    @State private var extractionOpenRouterModel: String = NERModel.defaultModel
+    @State private var useCustomExtractionOpenRouterModel: Bool = false
+    @State private var customExtractionOpenRouterModel: String = ""
+    @State private var summarizationBackend: SummarizationBackendPreference = .sameAsEntityExtraction
+    @State private var summarizationOpenRouterModel: String = NERModel.defaultModel
+    @State private var useCustomSummarizationOpenRouterModel: Bool = false
+    @State private var customSummarizationOpenRouterModel: String = ""
+    @State private var cloudModelSearchText: String = ""
+
+    private let validPortRange = 1...65_535
 
     enum SettingsTab: String, CaseIterable, Identifiable {
         case compression = "Compression"
-        case extraction = "Entity Extraction"
-        case browser = "Browser"
+        case contextProcessing = "Context Processing"
+        case cloud = "Cloud"
         case ollama = "Ollama Models"
-        case openRouter = "OpenRouter"
         case general = "General"
+        case browser = "Browser"
         case telemetry = "Telemetry"
 
         var id: String { rawValue }
@@ -40,21 +49,43 @@ struct SettingsView: View {
         var icon: String {
             switch self {
             case .compression: return "arrow.left.arrow.right"
-            case .extraction: return "tag.circle"
+            case .contextProcessing: return "sparkles.rectangle.stack"
             case .browser: return "globe"
             case .ollama: return "cpu"
-            case .openRouter: return "cloud"
+            case .cloud: return "cloud"
             case .general: return "gearshape.2"
             case .telemetry: return "chart.bar"
             }
         }
     }
 
+    enum SettingsGroup: String, CaseIterable, Identifiable {
+        case ai = "AI & Models"
+        case app = "App"
+
+        var id: String { rawValue }
+
+        var tabs: [SettingsTab] {
+            switch self {
+            case .ai:
+                [.compression, .contextProcessing, .cloud, .ollama]
+            case .app:
+                [.general, .browser, .telemetry]
+            }
+        }
+    }
+
     var body: some View {
         NavigationSplitView {
-            List(SettingsTab.allCases, selection: $selectedTab) { tab in
-                Label(tab.rawValue, systemImage: tab.icon)
-                    .tag(tab)
+            List(selection: $selectedTab) {
+                ForEach(SettingsGroup.allCases) { group in
+                    Section(group.rawValue) {
+                        ForEach(group.tabs) { tab in
+                            Label(tab.rawValue, systemImage: tab.icon)
+                                .tag(tab)
+                        }
+                    }
+                }
             }
             .navigationSplitViewColumnWidth(180)
         } detail: {
@@ -62,14 +93,14 @@ struct SettingsView: View {
                 switch selectedTab {
                 case .compression:
                     compressionTab
-                case .extraction:
-                    extractionTab
+                case .contextProcessing:
+                    contextProcessingTab
                 case .browser:
                     browserTab
                 case .ollama:
                     ollamaTab
-                case .openRouter:
-                    openRouterTab
+                case .cloud:
+                    cloudTab
                 case .general:
                     generalTab
                 case .telemetry:
@@ -139,13 +170,37 @@ struct SettingsView: View {
                         HStack {
                             Text("Server port")
                                 .font(.system(size: 12, weight: .medium))
-                            TextField("", value: Binding(
-                                get: { preferences.embeddedServerPort },
-                                set: { preferences.embeddedServerPort = $0 }
-                            ), format: .number)
+                            TextField("", text: Binding(
+                                get: {
+                                    if embeddedServerPortText.isEmpty {
+                                        return String(preferences.embeddedServerPort)
+                                    }
+                                    return embeddedServerPortText
+                                },
+                                set: { newValue in
+                                    let digits = String(newValue.filter(\.isNumber).prefix(5))
+                                    guard !digits.isEmpty else {
+                                        embeddedServerPortText = ""
+                                        return
+                                    }
+
+                                    if let port = Int(digits), validPortRange.contains(port) {
+                                        embeddedServerPortText = digits
+                                        preferences.embeddedServerPort = port
+                                    } else {
+                                        embeddedServerPortText = String(preferences.embeddedServerPort)
+                                    }
+                                }
+                            ))
                                 .textFieldStyle(.roundedBorder)
                                 .frame(width: 80)
                                 .disabled(browserBridge.isRunning)
+                                .onAppear {
+                                    embeddedServerPortText = String(preferences.embeddedServerPort)
+                                }
+                                .onSubmit {
+                                    embeddedServerPortText = String(preferences.embeddedServerPort)
+                                }
                         }
 
                         HStack(spacing: 16) {
@@ -593,11 +648,65 @@ struct SettingsView: View {
                 }
 
                 if compressionService.selectedCompressor == .openRouter {
-                    openRouterTab
-                        .environment(compressionService)
+                    GroupBox("OpenRouter Compression Model") {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Compression uses its own cloud model so prompt compression stays separate from entity extraction and summarization.")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+
+                            if !hasOpenRouterKey {
+                                warningLabel("Add an OpenRouter API key in the Cloud tab to use cloud compression.")
+                            }
+
+                            Picker("Model", selection: $compressionOpenRouterModel) {
+                                ForEach(compressionOpenRouterOptions) { option in
+                                    Text(option.menuLabel)
+                                        .tag(option.id)
+                                }
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.menu)
+                            .frame(maxWidth: 360, alignment: .leading)
+                            .disabled(useCustomCompressionOpenRouterModel)
+                            .onChange(of: compressionOpenRouterModel) { _, newValue in
+                                guard !useCustomCompressionOpenRouterModel else { return }
+                                saveCompressionOpenRouterModel(newValue)
+                            }
+
+                            Toggle("Use custom model ID", isOn: Binding(
+                                get: { useCustomCompressionOpenRouterModel },
+                                set: { enabled in
+                                    useCustomCompressionOpenRouterModel = enabled
+                                    if enabled {
+                                        customCompressionOpenRouterModel = compressionOpenRouterModel
+                                        saveCompressionOpenRouterModel(customCompressionOpenRouterModel)
+                                    } else {
+                                        saveCompressionOpenRouterModel(compressionOpenRouterModel)
+                                    }
+                                }
+                            ))
+                            .toggleStyle(.checkbox)
+                            .controlSize(.small)
+
+                            if useCustomCompressionOpenRouterModel {
+                                TextField("Custom compression model ID", text: $customCompressionOpenRouterModel)
+                                    .textFieldStyle(.roundedBorder)
+                                    .onChange(of: customCompressionOpenRouterModel) { _, newValue in
+                                        saveCompressionOpenRouterModel(newValue)
+                                    }
+                            }
+                        }
+                        .padding(8)
+                    }
                 }
             }
             .padding(20)
+        }
+        .onAppear {
+            loadOpenRouterSettings()
+            if hasOpenRouterKey {
+                refreshOpenRouterCatalogIfNeeded()
+            }
         }
     }
 
@@ -835,147 +944,166 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - Entity Extraction Tab
+    // MARK: - Context Processing Tab
 
-    private var extractionTab: some View {
+    private var contextProcessingTab: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                GroupBox("Entity Extraction Backend") {
-                    VStack(alignment: .leading, spacing: 10) {
+                GroupBox("Entity Extraction") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Choose how Vapor extracts entities from captured context. This backend is independent from prompt compression.")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+
                         ForEach(EntityExtractionBackend.allCases, id: \.rawValue) { backend in
-                            HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(backend.displayName)
-                                        .font(.system(size: 13, weight: .medium))
-                                    Text(backendDescription(for: backend))
-                                        .font(.system(size: 10))
-                                        .foregroundColor(.secondary)
-                                }
-                                Spacer()
-                                if extractionBackend == backend {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .foregroundColor(.accentColor)
-                                }
-                            }
-                            .contentShape(Rectangle())
+                            selectableSettingsRow(
+                                title: backend.displayName,
+                                description: backendDescription(for: backend),
+                                isSelected: extractionBackend == backend
+                            )
                             .onTapGesture {
                                 extractionBackend = backend
                                 UserDefaults.standard.set(backend.rawValue, forKey: "entityExtractionBackend")
                             }
-                            .padding(6)
-                            .background(
-                                RoundedRectangle(cornerRadius: 6)
-                                    .fill(extractionBackend == backend ? Color.accentColor.opacity(0.08) : Color.clear)
-                            )
+                        }
+
+                        switch extractionBackend {
+                        case .openRouter:
+                            Divider()
+
+                            if !hasOpenRouterKey {
+                                warningLabel("Add an OpenRouter API key in the Cloud tab to use cloud entity extraction.")
+                            }
+
+                            Picker("OpenRouter entity model", selection: $extractionOpenRouterModel) {
+                                ForEach(extractionOpenRouterOptions) { option in
+                                    Text(option.menuLabel)
+                                        .tag(option.id)
+                                }
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.menu)
+                            .frame(maxWidth: 360, alignment: .leading)
+                            .disabled(useCustomExtractionOpenRouterModel)
+                            .onChange(of: extractionOpenRouterModel) { _, newValue in
+                                guard !useCustomExtractionOpenRouterModel else { return }
+                                saveExtractionOpenRouterModel(newValue)
+                            }
+
+                            Toggle("Use custom model ID", isOn: Binding(
+                                get: { useCustomExtractionOpenRouterModel },
+                                set: { enabled in
+                                    useCustomExtractionOpenRouterModel = enabled
+                                    if enabled {
+                                        customExtractionOpenRouterModel = extractionOpenRouterModel
+                                        saveExtractionOpenRouterModel(customExtractionOpenRouterModel)
+                                    } else {
+                                        saveExtractionOpenRouterModel(extractionOpenRouterModel)
+                                    }
+                                }
+                            ))
+                            .toggleStyle(.checkbox)
+                            .controlSize(.small)
+
+                            if useCustomExtractionOpenRouterModel {
+                                TextField("Custom entity extraction model ID", text: $customExtractionOpenRouterModel)
+                                    .textFieldStyle(.roundedBorder)
+                                    .onChange(of: customExtractionOpenRouterModel) { _, newValue in
+                                        saveExtractionOpenRouterModel(newValue)
+                                    }
+                            }
+                        case .ollama:
+                            Divider()
+                            Text("Shared local model: \(currentOllamaModel)")
+                                .font(.system(size: 12, weight: .medium))
+                            Text("Entity extraction uses the same Ollama model managed in the Ollama Models tab.")
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
+                        case .nlTagger:
+                            Divider()
+                            Text("Uses Apple's built-in NLTagger. No external model selection is required.")
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
                         }
                     }
                     .padding(8)
                 }
 
-                if extractionBackend == .openRouter {
-                    GroupBox("OpenRouter NER Model") {
-                        VStack(alignment: .leading, spacing: 12) {
-                            let hasKey = !(UserDefaults.standard.string(forKey: "openRouterApiKey") ?? "").isEmpty
+                GroupBox("Summarization") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Summaries can either follow entity extraction, use their own OpenRouter model, or use the shared local Ollama model.")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
 
-                            if !hasKey {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "exclamationmark.triangle.fill")
-                                        .foregroundColor(.orange)
-                                        .font(.system(size: 11))
-                                    Text("No OpenRouter API key set. Add one in the OpenRouter tab.")
-                                        .font(.system(size: 11))
-                                        .foregroundColor(.secondary)
-                                }
+                        ForEach(SummarizationBackendPreference.allCases, id: \.rawValue) { option in
+                            selectableSettingsRow(
+                                title: option.displayName,
+                                description: option.description,
+                                isSelected: summarizationBackend == option
+                            )
+                            .onTapGesture {
+                                summarizationBackend = option
+                                UserDefaults.standard.set(option.rawValue, forKey: "summarizationBackend")
+                            }
+                        }
+
+                        switch summarizationBackend {
+                        case .sameAsEntityExtraction:
+                            Divider()
+                            Text(effectiveSummarizationDescription)
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
+                        case .openRouter:
+                            Divider()
+
+                            if !hasOpenRouterKey {
+                                warningLabel("Add an OpenRouter API key in the Cloud tab to use cloud summarization.")
                             }
 
-                            Picker("Model", selection: $selectedNERModel) {
-                                ForEach(NERModel.curatedModels) { model in
-                                    HStack {
-                                        Text(model.displayName)
-                                        Spacer()
-                                        Text(model.priceLabel)
-                                            .foregroundColor(.secondary)
-                                    }
-                                    .tag(model)
+                            Picker("OpenRouter summarization model", selection: $summarizationOpenRouterModel) {
+                                ForEach(summarizationOpenRouterOptions) { option in
+                                    Text(option.menuLabel)
+                                        .tag(option.id)
                                 }
                             }
                             .labelsHidden()
                             .pickerStyle(.menu)
-                            .frame(maxWidth: 300, alignment: .leading)
-                            .onChange(of: selectedNERModel) { _, newValue in
-                                if !useCustomNERModel {
-                                    UserDefaults.standard.set(newValue.id, forKey: "entityExtractionModel")
-                                }
+                            .frame(maxWidth: 360, alignment: .leading)
+                            .disabled(useCustomSummarizationOpenRouterModel)
+                            .onChange(of: summarizationOpenRouterModel) { _, newValue in
+                                guard !useCustomSummarizationOpenRouterModel else { return }
+                                saveSummarizationOpenRouterModel(newValue)
                             }
 
-                            Toggle("Use custom model", isOn: $useCustomNERModel)
-                                .toggleStyle(.checkbox)
-                                .controlSize(.small)
-
-                            if useCustomNERModel {
-                                TextField("Custom model ID", text: $customNERModel)
-                                    .textFieldStyle(.roundedBorder)
-                                    .onChange(of: customNERModel) { _, newValue in
-                                        UserDefaults.standard.set(newValue, forKey: "entityExtractionModel")
+                            Toggle("Use custom model ID", isOn: Binding(
+                                get: { useCustomSummarizationOpenRouterModel },
+                                set: { enabled in
+                                    useCustomSummarizationOpenRouterModel = enabled
+                                    if enabled {
+                                        customSummarizationOpenRouterModel = summarizationOpenRouterModel
+                                        saveSummarizationOpenRouterModel(customSummarizationOpenRouterModel)
+                                    } else {
+                                        saveSummarizationOpenRouterModel(summarizationOpenRouterModel)
                                     }
-                            }
-                        }
-                        .padding(8)
-                    }
-                }
-
-                if extractionBackend == .ollama {
-                    GroupBox("Ollama NER Model") {
-                        VStack(alignment: .leading, spacing: 8) {
-                            let saved = UserDefaults.standard.string(forKey: "ollamaSelectedModel") ?? "qwen2.5:7b"
-                            Text("Using: \(saved)")
-                                .font(.system(size: 12))
-                                .foregroundColor(.secondary)
-                            Text("Entity extraction uses the same Ollama model configured for compression.")
-                                .font(.system(size: 10))
-                                .foregroundColor(.secondary)
-                        }
-                        .padding(8)
-                    }
-                }
-
-                GroupBox("Summarization Model") {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Used for generating document summaries. Defaults to the NER model if not set.")
-                            .font(.system(size: 10))
-                            .foregroundColor(.secondary)
-
-                        Picker("Model", selection: $selectedSummarizationModel) {
-                            Text("Same as NER model").tag(NERModel(id: "", displayName: "Same as NER", priceLabel: ""))
-                            ForEach(NERModel.curatedModels) { model in
-                                HStack {
-                                    Text(model.displayName)
-                                    Spacer()
-                                    Text(model.priceLabel)
-                                        .foregroundColor(.secondary)
                                 }
-                                .tag(model)
-                            }
-                        }
-                        .labelsHidden()
-                        .pickerStyle(.menu)
-                        .frame(maxWidth: 300, alignment: .leading)
-                        .onChange(of: selectedSummarizationModel) { _, newValue in
-                            if !useCustomSummarizationModel {
-                                UserDefaults.standard.set(newValue.id, forKey: "summarizationModel")
-                            }
-                        }
-
-                        Toggle("Use custom model", isOn: $useCustomSummarizationModel)
+                            ))
                             .toggleStyle(.checkbox)
                             .controlSize(.small)
 
-                        if useCustomSummarizationModel {
-                            TextField("Custom model ID", text: $customSummarizationModel)
-                                .textFieldStyle(.roundedBorder)
-                                .onChange(of: customSummarizationModel) { _, newValue in
-                                    UserDefaults.standard.set(newValue, forKey: "summarizationModel")
-                                }
+                            if useCustomSummarizationOpenRouterModel {
+                                TextField("Custom summarization model ID", text: $customSummarizationOpenRouterModel)
+                                    .textFieldStyle(.roundedBorder)
+                                    .onChange(of: customSummarizationOpenRouterModel) { _, newValue in
+                                        saveSummarizationOpenRouterModel(newValue)
+                                    }
+                            }
+                        case .ollama:
+                            Divider()
+                            Text("Shared local model: \(currentOllamaModel)")
+                                .font(.system(size: 12, weight: .medium))
+                            Text("Summarization uses the same Ollama model managed in the Ollama Models tab.")
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
                         }
                     }
                     .padding(8)
@@ -994,32 +1122,10 @@ struct SettingsView: View {
             .padding(20)
         }
         .onAppear {
-            if let raw = UserDefaults.standard.string(forKey: "entityExtractionBackend"),
-               let val = EntityExtractionBackend(rawValue: raw) {
-                extractionBackend = val
-            } else if let key = UserDefaults.standard.string(forKey: "openRouterApiKey"), !key.isEmpty {
-                extractionBackend = .openRouter
-            }
-
-            let savedNERModel = UserDefaults.standard.string(forKey: "entityExtractionModel") ?? NERModel.defaultModel
-            if let match = NERModel.curatedModels.first(where: { $0.id == savedNERModel }) {
-                selectedNERModel = match
-                useCustomNERModel = false
-            } else {
-                customNERModel = savedNERModel
-                useCustomNERModel = true
-            }
-
-            let savedSummaryModel = UserDefaults.standard.string(forKey: "summarizationModel") ?? ""
-            if savedSummaryModel.isEmpty {
-                selectedSummarizationModel = NERModel(id: "", displayName: "Same as NER", priceLabel: "")
-                useCustomSummarizationModel = false
-            } else if let match = NERModel.curatedModels.first(where: { $0.id == savedSummaryModel }) {
-                selectedSummarizationModel = match
-                useCustomSummarizationModel = false
-            } else {
-                customSummarizationModel = savedSummaryModel
-                useCustomSummarizationModel = true
+            loadContextProcessingSettings()
+            loadOpenRouterSettings()
+            if hasOpenRouterKey {
+                refreshOpenRouterCatalogIfNeeded()
             }
         }
     }
@@ -1043,12 +1149,12 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - OpenRouter Tab
+    // MARK: - Cloud Tab
 
-    private var openRouterTab: some View {
+    private var cloudTab: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                GroupBox("OpenRouter Configuration") {
+                GroupBox("OpenRouter API") {
                     VStack(alignment: .leading, spacing: 12) {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("API Key")
@@ -1056,27 +1162,85 @@ struct SettingsView: View {
                             SecureField("Enter your OpenRouter API key", text: $openRouterApiKey)
                                 .textFieldStyle(.roundedBorder)
                                 .onChange(of: openRouterApiKey) { _, newValue in
-                                    if !newValue.isEmpty {
-                                        compressionService.setOpenRouterApiKey(newValue, model: openRouterModel)
-                                    } else {
-                                        compressionService.setOpenRouterApiKey("", model: openRouterModel)
-                                    }
+                                    compressionService.setOpenRouterApiKey(newValue, model: selectedCompressionOpenRouterModel)
                                 }
                         }
 
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Model")
-                                .font(.system(size: 12, weight: .medium))
-                            TextField("Model name", text: $openRouterModel)
-                                .textFieldStyle(.roundedBorder)
-                                .onChange(of: openRouterModel) { _, newValue in
-                                    if !openRouterApiKey.isEmpty {
-                                        compressionService.setOpenRouterApiKey(openRouterApiKey, model: newValue)
+                        Text("The Cloud tab only manages authentication and the live model catalog. Compression, entity extraction, and summarization each choose their own cloud model in their respective tabs.")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+
+                        HStack(spacing: 8) {
+                            Button("Refresh Catalog") {
+                                refreshOpenRouterCatalogIfNeeded(force: true)
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+
+                            if openRouterModelService.isLoading {
+                                ProgressView()
+                                    .controlSize(.small)
+                            }
+
+                            Spacer()
+
+                            if let lastUpdatedAt = openRouterModelService.lastUpdatedAt {
+                                Text("Updated \(lastUpdatedAt.formatted(date: .omitted, time: .shortened))")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                    .padding(8)
+                }
+
+                GroupBox("Model Catalog") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        TextField("Search models", text: $cloudModelSearchText)
+                            .textFieldStyle(.roundedBorder)
+
+                        Text(modelCatalogStatusText)
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+
+                        if let lastError = openRouterModelService.lastError {
+                            warningLabel(lastError)
+                        }
+
+                        if cloudCatalogModels.isEmpty {
+                            Text("No cloud models loaded yet. Paste an API key and refresh the catalog.")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                        } else {
+                            ForEach(cloudCatalogModels.prefix(80)) { model in
+                                VStack(alignment: .leading, spacing: 4) {
+                                    HStack(alignment: .top) {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(model.name)
+                                                .font(.system(size: 12, weight: .medium))
+                                            Text(model.id)
+                                                .font(.system(size: 10, design: .monospaced))
+                                                .foregroundColor(.secondary)
+                                        }
+                                        Spacer()
+                                        Text(model.contextLabel)
+                                            .font(.system(size: 10, weight: .medium))
+                                            .foregroundColor(.secondary)
+                                    }
+
+                                    Text("\(model.pricingLabel) · \(model.modalityLabel)")
+                                        .font(.system(size: 10))
+                                        .foregroundColor(.secondary)
+
+                                    if !model.description.isEmpty {
+                                        Text(model.description)
+                                            .font(.system(size: 10))
+                                            .foregroundColor(.secondary)
+                                            .lineLimit(2)
                                     }
                                 }
-                            Text("Default: glm-5 (cheap, fast)")
-                                .font(.system(size: 10))
-                                .foregroundColor(.secondary)
+                                .padding(.vertical, 4)
+                            }
                         }
                     }
                     .padding(8)
@@ -1085,9 +1249,224 @@ struct SettingsView: View {
             .padding(20)
         }
         .onAppear {
-            openRouterApiKey = UserDefaults.standard.string(forKey: "openRouterApiKey") ?? ""
-            openRouterModel = UserDefaults.standard.string(forKey: "openRouterModel") ?? "glm-5"
+            loadOpenRouterSettings()
+            refreshOpenRouterCatalogIfNeeded()
         }
+    }
+
+    private var hasOpenRouterKey: Bool {
+        !openRouterApiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var currentOllamaModel: String {
+        let saved = UserDefaults.standard.string(forKey: "ollamaSelectedModel")?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let saved, !saved.isEmpty {
+            return saved
+        }
+        return compressionService.ollamaSelectedModel
+    }
+
+    private var selectedCompressionOpenRouterModel: String {
+        normalizeModelID(useCustomCompressionOpenRouterModel ? customCompressionOpenRouterModel : compressionOpenRouterModel)
+    }
+
+    private var selectedExtractionModel: String {
+        normalizeModelID(useCustomExtractionOpenRouterModel ? customExtractionOpenRouterModel : extractionOpenRouterModel)
+    }
+
+    private var selectedSummarizationModel: String {
+        normalizeModelID(useCustomSummarizationOpenRouterModel ? customSummarizationOpenRouterModel : summarizationOpenRouterModel)
+    }
+
+    private var compressionOpenRouterOptions: [OpenRouterPickerOption] {
+        openRouterPickerOptions(for: .compression, currentSelection: selectedCompressionOpenRouterModel)
+    }
+
+    private var extractionOpenRouterOptions: [OpenRouterPickerOption] {
+        openRouterPickerOptions(for: .extraction, currentSelection: selectedExtractionModel)
+    }
+
+    private var summarizationOpenRouterOptions: [OpenRouterPickerOption] {
+        openRouterPickerOptions(for: .summarization, currentSelection: selectedSummarizationModel)
+    }
+
+    private var cloudCatalogModels: [OpenRouterCatalogModel] {
+        let query = cloudModelSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return openRouterModelService.models
+            .filter { model in
+                guard !query.isEmpty else { return true }
+                return model.id.localizedCaseInsensitiveContains(query)
+                    || model.name.localizedCaseInsensitiveContains(query)
+                    || model.description.localizedCaseInsensitiveContains(query)
+            }
+            .sorted { lhs, rhs in
+                lhs.contextLength > rhs.contextLength
+            }
+    }
+
+    private var modelCatalogStatusText: String {
+        if openRouterModelService.isLoading {
+            return "Loading the live OpenRouter catalog..."
+        }
+        if cloudCatalogModels.isEmpty {
+            return "The catalog helps you pick task-specific cloud models for compression, entity extraction, and summarization."
+        }
+        return "Showing \(cloudCatalogModels.count) text-capable cloud models from OpenRouter."
+    }
+
+    private var effectiveSummarizationDescription: String {
+        switch extractionBackend {
+        case .openRouter:
+            return "Summarization will reuse the entity extraction OpenRouter backend and model: \(selectedExtractionModel)."
+        case .ollama:
+            return "Summarization will reuse the shared Ollama model: \(currentOllamaModel)."
+        case .nlTagger:
+            return "Entity extraction uses NLTagger, which cannot summarize. Vapor will fall back to the shared Ollama model: \(currentOllamaModel)."
+        }
+    }
+
+    @ViewBuilder
+    private func selectableSettingsRow(title: String, description: String, isSelected: Bool) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 13, weight: .medium))
+                Text(description)
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+            }
+            Spacer()
+            if isSelected {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundColor(.accentColor)
+            }
+        }
+        .padding(8)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(isSelected ? Color.accentColor.opacity(0.08) : Color.gray.opacity(0.06))
+        )
+        .contentShape(Rectangle())
+    }
+
+    @ViewBuilder
+    private func warningLabel(_ text: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundColor(.orange)
+                .font(.system(size: 11))
+            Text(text)
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+        }
+    }
+
+    private func loadContextProcessingSettings() {
+        if let raw = UserDefaults.standard.string(forKey: "entityExtractionBackend"),
+           let value = EntityExtractionBackend(rawValue: raw) {
+            extractionBackend = value
+        } else if hasOpenRouterKey {
+            extractionBackend = .openRouter
+        } else {
+            extractionBackend = .ollama
+        }
+
+        let savedExtractionModel = normalizeModelID(UserDefaults.standard.string(forKey: "entityExtractionModel") ?? NERModel.defaultModel)
+        extractionOpenRouterModel = savedExtractionModel.isEmpty ? NERModel.defaultModel : savedExtractionModel
+        useCustomExtractionOpenRouterModel = !knownOpenRouterModelIDs.contains(extractionOpenRouterModel)
+        customExtractionOpenRouterModel = useCustomExtractionOpenRouterModel ? extractionOpenRouterModel : ""
+
+        if let raw = UserDefaults.standard.string(forKey: "summarizationBackend"),
+           let value = SummarizationBackendPreference(rawValue: raw) {
+            summarizationBackend = value
+        } else {
+            summarizationBackend = .sameAsEntityExtraction
+        }
+
+        let savedSummarizationModel = normalizeModelID(UserDefaults.standard.string(forKey: "summarizationModel") ?? "")
+        if savedSummarizationModel.isEmpty {
+            summarizationOpenRouterModel = extractionOpenRouterModel
+            useCustomSummarizationOpenRouterModel = false
+            customSummarizationOpenRouterModel = ""
+        } else {
+            summarizationOpenRouterModel = savedSummarizationModel
+            useCustomSummarizationOpenRouterModel = !knownOpenRouterModelIDs.contains(savedSummarizationModel)
+            customSummarizationOpenRouterModel = useCustomSummarizationOpenRouterModel ? savedSummarizationModel : ""
+        }
+    }
+
+    private func loadOpenRouterSettings() {
+        openRouterApiKey = UserDefaults.standard.string(forKey: "openRouterApiKey") ?? ""
+
+        let savedCompressionModel = normalizeModelID(UserDefaults.standard.string(forKey: "openRouterModel") ?? compressionService.openRouterModel)
+        compressionOpenRouterModel = savedCompressionModel.isEmpty ? "glm-5" : savedCompressionModel
+        useCustomCompressionOpenRouterModel = !knownOpenRouterModelIDs.contains(compressionOpenRouterModel)
+        customCompressionOpenRouterModel = useCustomCompressionOpenRouterModel ? compressionOpenRouterModel : ""
+    }
+
+    private func saveCompressionOpenRouterModel(_ model: String) {
+        let normalized = normalizeModelID(model)
+        guard !normalized.isEmpty else { return }
+        compressionOpenRouterModel = normalized
+        compressionService.setOpenRouterApiKey(openRouterApiKey, model: normalized)
+    }
+
+    private func saveExtractionOpenRouterModel(_ model: String) {
+        let normalized = normalizeModelID(model)
+        guard !normalized.isEmpty else { return }
+        extractionOpenRouterModel = normalized
+        UserDefaults.standard.set(normalized, forKey: "entityExtractionModel")
+    }
+
+    private func saveSummarizationOpenRouterModel(_ model: String) {
+        let normalized = normalizeModelID(model)
+        guard !normalized.isEmpty else { return }
+        summarizationOpenRouterModel = normalized
+        UserDefaults.standard.set(normalized, forKey: "summarizationModel")
+    }
+
+    private func refreshOpenRouterCatalogIfNeeded(force: Bool = false) {
+        Task {
+            await openRouterModelService.refreshIfNeeded(apiKey: openRouterApiKey, force: force)
+        }
+    }
+
+    private func openRouterPickerOptions(for purpose: OpenRouterModelPurpose, currentSelection: String) -> [OpenRouterPickerOption] {
+        var options = openRouterModelService.models(for: purpose).map { OpenRouterPickerOption(model: $0) }
+        if options.isEmpty {
+            options = fallbackOpenRouterOptions(for: purpose)
+        }
+
+        let normalizedSelection = normalizeModelID(currentSelection)
+        if !normalizedSelection.isEmpty && !options.contains(where: { $0.id == normalizedSelection }) {
+            options.insert(OpenRouterPickerOption(id: normalizedSelection, title: normalizedSelection, detail: "Current saved model"), at: 0)
+        }
+
+        return options
+    }
+
+    private func fallbackOpenRouterOptions(for purpose: OpenRouterModelPurpose) -> [OpenRouterPickerOption] {
+        switch purpose {
+        case .compression:
+            return [
+                OpenRouterPickerOption(id: "glm-5", title: "GLM-5", detail: "Cheap and fast"),
+                OpenRouterPickerOption(id: NERModel.defaultModel, title: "Gemma 3N E4B", detail: "Balanced general-purpose model")
+            ]
+        case .extraction, .summarization:
+            return NERModel.curatedModels.map { model in
+                OpenRouterPickerOption(id: model.id, title: model.displayName, detail: model.priceLabel)
+            }
+        }
+    }
+
+    private var knownOpenRouterModelIDs: Set<String> {
+        Set(fallbackOpenRouterOptions(for: .compression).map(\.id))
+            .union(fallbackOpenRouterOptions(for: .extraction).map(\.id))
+            .union(openRouterModelService.models.map(\.id))
+    }
+
+    private func normalizeModelID(_ model: String) -> String {
+        model.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     // MARK: - General Tab
@@ -1145,6 +1524,30 @@ struct SettingsView: View {
                         Text("Show the OpenRouter test sidebar button in the expanded toolbar.")
                             .font(.system(size: 11))
                             .foregroundColor(.secondary)
+                    }
+                    .padding(8)
+                }
+
+                GroupBox("Vectorization") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 8) {
+                            Image(systemName: vectorizationService.isReady ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                                .foregroundColor(vectorizationService.isReady ? .green : .orange)
+                            Text(vectorizationService.isReady ? "MiniLM embeddings ready" : "MiniLM embeddings unavailable")
+                                .font(.system(size: 13, weight: .medium))
+                        }
+
+                        Text("Provider: \(vectorizationService.providerDisplayName)")
+                            .font(.system(size: 12))
+
+                        Text("Indexed vectors: \(vectorizationService.indexedVectorCount)")
+                            .font(.system(size: 12))
+
+                        if let lastError = vectorizationService.lastError, !lastError.isEmpty {
+                            Text(lastError)
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                        }
                     }
                     .padding(8)
                 }
@@ -1264,6 +1667,28 @@ struct RecommendedModel: Identifiable {
         RecommendedModel(tag: "qwen2.5:14b", name: "Qwen 2.5 14B", size: "9.0 GB", ram: "~12 GB", modality: "Text only"),
         RecommendedModel(tag: "phi4:mini", name: "Phi-4 Mini", size: "1.5 GB", ram: "~2 GB", modality: "Text only")
     ]
+}
+
+struct OpenRouterPickerOption: Identifiable, Hashable {
+    let id: String
+    let title: String
+    let detail: String
+
+    init(id: String, title: String, detail: String) {
+        self.id = id
+        self.title = title
+        self.detail = detail
+    }
+
+    init(model: OpenRouterCatalogModel) {
+        id = model.id
+        title = model.name
+        detail = "\(model.pricingLabel) · \(model.contextLabel)"
+    }
+
+    var menuLabel: String {
+        detail.isEmpty ? title : "\(title) · \(detail)"
+    }
 }
 
 extension SettingsView {

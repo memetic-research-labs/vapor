@@ -83,7 +83,11 @@ final class EntityExtractionService {
     }
 
     var openRouterModel: String {
-        UserDefaults.standard.string(forKey: orModelKey) ?? NERModel.defaultModel
+        let savedModel = UserDefaults.standard.string(forKey: orModelKey)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let savedModel, !savedModel.isEmpty {
+            return savedModel
+        }
+        return NERModel.defaultModel
     }
 
     var ollamaModel: String {
