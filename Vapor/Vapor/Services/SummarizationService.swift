@@ -6,16 +6,58 @@ nonisolated private let logger = Logger(subsystem: "lol.mrl.app.Vapor", category
 private let chunkThreshold = 100_000
 private let chunkSize = 80_000
 
+enum SummarizationBackendPreference: String, CaseIterable, Codable {
+    case sameAsEntityExtraction
+    case openRouter
+    case ollama
+
+    var displayName: String {
+        switch self {
+        case .sameAsEntityExtraction: "Same as Entity Extraction"
+        case .openRouter: "OpenRouter (Cloud)"
+        case .ollama: "Ollama (Local)"
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .sameAsEntityExtraction:
+            "Reuse the entity extraction backend when possible. If extraction is using NLTagger, summarization falls back to Ollama."
+        case .openRouter:
+            "Use a dedicated OpenRouter model for summaries."
+        case .ollama:
+            "Use your shared Ollama model for summaries."
+        }
+    }
+}
+
 @MainActor
 final class SummarizationService {
+    private let backendKey = "summarizationBackend"
     private let orModelKey = "summarizationModel"
     private let orApiKeyKey = "openRouterApiKey"
     private let ollamaModelKey = "ollamaSelectedModel"
 
+    var backendPreference: SummarizationBackendPreference {
+        if let raw = UserDefaults.standard.string(forKey: backendKey),
+           let value = SummarizationBackendPreference(rawValue: raw) {
+            return value
+        }
+        return .sameAsEntityExtraction
+    }
+
     var openRouterModel: String {
-        UserDefaults.standard.string(forKey: orModelKey)
-            ?? UserDefaults.standard.string(forKey: "entityExtractionModel")
-            ?? NERModel.defaultModel
+        let summaryModel = UserDefaults.standard.string(forKey: orModelKey)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let summaryModel, !summaryModel.isEmpty {
+            return summaryModel
+        }
+
+        let extractionModel = UserDefaults.standard.string(forKey: "entityExtractionModel")?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let extractionModel, !extractionModel.isEmpty {
+            return extractionModel
+        }
+
+        return NERModel.defaultModel
     }
 
     var ollamaModel: String {
@@ -23,9 +65,18 @@ final class SummarizationService {
     }
 
     var backend: EntityExtractionBackend {
+        switch backendPreference {
+        case .sameAsEntityExtraction:
+            break
+        case .openRouter:
+            return .openRouter
+        case .ollama:
+            return .ollama
+        }
+
         if let raw = UserDefaults.standard.string(forKey: "entityExtractionBackend"),
            let val = EntityExtractionBackend(rawValue: raw) {
-            return val
+            return val == .nlTagger ? .ollama : val
         }
         if let apiKey = UserDefaults.standard.string(forKey: orApiKeyKey), !apiKey.isEmpty {
             return .openRouter

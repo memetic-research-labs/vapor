@@ -27,11 +27,13 @@ final class TaggerService {
     func tag(contextItem: ContextItem) -> [String] {
         var tags: [String] = []
 
-        if !contextItem.sourceURL.isEmpty {
-            if let host = URL(string: contextItem.sourceURL)?.host {
-                let domain = host.replacingOccurrences(of: "www.", with: "")
-                tags.append(domain)
-            }
+        if let sourceDomain = contextItem.sortedURLLinks.first(where: { $0.role == .source })?.domain,
+           !sourceDomain.isEmpty {
+            tags.append(sourceDomain.replacingOccurrences(of: "www.", with: ""))
+        } else if !contextItem.sourceURL.isEmpty,
+                  let host = URL(string: contextItem.sourceURL)?.host {
+            let domain = host.replacingOccurrences(of: "www.", with: "")
+            tags.append(domain)
         }
 
         if !contextItem.sourceTitle.isEmpty {
@@ -41,8 +43,8 @@ final class TaggerService {
             }
         }
 
-        for entity in contextItem.entities where entity.confidence > 0.6 {
-            let tag = entity.text.lowercased()
+        for link in contextItem.sortedEntityLinks where link.confidence > 0.6 {
+            let tag = link.displayText.lowercased()
             if !tags.contains(tag) && tag.count >= minTagLength {
                 tags.append(tag)
             }

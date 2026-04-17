@@ -48,14 +48,6 @@ enum ProcessingStatus: String, Codable, CaseIterable, Sendable {
     case failed
 }
 
-nonisolated private func decodeEntities(_ data: Data) -> [ExtractedEntity] {
-    (try? JSONDecoder().decode([ExtractedEntity].self, from: data)) ?? []
-}
-
-nonisolated private func encodeEntities(_ entities: [ExtractedEntity]) -> Data? {
-    try? JSONEncoder().encode(entities)
-}
-
 nonisolated private func decodeCitation(_ data: Data) -> Citation? {
     try? JSONDecoder().decode(Citation.self, from: data)
 }
@@ -83,12 +75,17 @@ final class ContextItem {
     var thumbnailPath: String?
 
     var tags: [String]
-    var entitiesData: Data?
     var citationData: Data?
     var summaryData: Data?
     var extractionBackendRaw: String?
     var embeddingID: String?
     var captureJobId: String?
+
+    @Relationship(deleteRule: .cascade, inverse: \ContextItemURLLink.contextItem)
+    var urlLinks: [ContextItemURLLink] = []
+
+    @Relationship(deleteRule: .cascade, inverse: \ContextItemEntityLink.contextItem)
+    var entityLinks: [ContextItemEntityLink] = []
 
     init(
         sourceURL: String = "",
@@ -119,7 +116,6 @@ final class ContextItem {
         self.blobMimeType = blobMimeType
         self.thumbnailPath = thumbnailPath
         self.tags = []
-        self.entitiesData = nil
         self.citationData = nil
         self.summaryData = nil
         self.extractionBackendRaw = nil
@@ -134,16 +130,6 @@ final class ContextItem {
     var status: ProcessingStatus {
         get { ProcessingStatus(rawValue: statusRaw) ?? .pending }
         set { statusRaw = newValue.rawValue }
-    }
-
-    var entities: [ExtractedEntity] {
-        get {
-            guard let data = entitiesData else { return [] }
-            return decodeEntities(data)
-        }
-        set {
-            entitiesData = encodeEntities(newValue)
-        }
     }
 
     var citation: Citation? {
@@ -174,5 +160,27 @@ final class ContextItem {
         set {
             extractionBackendRaw = newValue?.rawValue
         }
+    }
+
+    var sortedURLLinks: [ContextItemURLLink] {
+        urlLinks.sorted {
+            if $0.role.sortOrder == $1.role.sortOrder {
+                return $0.urlDisplayText.localizedCaseInsensitiveCompare($1.urlDisplayText) == .orderedAscending
+            }
+            return $0.role.sortOrder < $1.role.sortOrder
+        }
+    }
+
+    var sortedEntityLinks: [ContextItemEntityLink] {
+        entityLinks.sorted {
+            if $0.entityKind.rawValue == $1.entityKind.rawValue {
+                return $0.displayText.localizedCaseInsensitiveCompare($1.displayText) == .orderedAscending
+            }
+            return $0.entityKind.rawValue < $1.entityKind.rawValue
+        }
+    }
+
+    var entityCount: Int {
+        sortedEntityLinks.count
     }
 }

@@ -13,6 +13,7 @@
 		50A10B002F9C0000008E324C /* NIOCore in Frameworks */ = {isa = PBXBuildFile; productRef = 50A10AF02F9C0000008E324C /* NIOCore */; };
 		50A10B022F9C0001008E324C /* NIOHTTP1 in Frameworks */ = {isa = PBXBuildFile; productRef = 50A10B012F9C0001008E324C /* NIOHTTP1 */; };
 		50A10B042F9C0002008E324C /* NIOPosix in Frameworks */ = {isa = PBXBuildFile; productRef = 50A10B032F9C0002008E324C /* NIOPosix */; };
+		50B200012FAA1000008E324C /* SQLiteVec in Frameworks */ = {isa = PBXBuildFile; productRef = 50B200032FAA1000008E324C /* SQLiteVec */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -64,6 +65,7 @@
 				50A10B002F9C0000008E324C /* NIOCore in Frameworks */,
 				50A10B022F9C0001008E324C /* NIOHTTP1 in Frameworks */,
 				50A10B042F9C0002008E324C /* NIOPosix in Frameworks */,
+				50B200012FAA1000008E324C /* SQLiteVec in Frameworks */,
 				50849C8E2F874B8B008E324C /* SwiftLlama in Frameworks */,
 				50849C902F874B8B008E324D /* KeyboardShortcuts in Frameworks */,
 				50849C942F874B8B008E324F /* Tiktoken in Frameworks */,
@@ -133,6 +135,7 @@
 				50A10B032F9C0002008E324C /* NIOPosix */,
 				508498662F86F966008E324C /* SwiftLlama */,
 				50849C912F874B8B008E324D /* KeyboardShortcuts */,
+				50B200032FAA1000008E324C /* SQLiteVec */,
 				50849C952F874B8B008E324F /* Tiktoken */,
 			);
 			productName = Vapor;
@@ -221,6 +224,7 @@
 				508498652F86F966008E324C /* XCRemoteSwiftPackageReference "swift-llama-cpp" */,
 				50849C922F874B8B008E324E /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */,
 				50849C962F874B8B008E3250 /* XCRemoteSwiftPackageReference "Tiktoken" */,
+				50B200022FAA1000008E324C /* XCRemoteSwiftPackageReference "SQLiteVec" */,
 				50A10AEF2F9C0000008E324C /* XCRemoteSwiftPackageReference "swift-nio" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -671,6 +675,14 @@
 				minimumVersion = 2.65.0;
 			};
 		};
+		50B200022FAA1000008E324C /* XCRemoteSwiftPackageReference "SQLiteVec" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/jkrukowski/SQLiteVec";
+			requirement = {
+				kind = upToNextMinorVersion;
+				minimumVersion = 0.0.9;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -703,6 +715,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 50A10AEF2F9C0000008E324C /* XCRemoteSwiftPackageReference "swift-nio" */;
 			productName = NIOPosix;
+		};
+		50B200032FAA1000008E324C /* SQLiteVec */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 50B200022FAA1000008E324C /* XCRemoteSwiftPackageReference "SQLiteVec" */;
+			productName = SQLiteVec;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

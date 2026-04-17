@@ -8,6 +8,7 @@ struct PromptHistoryView: View {
     @State private var searchText = ""
     @State private var showFavoritesOnly = false
     @State private var historyStore = HistoryStore.shared
+    @State private var historyService = PromptHistoryService()
 
     // We need the history service for delete/undo/favorite operations.
     // Since this is a separate window without access to ContentView's service,
@@ -132,6 +133,9 @@ struct PromptHistoryView: View {
         }
         .frame(minWidth: 360, minHeight: 300)
         .background(Color(nsColor: .windowBackgroundColor))
+        .onAppear {
+            historyService.setModelContext(modelContext)
+        }
     }
 
     // MARK: - Header
@@ -212,9 +216,7 @@ struct PromptHistoryView: View {
     // MARK: - Actions
 
     private func toggleFavorite(_ record: PromptRecord) {
-        record.isFavorite.toggle()
-        record.modifiedAt = Date()
-        try? modelContext.save()
+        try? historyService.toggleFavorite(record)
     }
 
     private func deleteRecord(_ record: PromptRecord) {
@@ -224,8 +226,7 @@ struct PromptHistoryView: View {
             historyStore.showUndoToast = true
         }
 
-        modelContext.delete(record)
-        try? modelContext.save()
+        try? historyService.delete(record)
 
         Task {
             try? await Task.sleep(for: .seconds(4))
@@ -240,8 +241,7 @@ struct PromptHistoryView: View {
 
     private func undoDelete() {
         guard let record = historyStore.lastDeletedRecord else { return }
-        modelContext.insert(record)
-        try? modelContext.save()
+        try? historyService.save(record)
         historyStore.lastDeletedRecord = nil
         withAnimation(.easeInOut(duration: 0.2)) {
             historyStore.showUndoToast = false

@@ -112,7 +112,7 @@ final class BrowserBridge {
                         self?.isExtensionConnected = count > 0
                         if count > 0 {
                             StatusBarService.shared.updateBrowserIndicator(connected: true)
-                            StatusBarService.shared.setTransient("Browser extension connected")
+                            StatusBarService.shared.setTransient("Browser extension connected", domain: .browser)
                             if wasConnected == false {
                                 self?.verifySelectedTarget()
                             }
@@ -210,7 +210,7 @@ final class BrowserBridge {
             lastError = "No browser extension connected"
             return
         }
-        StatusBarService.shared.setTransient("Fetching browser tabs")
+        StatusBarService.shared.setTransient("Fetching browser tabs", domain: .browser)
         server?.broadcast(event: "prompt", json: [
             "type": "QUERY_TABS"
         ])
@@ -221,7 +221,7 @@ final class BrowserBridge {
         persistSelectedTarget()
         isPresentingTabPicker = false
         availableTabs = []
-        StatusBarService.shared.setTransient("Target set to \(tab.displayHost)")
+        StatusBarService.shared.setTransient("Target set to \(tab.displayHost)", domain: .browser)
 
         if let pendingPromptRequest {
             self.pendingPromptRequest = nil
@@ -248,7 +248,7 @@ final class BrowserBridge {
         guard isExtensionConnected, let selectedTarget else { return }
         let reopenURL = selectedTarget.reopenURL
         guard !reopenURL.isEmpty else { return }
-        StatusBarService.shared.setTransient("Opening \(selectedTarget.displayLabel)")
+        StatusBarService.shared.setTransient("Opening \(selectedTarget.displayLabel)", domain: .browser)
         var payload: [String: Any] = [
             "type": "OPEN_TAB",
             "url": reopenURL
@@ -356,7 +356,7 @@ final class BrowserBridge {
             selectedTarget = BrowserTarget(tab: tab)
             self.selectedTarget = selectedTarget
             persistSelectedTarget()
-            StatusBarService.shared.setTransient("Target ready: \(selectedTarget.displayLabel)")
+            StatusBarService.shared.setTransient("Target ready: \(selectedTarget.displayLabel)", domain: .browser)
             if let pendingPromptRequest {
                 self.pendingPromptRequest = nil
                 _ = post(pendingPromptRequest)
@@ -374,7 +374,7 @@ final class BrowserBridge {
         guard let tab = Self.parseBrowserTab(json) else { return }
         selectedTarget = BrowserTarget(tab: tab)
         persistSelectedTarget()
-        StatusBarService.shared.setTransient("Opened \(tab.displayHost)")
+        StatusBarService.shared.setTransient("Opened \(tab.displayHost)", domain: .browser)
         if let pendingPromptRequest {
             self.pendingPromptRequest = nil
             _ = post(pendingPromptRequest)
@@ -410,7 +410,7 @@ final class BrowserBridge {
         selectedTarget.isConnected = true
         self.selectedTarget = selectedTarget
         persistSelectedTarget()
-        StatusBarService.shared.setTransient("Posting to \(selectedTarget.displayLabel)")
+        StatusBarService.shared.setTransient("Posting to \(selectedTarget.displayLabel)", domain: .browser)
         return true
     }
 
