@@ -32,14 +32,18 @@ final class MiniLMEmbeddingService {
     static let identifier = "minilm_l12_multilingual_v2"
 
     private var model: MLModel?
-    private let tokenizer = MiniLMTokenizer()
+    private var tokenizer: MiniLMTokenizer?
 
     var isReady: Bool {
         model != nil
     }
 
     func initialize() async throws {
-        guard model == nil else { return }
+        if model != nil, tokenizer != nil { return }
+
+        if tokenizer == nil {
+            tokenizer = try MiniLMTokenizer()
+        }
 
         guard let modelURL = resolveModelURL() else {
             miniLMLogger.error("MiniLM model not found in bundle or fallback locations")
@@ -105,7 +109,7 @@ final class MiniLMEmbeddingService {
     }
 
     func embed(text: String) async throws -> [Float] {
-        guard let model else {
+        guard let model, let tokenizer else {
             throw MiniLMEmbeddingError.serviceNotReady
         }
 
@@ -194,10 +198,10 @@ private final class MiniLMTokenizer {
     private let maxLength = 512
     private let vocabulary: [String: Int]
 
-    init() {
+    init() throws {
         guard let url = Bundle.main.url(forResource: "bert_tokenizer_vocab", withExtension: "txt"),
               let vocabularyText = try? String(contentsOf: url, encoding: .utf8) else {
-            fatalError("MiniLM tokenizer vocabulary not found in app bundle")
+            throw MiniLMEmbeddingError.vocabularyNotFound
         }
 
         let tokens = vocabularyText.split(separator: "\n").map(String.init)

@@ -138,7 +138,6 @@ struct ContextExplorerView: View {
         let base = items.filter(matchesStructuredFilters)
 
         if explorerStore.semanticMode == .semantic,
-           !semanticResultIDs.isEmpty,
            explorerStore.hasActiveSearch {
             let index = Dictionary(uniqueKeysWithValues: semanticResultIDs.enumerated().map { ($1, $0) })
             return base

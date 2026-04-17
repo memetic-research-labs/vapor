@@ -13,6 +13,8 @@ final class VectorizationService {
     static let shared = VectorizationService()
 
     private static let tableName = "vec_items_minilm_l12_multilingual_v2"
+    private static let contextEmbeddingPrefix = "ctx:"
+    private static let promptEmbeddingPrefix = "prompt:"
 
     private let embeddingService = MiniLMEmbeddingService()
 
@@ -60,8 +62,11 @@ final class VectorizationService {
     }
 
     func ensureEmbedding(for item: ContextItem, force: Bool = false) async throws -> String? {
-        let embeddingID = item.embeddingID ?? item.id.uuidString
-        if !force, let existingID = item.embeddingID, try await embeddingExists(id: existingID) {
+        let embeddingID = Self.namespacedEmbeddingID(item.embeddingID, prefix: Self.contextEmbeddingPrefix, fallback: item.id.uuidString)
+        if !force,
+           let existingID = item.embeddingID,
+           existingID.hasPrefix(Self.contextEmbeddingPrefix),
+           try await embeddingExists(id: existingID) {
             return existingID
         }
 
@@ -79,8 +84,11 @@ final class VectorizationService {
     }
 
     func ensureEmbedding(for record: PromptRecord, force: Bool = false) async throws -> String? {
-        let embeddingID = record.embeddingID ?? record.stableIdentifier
-        if !force, let existingID = record.embeddingID, try await embeddingExists(id: existingID) {
+        let embeddingID = Self.namespacedEmbeddingID(record.embeddingID, prefix: Self.promptEmbeddingPrefix, fallback: record.stableIdentifier)
+        if !force,
+           let existingID = record.embeddingID,
+           existingID.hasPrefix(Self.promptEmbeddingPrefix),
+           try await embeddingExists(id: existingID) {
             return existingID
         }
 
@@ -102,7 +110,9 @@ final class VectorizationService {
     func removeEmbedding(id: String) async {
         do {
             let database = try await Self.sharedDatabase()
-            try await database.execute("DELETE FROM \(Self.tableName) WHERE embedding_id = ?", params: [id])
+            for candidateID in Self.candidateEmbeddingIDs(for: id) {
+                try await database.execute("DELETE FROM \(Self.tableName) WHERE embedding_id = ?", params: [candidateID])
+            }
             await refreshVectorCount()
             StatusBarService.shared.log(
                 "Removed vector embedding",
@@ -226,13 +236,13 @@ final class VectorizationService {
             let embedding = try await generateEmbedding(for: trimmed)
             let database = try await Self.sharedDatabase()
             let rows = try await database.query(
-                "SELECT embedding_id, distance FROM \(Self.tableName) WHERE embedding MATCH ? AND k = ?",
-                params: [embedding, max(limit * 3, limit)]
+                "SELECT embedding_id, distance FROM \(Self.tableName) WHERE embedding_id LIKE ? AND embedding MATCH ? AND k = ?",
+                params: ["\(Self.contextEmbeddingPrefix)%", embedding, max(limit * 3, limit)]
             )
 
             return rows.compactMap { row in
                 guard let value = row["embedding_id"] as? String else { return nil }
-                return UUID(uuidString: value)
+                return UUID(uuidString: Self.stripEmbeddingPrefix(from: value))
             }
         } catch {
             vectorLogger.error("Semantic context search failed: \(error.localizedDescription, privacy: .public)")
@@ -252,7 +262,9 @@ final class VectorizationService {
     private func upsert(embedding: [Float], id: String) async throws {
         let database = try await Self.sharedDatabase()
         let existed = try await embeddingExists(id: id)
-        try await database.execute("DELETE FROM \(Self.tableName) WHERE embedding_id = ?", params: [id])
+        for candidateID in Self.candidateEmbeddingIDs(for: id) {
+            try await database.execute("DELETE FROM \(Self.tableName) WHERE embedding_id = ?", params: [candidateID])
+        }
         try await database.execute(
             "INSERT INTO \(Self.tableName)(embedding, embedding_id) VALUES (?, ?)",
             params: [embedding, id]
@@ -269,12 +281,16 @@ final class VectorizationService {
 
     private func embeddingExists(id: String) async throws -> Bool {
         let database = try await Self.sharedDatabase()
-        let result = try await database.query(
-            "SELECT COUNT(*) AS count FROM \(Self.tableName) WHERE embedding_id = ?",
-            params: [id]
-        )
-        guard let count = result.first?["count"] else { return false }
-        return Self.integerValue(from: count) > 0
+        for candidateID in Self.candidateEmbeddingIDs(for: id) {
+            let result = try await database.query(
+                "SELECT COUNT(*) AS count FROM \(Self.tableName) WHERE embedding_id = ?",
+                params: [candidateID]
+            )
+            if let count = result.first?["count"], Self.integerValue(from: count) > 0 {
+                return true
+            }
+        }
+        return false
     }
 
     private func searchableText(for item: ContextItem) -> String? {
@@ -313,6 +329,9 @@ final class VectorizationService {
                     return
                 }
 
+                let semaphore = DispatchSemaphore(value: 0)
+                var result: Result<Database, Error>?
+
                 Task {
                     do {
                         try SQLiteVec.initialize()
@@ -323,13 +342,23 @@ final class VectorizationService {
                         let databaseURL = directory.appendingPathComponent("vectors.db")
                         let database = try Database(.uri(databaseURL.path))
                         try await initializeSchema(database: database)
-                        vectorDatabaseQueue.sync {
-                            sharedVectorDatabase = database
-                        }
-                        continuation.resume(returning: database)
+                        result = .success(database)
                     } catch {
-                        continuation.resume(throwing: error)
+                        result = .failure(error)
                     }
+                    semaphore.signal()
+                }
+
+                semaphore.wait()
+
+                switch result {
+                case let .success(database):
+                    sharedVectorDatabase = database
+                    continuation.resume(returning: database)
+                case let .failure(error):
+                    continuation.resume(throwing: error)
+                case .none:
+                    continuation.resume(throwing: CocoaError(.coderInvalidValue))
                 }
             }
         }
@@ -366,5 +395,25 @@ final class VectorizationService {
         case let string as String: Int(string) ?? 0
         default: 0
         }
+    }
+
+    private static func namespacedEmbeddingID(_ storedID: String?, prefix: String, fallback: String) -> String {
+        let baseID = (storedID?.isEmpty == false ? storedID! : fallback)
+        guard !baseID.hasPrefix(prefix) else { return baseID }
+        return "\(prefix)\(stripEmbeddingPrefix(from: baseID))"
+    }
+
+    private static func candidateEmbeddingIDs(for id: String) -> [String] {
+        let stripped = stripEmbeddingPrefix(from: id)
+        let candidates = [id, stripped, "\(contextEmbeddingPrefix)\(stripped)", "\(promptEmbeddingPrefix)\(stripped)"]
+        return Array(Set(candidates))
+    }
+
+    private static func stripEmbeddingPrefix(from id: String) -> String {
+        if let colonIndex = id.firstIndex(of: ":") {
+            let nextIndex = id.index(after: colonIndex)
+            return String(id[nextIndex...])
+        }
+        return id
     }
 }
