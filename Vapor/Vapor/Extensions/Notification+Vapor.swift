@@ -13,4 +13,9 @@ extension Notification.Name {
     static let vaporLLMDownloadCompleted = Notification.Name("vaporLLMDownloadCompleted")
     static let vaporInsertContextItem = Notification.Name("vaporInsertContextItem")
     static let vaporOpenContextItem = Notification.Name("vaporOpenContextItem")
+    static let vaporFocusEditor = Notification.Name("vaporFocusEditor")
+    static let vaporFocusScreenshots = Notification.Name("vaporFocusScreenshots")
+    static let vaporScreenshotMoveLeft = Notification.Name("vaporScreenshotMoveLeft")
+    static let vaporScreenshotMoveRight = Notification.Name("vaporScreenshotMoveRight")
+    static let vaporScreenshotInsertSelected = Notification.Name("vaporScreenshotInsertSelected")
 }

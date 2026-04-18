@@ -17,6 +17,7 @@ final class ScreenshotShelfStore {
             UserDefaults.standard.set(isExpanded, forKey: Self.isExpandedKey)
         }
     }
+    var isKeyboardNavigating = false
     var isScanning = false
     var lastScanDate: Date?
     var insertedAssetIDs: Set<UUID> = []

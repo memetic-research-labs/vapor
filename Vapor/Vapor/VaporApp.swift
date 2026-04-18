@@ -246,6 +246,16 @@ struct VaporApp: App {
                 }
                 .keyboardShortcut("k", modifiers: .command)
 
+                Button("Focus Screenshots") {
+                    NotificationCenter.default.post(name: .vaporFocusScreenshots, object: nil)
+                }
+                .keyboardShortcut("s", modifiers: [.command, .shift])
+
+                Button("Focus Editor") {
+                    NotificationCenter.default.post(name: .vaporFocusEditor, object: nil)
+                }
+                .keyboardShortcut("i", modifiers: [.command, .shift])
+
                 Divider()
 
                 Button("Prompt History") {

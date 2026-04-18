@@ -88,7 +88,8 @@ struct ContextTrayView: View {
                 .background(Capsule().fill(Color.secondary.opacity(0.12)))
         }
         .padding(.horizontal, 8)
-        .padding(.vertical, 7)
+        .padding(.vertical, 8)
+        .frame(height: 44)
         .background(.bar)
     }
 
@@ -111,6 +112,8 @@ struct ContextTrayView: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
+        .frame(height: 36)
+        .background(Color(nsColor: .windowBackgroundColor))
     }
 
     private var emptyState: some View {
@@ -164,7 +167,8 @@ struct ContextTrayView: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
-        .background(Color(nsColor: .controlBackgroundColor))
+        .frame(height: 36)
+        .background(.bar)
     }
 
     private func openDetail(item: ContextItem) {

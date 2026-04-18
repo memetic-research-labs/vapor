@@ -70,13 +70,13 @@ struct MinimizedPillView: View {
         }
         .background(
             UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: 12, bottomTrailingRadius: 12, topTrailingRadius: 0)
-                .fill(Color(nsColor: .windowBackgroundColor).opacity(0.98))
+                .fill(Color(nsColor: .textBackgroundColor))
                 .overlay(
                     UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: 12, bottomTrailingRadius: 12, topTrailingRadius: 0)
-                        .stroke(Color.secondary.opacity(0.08), lineWidth: 1)
+                        .stroke(Color.secondary.opacity(0.06), lineWidth: 1)
                 )
                 .shadow(color: glowColor.opacity(glowPulse ? 0.45 : 0.2), radius: glowPulse ? 10 : 5, x: 0, y: 0)
-                .shadow(color: .black.opacity(0.15), radius: 3, x: 0, y: 2)
+                .shadow(color: .black.opacity(0.08), radius: 2, x: 0, y: 1)
         )
         .clipShape(UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: 12, bottomTrailingRadius: 12, topTrailingRadius: 0))
         .onAppear {
@@ -105,7 +105,7 @@ struct MinimizedPillView: View {
         PillTextEditor(text: $text, isFocused: $isEditorFocused, isDictating: isDictating)
             .background(
                 RoundedRectangle(cornerRadius: 10)
-                    .fill(Color(nsColor: .textBackgroundColor))
+                    .fill(Color(nsColor: .windowBackgroundColor))
             )
             .clipShape(RoundedRectangle(cornerRadius: 10))
             .editorGlow(

@@ -190,6 +190,10 @@ struct ContentView: View {
                 viewModel.content += (viewModel.content.isEmpty ? "" : "\n\n") + text
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .vaporFocusEditor)) { _ in
+            screenshotShelf.isKeyboardNavigating = false
+            EditorTextViewRegistry.refocus()
+        }
         .onReceive(NotificationCenter.default.publisher(for: .vaporLLMDownloadCompleted)) { _ in
             Task { await compressionService.reloadLocalLLMIfNeeded() }
         }
@@ -333,14 +337,7 @@ struct ContentView: View {
 
                     Divider()
 
-                    NativeTextEditor(text: $viewModel.content, isFocused: $isEditorFocused)
-                        .editorGlow(
-                            isFocused: isEditorFocused,
-                            isDictating: viewModel.isDictating,
-                            inputLevel: dictationService.inputLevel
-                        )
-                        .padding(EdgeInsets(top: 8, leading: 10, bottom: 10, trailing: 10))
-                        .frame(maxHeight: .infinity)
+                    editorSection
 
                     if viewModel.originalTokenCount > 0 {
                         Divider()
@@ -397,7 +394,31 @@ struct ContentView: View {
             .frame(width: proxy.size.width, height: proxy.size.height, alignment: .leading)
         }
         .focusable()
+        .onKeyPress(.leftArrow) {
+            guard screenshotShelf.isKeyboardNavigating else { return .ignored }
+            NotificationCenter.default.post(name: .vaporScreenshotMoveLeft, object: nil)
+            return .handled
+        }
+        .onKeyPress(.rightArrow) {
+            guard screenshotShelf.isKeyboardNavigating else { return .ignored }
+            NotificationCenter.default.post(name: .vaporScreenshotMoveRight, object: nil)
+            return .handled
+        }
+        .onKeyPress(.space) {
+            guard screenshotShelf.isKeyboardNavigating else { return .ignored }
+            NotificationCenter.default.post(name: .vaporScreenshotInsertSelected, object: nil)
+            return .handled
+        }
+        .onKeyPress(.return) {
+            guard screenshotShelf.isKeyboardNavigating else { return .ignored }
+            NotificationCenter.default.post(name: .vaporScreenshotInsertSelected, object: nil)
+            return .handled
+        }
         .onKeyPress(.escape) {
+            if screenshotShelf.isKeyboardNavigating {
+                screenshotShelf.isKeyboardNavigating = false
+                return .handled
+            }
             windowManager.minimize()
             return .handled
         }
@@ -432,6 +453,26 @@ struct ContentView: View {
         } catch {
             toastService.showError("Compression failed: \(error.localizedDescription)")
         }
+    }
+
+    private var editorSection: some View {
+        ZStack {
+            Color(nsColor: .windowBackgroundColor)
+
+            NativeTextEditor(text: $viewModel.content, isFocused: $isEditorFocused)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color(nsColor: .textBackgroundColor))
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .editorGlow(
+                    isFocused: isEditorFocused,
+                    isDictating: viewModel.isDictating,
+                    inputLevel: dictationService.inputLevel
+                )
+                .padding(EdgeInsets(top: 8, leading: 10, bottom: 10, trailing: 10))
+        }
+        .frame(maxHeight: .infinity)
     }
 
     private func performAutoCompress() async {
