@@ -435,6 +435,10 @@ The next execution phase should focus on three connected improvements in this or
 
 This order matters because shelf polish improves every image intake path, paste support reuses the same asset pipeline, and watched-folder permissions are easier to productize once the shelf behavior is stable.
 
+Related design doc:
+
+- `docs/plan-keyboard-navigation-bedrock.md` defines the broader keyboard-driven focus model for the main window, including the screenshot shelf, editor, context tray, and tool rail.
+
 ## Product Rules Locked In
 
 These decisions are now explicit and should guide implementation:
