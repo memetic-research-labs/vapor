@@ -9,17 +9,33 @@ nonisolated private let screenshotLogger = Logger(subsystem: "lol.mrl.app.Vapor"
 final class ScreenshotShelfStore {
     static let shared = ScreenshotShelfStore()
 
-    var isExpanded = true
+    private static let isExpandedKey = "screenshotShelf.isExpanded"
+    private static let dismissedAssetIDsKey = "screenshotShelf.dismissedAssetIDs"
+
+    var isExpanded = UserDefaults.standard.object(forKey: isExpandedKey) as? Bool ?? true {
+        didSet {
+            UserDefaults.standard.set(isExpanded, forKey: Self.isExpandedKey)
+        }
+    }
     var isScanning = false
     var lastScanDate: Date?
     var insertedAssetIDs: Set<UUID> = []
-    var dismissedAssetIDs: Set<UUID> = []
+    var dismissedAssetIDs: Set<UUID> = [] {
+        didSet {
+            let values = dismissedAssetIDs.map(\.uuidString)
+            UserDefaults.standard.set(values, forKey: Self.dismissedAssetIDsKey)
+        }
+    }
 
     private let imageAssetService = ImageAssetService()
     private weak var contextQueueService: ContextQueueService?
     private var pollTask: Task<Void, Never>?
 
-    private init() {}
+    private init() {
+        if let storedIDs = UserDefaults.standard.array(forKey: Self.dismissedAssetIDsKey) as? [String] {
+            dismissedAssetIDs = Set(storedIDs.compactMap(UUID.init(uuidString:)))
+        }
+    }
 
     func setModelContext(_ context: ModelContext) {
         imageAssetService.setModelContext(context)
@@ -81,6 +97,10 @@ final class ScreenshotShelfStore {
 
     func dismiss(_ asset: ImageAsset) {
         dismissedAssetIDs.insert(asset.id)
+    }
+
+    func restoreDismissed(_ asset: ImageAsset) {
+        dismissedAssetIDs.remove(asset.id)
     }
 
     func addToContext(_ asset: ImageAsset) {

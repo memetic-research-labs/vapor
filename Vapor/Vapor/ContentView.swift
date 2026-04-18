@@ -264,124 +264,137 @@ struct ContentView: View {
     }
 
     private var expandedContent: some View {
-        HStack(spacing: 0) {
-            ToolSidebarView(
-                viewModel: viewModel,
-                dictationService: dictationService,
-                preferences: preferences,
-                onChooseTarget: {
-                    chooseBrowserTarget()
-                },
-                onPostToTarget: {
-                    sendToBrowser()
-                },
-                onToggleDictation: {
-                    toggleDictation()
-                }
-            )
+        GeometryReader { proxy in
+            let toolSidebarWidth: CGFloat = 42
+            let contextTrayWidth: CGFloat = showContextTray ? 248 : 0
+            let testSidebarWidth: CGFloat = showTestSidebar ? 350 : 0
+            let dividerCount = 1 + (showContextTray ? 1 : 0) + (showTestSidebar ? 1 : 0)
+            let centerWidth = max(640, proxy.size.width - toolSidebarWidth - contextTrayWidth - testSidebarWidth - CGFloat(dividerCount))
 
-            Divider()
-
-            VStack(spacing: 0) {
-                ToolbarView(
+            HStack(spacing: 0) {
+                ToolSidebarView(
                     viewModel: viewModel,
+                    dictationService: dictationService,
                     preferences: preferences,
-                    onCompressAndCopy: {
-                        Task { await performCompressAndCopy() }
+                    onChooseTarget: {
+                        chooseBrowserTarget()
                     },
-                    onCopyOriginal: {
-                        viewModel.copyOriginalToClipboard()
-                        toastService.showSuccess("Original copied to clipboard")
+                    onPostToTarget: {
+                        sendToBrowser()
                     },
-                    onShowHistory: {
-                        openWindow(id: "prompt-history")
-                    },
-                    onToggleTest: {
-                        let willShow = !showTestSidebar
-                        windowManager.resizeForPanels(
-                            showContextTray: showContextTray,
-                            showTestSidebar: willShow
-                        )
-                        withAnimation {
-                            showTestSidebar.toggle()
-                        }
-                        refocusEditorAfterTransition()
-                    },
-                    onToggleContextTray: {
-                        let willShow = !showContextTray
-                        windowManager.resizeForPanels(
-                            showContextTray: willShow,
-                            showTestSidebar: showTestSidebar
-                        )
-                        withAnimation {
-                            showContextTray.toggle()
-                        }
-                        refocusEditorAfterTransition()
-                    },
-                    onMinimize: {
-                        windowManager.minimize()
+                    onToggleDictation: {
+                        toggleDictation()
                     }
                 )
+                .frame(width: toolSidebarWidth)
 
-                NativeTextEditor(text: $viewModel.content, isFocused: $isEditorFocused)
-                    .editorGlow(
-                        isFocused: isEditorFocused,
-                        isDictating: viewModel.isDictating,
-                        inputLevel: dictationService.inputLevel
-                    )
-                    .padding(EdgeInsets(top: 8, leading: 16, bottom: 12, trailing: 16))
-                    .frame(maxHeight: .infinity)
+                Divider()
 
-                if viewModel.originalTokenCount > 0 {
-                    Divider()
-                    StatsBarView(
-                        originalTokens: viewModel.originalTokenCount,
-                        compressedTokens: viewModel.compressedTokenCount,
-                        ratio: viewModel.compressionRatio
-                    )
-                }
-
-                if !viewModel.compressedContent.isEmpty {
-                    Divider()
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Compressed Preview")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(.secondary)
-                            .padding(.horizontal, 12)
-
-                        ScrollView {
-                            Text(viewModel.compressedContent)
-                                .font(.system(size: 13, design: .monospaced))
-                                .textSelection(.enabled)
-                                .padding(12)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                VStack(spacing: 0) {
+                    ToolbarView(
+                        viewModel: viewModel,
+                        preferences: preferences,
+                        onCompressAndCopy: {
+                            Task { await performCompressAndCopy() }
+                        },
+                        onCopyOriginal: {
+                            viewModel.copyOriginalToClipboard()
+                            toastService.showSuccess("Original copied to clipboard")
+                        },
+                        onShowHistory: {
+                            openWindow(id: "prompt-history")
+                        },
+                        onToggleTest: {
+                            let willShow = !showTestSidebar
+                            windowManager.resizeForPanels(
+                                showContextTray: showContextTray,
+                                showTestSidebar: willShow
+                            )
+                            withAnimation {
+                                showTestSidebar.toggle()
+                            }
+                            refocusEditorAfterTransition()
+                        },
+                        onToggleContextTray: {
+                            let willShow = !showContextTray
+                            windowManager.resizeForPanels(
+                                showContextTray: willShow,
+                                showTestSidebar: showTestSidebar
+                            )
+                            withAnimation {
+                                showContextTray.toggle()
+                            }
+                            refocusEditorAfterTransition()
+                        },
+                        onMinimize: {
+                            windowManager.minimize()
                         }
-                        .frame(maxHeight: 100)
-                        .background(Color.secondary.opacity(0.05))
+                    )
+
+                    Divider()
+
+                    NativeTextEditor(text: $viewModel.content, isFocused: $isEditorFocused)
+                        .editorGlow(
+                            isFocused: isEditorFocused,
+                            isDictating: viewModel.isDictating,
+                            inputLevel: dictationService.inputLevel
+                        )
+                        .padding(EdgeInsets(top: 8, leading: 10, bottom: 10, trailing: 10))
+                        .frame(maxHeight: .infinity)
+
+                    if viewModel.originalTokenCount > 0 {
+                        Divider()
+                        StatsBarView(
+                            originalTokens: viewModel.originalTokenCount,
+                            compressedTokens: viewModel.compressedTokenCount,
+                            ratio: viewModel.compressionRatio
+                        )
                     }
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                    .animation(.easeInOut(duration: 0.2), value: viewModel.compressedContent.isEmpty)
+
+                    if !viewModel.compressedContent.isEmpty {
+                        Divider()
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Compressed Preview")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(.secondary)
+                                .padding(.horizontal, 12)
+
+                            ScrollView {
+                                Text(viewModel.compressedContent)
+                                    .font(.system(size: 13, design: .monospaced))
+                                    .textSelection(.enabled)
+                                    .padding(12)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .frame(maxHeight: 100)
+                            .background(Color(nsColor: .underPageBackgroundColor))
+                        }
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .animation(.easeInOut(duration: 0.2), value: viewModel.compressedContent.isEmpty)
+                    }
+
+                    if windowManager.windowState == .expanded {
+                        ScreenshotShelfView()
+                    }
+                }
+                .frame(width: centerWidth, alignment: .leading)
+                .frame(minHeight: 300, maxHeight: .infinity)
+
+                if showContextTray {
+                    Divider()
+                    ContextTrayView()
+                        .frame(width: contextTrayWidth)
                 }
 
-                if windowManager.windowState == .expanded {
-                    ScreenshotShelfView()
+                if showTestSidebar {
+                    Divider()
+                    OpenRouterTestSidebar(
+                        prompt: $sidebarPrompt
+                    )
+                    .frame(width: testSidebarWidth)
                 }
             }
-            .frame(width: 640)
-            .frame(minHeight: 300)
-
-            if showContextTray {
-                Divider()
-                ContextTrayView()
-            }
-
-            if showTestSidebar {
-                Divider()
-                OpenRouterTestSidebar(
-                    prompt: $sidebarPrompt
-                )
-                .frame(width: 350)
-            }
+            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .leading)
         }
         .focusable()
         .onKeyPress(.escape) {

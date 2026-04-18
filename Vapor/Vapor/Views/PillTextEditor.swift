@@ -23,6 +23,7 @@ struct PillTextEditor: NSViewRepresentable {
         scrollView.autohidesScrollers = true
         scrollView.borderType = .noBorder
         scrollView.drawsBackground = false
+        scrollView.contentView.drawsBackground = false
 
         let textView = InterceptingTextView()
         textView.isEditable = true
@@ -31,8 +32,8 @@ struct PillTextEditor: NSViewRepresentable {
         textView.allowsUndo = true
         textView.font = .monospacedSystemFont(ofSize: 13, weight: .regular)
         textView.textColor = .labelColor
-        textView.drawsBackground = true
-        textView.backgroundColor = .textBackgroundColor
+        textView.drawsBackground = false
+        textView.backgroundColor = .clear
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
         textView.textContainerInset = NSSize(width: 6, height: 8)

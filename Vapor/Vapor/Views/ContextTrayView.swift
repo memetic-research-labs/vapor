@@ -39,7 +39,7 @@ struct ContextTrayView: View {
                                 openDetail(item: item)
                             } label: {
                                 ContextItemRow(item: item)
-                                    .padding(.horizontal, 8)
+                                    .padding(.horizontal, 6)
                                     .padding(.vertical, 3)
                             }
                             .buttonStyle(.plain)
@@ -69,7 +69,7 @@ struct ContextTrayView: View {
 
             footerBar
         }
-        .frame(width: 260)
+        .frame(width: 248)
         .background(Color(nsColor: .windowBackgroundColor))
     }
 
@@ -87,8 +87,8 @@ struct ContextTrayView: View {
                 .padding(.vertical, 2)
                 .background(Capsule().fill(Color.secondary.opacity(0.12)))
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 7)
         .background(.bar)
     }
 
@@ -109,7 +109,7 @@ struct ContextTrayView: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 8)
         .padding(.vertical, 4)
     }
 
@@ -162,7 +162,7 @@ struct ContextTrayView: View {
             .buttonStyle(.plain)
             .disabled(contextQueue.ready.isEmpty && contextQueue.failed.isEmpty)
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 8)
         .padding(.vertical, 6)
         .background(Color(nsColor: .controlBackgroundColor))
     }

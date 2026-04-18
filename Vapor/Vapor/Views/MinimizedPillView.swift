@@ -70,7 +70,11 @@ struct MinimizedPillView: View {
         }
         .background(
             UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: 12, bottomTrailingRadius: 12, topTrailingRadius: 0)
-                .fill(.ultraThinMaterial)
+                .fill(Color(nsColor: .windowBackgroundColor).opacity(0.98))
+                .overlay(
+                    UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: 12, bottomTrailingRadius: 12, topTrailingRadius: 0)
+                        .stroke(Color.secondary.opacity(0.08), lineWidth: 1)
+                )
                 .shadow(color: glowColor.opacity(glowPulse ? 0.45 : 0.2), radius: glowPulse ? 10 : 5, x: 0, y: 0)
                 .shadow(color: .black.opacity(0.15), radius: 3, x: 0, y: 2)
         )
@@ -99,6 +103,11 @@ struct MinimizedPillView: View {
 
     private var textArea: some View {
         PillTextEditor(text: $text, isFocused: $isEditorFocused, isDictating: isDictating)
+            .background(
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Color(nsColor: .textBackgroundColor))
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 10))
             .editorGlow(
                 isFocused: isEditorFocused,
                 isDictating: isDictating,

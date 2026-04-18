@@ -13,14 +13,14 @@ struct ToolSidebarView: View {
     let onToggleDictation: () -> Void
 
     var body: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 8) {
             targetButton
             postButton
             dictationButton
 
             Spacer(minLength: 0)
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, 6)
         .frame(width: railWidth)
         .frame(maxHeight: .infinity, alignment: .top)
         .background(Color(nsColor: .controlBackgroundColor))
