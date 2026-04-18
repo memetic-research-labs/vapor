@@ -424,3 +424,217 @@ Recommended interpretation:
 - user can promote a screenshot into a durable image context item with `Add to Context`
 - screenshots do not automatically spam the left context tray
 - screenshot/image data model is compatible with future article media extraction and prompt viewer work
+
+## Next Implementation Steps
+
+The next execution phase should focus on three connected improvements in this order:
+
+1. polish the screenshot shelf UI and behavior
+2. add paste-image support
+3. add proper watched-folder permissions and folder selection
+
+This order matters because shelf polish improves every image intake path, paste support reuses the same asset pipeline, and watched-folder permissions are easier to productize once the shelf behavior is stable.
+
+## Product Rules Locked In
+
+These decisions are now explicit and should guide implementation:
+
+- screenshots do not auto-create durable context items
+- screenshot and pasted-image intake should flow through the same image asset pipeline
+- annotated path insertion is the default behavior
+- plain path insertion remains a secondary action
+- the bottom shelf is for recent visual inputs, while the left tray remains for durable promoted context
+- watched folders should be explicit user choices, not hidden global scanning
+
+## Step 1: Screenshot Shelf Polish
+
+### Goals
+
+- make the shelf feel intentional rather than prototype-like
+- reduce noise when many screenshots accumulate
+- make image state and actions clearer
+- keep the shelf optimized for prompt-time use, not corpus management
+
+### UX direction
+
+Keep the shelf at the bottom of the main window and evolve it from a simple recent-screenshot row into a more general visual intake shelf.
+
+For now it can still be labeled `Screenshots`, but the design should be compatible with later broadening into recent visual inputs.
+
+### Suggested polish tasks
+
+- persist collapsed / expanded shelf state
+- persist dismissed asset IDs so dismissed screenshots do not reappear every launch
+- add clearer per-card state badges such as:
+  - `New`
+  - `Inserted`
+  - `In Context`
+  - `Missing`
+- improve empty-state copy so it references both screenshots and future pasted images
+- add stronger card affordances for primary and secondary actions
+- improve missing-file behavior so cards can still function when the original Desktop file has moved but the blob-backed asset remains
+- add a small recency policy so the shelf does not grow indefinitely noisy
+
+### Recommended interaction model
+
+- single click inserts annotated reference
+- double click opens the image
+- context menu retains advanced actions
+- `Add to Context` changes shelf state to `In Context`
+- `Dismiss` removes the item from the shelf, not from durable storage
+
+### Suggested persistence scope
+
+Persist:
+
+- shelf collapsed state
+- dismissed asset IDs
+
+Do not persist forever:
+
+- transient `Inserted` state unless it proves genuinely useful over time
+
+## Step 2: Paste-Image Support
+
+### Goal
+
+Make image intake feel native and immediate even when the image did not originate from a watched folder.
+
+### Recommended behavior
+
+If the user explicitly invokes `Paste Image` and the pasteboard contains image data, Vapor should:
+
+1. create or upsert an `ImageAsset`
+2. surface it in the screenshot shelf
+3. insert the annotated reference into the prompt by default
+
+### Product decision
+
+Start with an explicit `Paste Image` action rather than hijacking ordinary `Paste`.
+
+This keeps standard text paste behavior intact and avoids surprising users when the clipboard contains mixed representations.
+
+### Insertion labeling
+
+Use source-kind-specific labeling:
+
+- screenshots insert:
+  ```text
+  [Screenshot]
+  path: ...
+  ```
+- pasted images insert:
+  ```text
+  [Image]
+  path: ...
+  ```
+
+### Shared implementation direction
+
+Paste-image support should go through the same image asset pipeline as screenshot imports.
+
+That means adding a data-based import path alongside file-based import in the image asset service, not introducing a separate model.
+
+### Suggested implementation tasks
+
+- add `Paste Image` to the app command surface
+- inspect `NSPasteboard` for image data representations
+- normalize pasteboard image data into the asset pipeline
+- create or upsert the `ImageAsset`
+- surface the pasted image in the bottom shelf
+- insert the annotated prompt reference
+- mark it as recently inserted
+
+## Step 3: Watched-Folder Permissions and Folder Selection
+
+### Goal
+
+Replace the current hardcoded Desktop scanning behavior with an explicit user-controlled watched-folder model.
+
+### Product direction
+
+Support watched folders through user-approved access and expose them in Settings.
+
+The first version should support:
+
+- Desktop
+- custom folders via `Add Folder...`
+
+Downloads can come later if needed.
+
+### Product decision
+
+Start with `Desktop + Add Folder...` immediately rather than only a Desktop toggle.
+
+That makes the system more future-compatible without requiring another settings redesign in the next iteration.
+
+### Recommended settings UX
+
+Add a `Screenshot Sources` or `Watched Folders` section with:
+
+- a Desktop watch toggle or add button
+- `Add Folder...`
+- a list of watched folders
+- remove controls
+- invalid/broken folder state if access is lost
+
+### Permission and storage direction
+
+Even if development builds can access files more loosely, the feature should be designed around explicit user-granted folder access.
+
+Persist:
+
+- watched folder bookmarks
+- resolved folder display names
+- last scan timestamp per watched folder
+
+### Recommended implementation approach
+
+Use polling first, not full filesystem event watching.
+
+Polling is simpler, robust enough for the next step, and easier to reason about across multiple folders. It can later be replaced or augmented with event-driven watching if needed.
+
+### Suggested implementation tasks
+
+- add watched-folder settings model
+- add folder selection UI
+- persist folder bookmarks and restore them on launch
+- scan configured watched folders instead of the hardcoded Desktop path
+- keep screenshot heuristics layered:
+  - recent image file
+  - screenshot-like name
+  - plausible dimensions
+  - recent creation time
+
+## Shared Architecture Direction For These Steps
+
+All intake paths should converge on the same image asset model:
+
+- watched-folder screenshots
+- pasted images
+- later dropped image files
+- later browser/article image extraction
+
+The implementation should continue to centralize actual image creation/upsert work in the image asset service and use the shelf store as the orchestration layer for recent visual intake.
+
+## Recommended Execution Order
+
+### Phase A
+
+- shelf polish
+- better badges and shelf state
+- dismissal persistence
+- improved empty and missing-file states
+
+### Phase B
+
+- explicit `Paste Image`
+- pasteboard image intake through the shared asset pipeline
+- shelf surfacing plus prompt insertion
+
+### Phase C
+
+- watched-folder settings UI
+- bookmark persistence
+- Desktop and custom folder scanning
+- removal of hardcoded Desktop-only detection

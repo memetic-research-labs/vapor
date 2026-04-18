@@ -5,12 +5,19 @@ import SwiftUI
 struct ScreenshotShelfView: View {
     @Environment(ScreenshotShelfStore.self) private var screenshotShelf
 
-    @Query(sort: [SortDescriptor(\ImageAsset.lastObservedAt, order: .reverse)]) private var imageAssets: [ImageAsset]
+    @Query(sort: [SortDescriptor(\ImageAsset.createdAt, order: .reverse)]) private var imageAssets: [ImageAsset]
 
     private var visibleAssets: [ImageAsset] {
-        imageAssets.filter { asset in
-            asset.sourceKind == .screenshot && !screenshotShelf.dismissedAssetIDs.contains(asset.id)
-        }
+        imageAssets
+            .filter { asset in
+                asset.sourceKind == .screenshot && !screenshotShelf.dismissedAssetIDs.contains(asset.id)
+            }
+            .sorted { lhs, rhs in
+                if lhs.createdAt == rhs.createdAt {
+                    return lhs.displayTitle.localizedCaseInsensitiveCompare(rhs.displayTitle) == .orderedAscending
+                }
+                return lhs.createdAt > rhs.createdAt
+            }
     }
 
     var body: some View {
