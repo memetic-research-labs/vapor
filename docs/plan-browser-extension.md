@@ -608,6 +608,10 @@ See `docs/plan-web-scraping.md`.
 
 ## Security Notes
 
+Related follow-on architecture:
+
+- For site-aware structured extraction workflows such as Amazon review corpora, see [`docs/plan-browser-research-adapters.md`](plan-browser-research-adapters.md).
+
 - The server **only** binds `127.0.0.1` — never `0.0.0.0`. Remote access is impossible by design.
 - The localhost bridge uses **explicit client authentication**: on first setup, the Mac app generates a random secret stored in `UserDefaults`, and the extension saves it in `chrome.storage.local`. Both `GET /api/stream` and `POST /api/response` must present this secret via `Authorization: Bearer <token>`. CORS is used as a browser-side hardening measure after the server validates the shared secret.
 - CORS headers are set by reflecting the request `Origin` when it matches the known extension origin (`chrome-extension://<id>`) or `http://127.0.0.1`; `Vary: Origin` is included. Arbitrary web pages cannot connect because they lack the bearer token.
