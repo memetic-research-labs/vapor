@@ -2,6 +2,10 @@
 
 ## Purpose
 
+Related design doc:
+
+- `docs/plan-browser-research-sources.md` expands this adapter plan into the broader interrogation/source-discovery model, including observed XHR feeds, user-defined sources, and prompt-assisted source authoring.
+
 Vapor already has a bidirectional browser bridge that can:
 
 - send commands from the app to the extension over SSE
