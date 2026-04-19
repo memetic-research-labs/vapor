@@ -456,22 +456,18 @@ struct ContentView: View {
     }
 
     private var editorSection: some View {
-        ZStack {
-            Color(nsColor: .windowBackgroundColor)
-
-            NativeTextEditor(text: $viewModel.content, isFocused: $isEditorFocused)
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(Color(nsColor: .textBackgroundColor))
-                )
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-                .editorGlow(
-                    isFocused: isEditorFocused,
-                    isDictating: viewModel.isDictating,
-                    inputLevel: dictationService.inputLevel
-                )
-                .padding(EdgeInsets(top: 8, leading: 10, bottom: 10, trailing: 10))
-        }
+        NativeTextEditor(text: $viewModel.content, isFocused: $isEditorFocused)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color(nsColor: .textBackgroundColor))
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .editorGlow(
+                isFocused: isEditorFocused,
+                isDictating: viewModel.isDictating,
+                inputLevel: dictationService.inputLevel
+            )
+            .padding(EdgeInsets(top: 8, leading: 10, bottom: 10, trailing: 10))
         .frame(maxHeight: .infinity)
     }
 
