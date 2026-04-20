@@ -11,6 +11,8 @@ struct ContentView: View {
     @Environment(CompressionService.self) private var compressionService
     @Environment(BrowserBridge.self) private var browserBridge
     @Environment(ContextQueueService.self) private var contextQueue
+    @Environment(ScreenshotShelfStore.self) private var screenshotShelf
+    @Environment(MainWindowFocusStore.self) private var focusStore
     @Environment(StatusBarService.self) private var statusBar
     @State private var viewModel = EditorViewModel()
     @State private var historyService = PromptHistoryService()
@@ -138,60 +140,91 @@ struct ContentView: View {
     }
 
     private var contentGroup: some View {
-        Group {
+        let baseContent = AnyView(Group {
             switch windowManager.windowState {
             case .minimized:
                 minimizedView
             case .expanded:
                 expandedView
             }
-        }
-        .onChange(of: windowManager.windowState) { _, newState in
-            if newState == .expanded {
-                windowManager.resizeForPanels(
-                    showContextTray: showContextTray,
-                    showTestSidebar: showTestSidebar
-                )
-                refocusEditorAfterTransition()
+        })
+
+        let layoutAwareContent = AnyView(
+            baseContent
+                .onChange(of: windowManager.windowState) { _, newState in
+                    if newState == .expanded {
+                        windowManager.resizeForPanels(
+                            showContextTray: showContextTray,
+                            showTestSidebar: showTestSidebar
+                        )
+                        refocusEditorAfterTransition()
+                    }
+                }
+                .onChange(of: HistoryStore.shared.pendingRestore?.persistentModelID) { _, newID in
+                    if newID != nil, let record = HistoryStore.shared.pendingRestore {
+                        viewModel.restoreFromHistory(record)
+                        HistoryStore.shared.pendingRestore = nil
+                        toastService.showSuccess("Restored from history")
+                    }
+                }
+                .onChange(of: isEditorFocused) { _, focused in
+                    if focused {
+                        focusStore.focus(.editor)
+                    }
+                }
+        )
+
+        let commandContent = AnyView(
+            layoutAwareContent
+                .onReceive(NotificationCenter.default.publisher(for: .vaporCopyOriginal)) { _ in
+                    viewModel.copyOriginalToClipboard()
+                    toastService.showSuccess("Original copied to clipboard")
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .vaporCompressAndCopy)) { _ in
+                    Task { await performCompressAndCopy() }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .vaporCopyAndClear)) { _ in
+                    viewModel.copyAndClear()
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .vaporShowHistory)) { _ in
+                    openWindow(id: "prompt-history")
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .vaporShowHelp)) { _ in
+                    openWindow(id: "keyboard-shortcuts")
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .vaporSendToBrowser)) { _ in
+                    sendToBrowser()
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .vaporChooseBrowserTarget)) { _ in
+                    chooseBrowserTarget()
+                }
+        )
+
+        return commandContent
+            .onReceive(NotificationCenter.default.publisher(for: .vaporInsertContextItem)) { notification in
+                if let text = notification.object as? String {
+                    viewModel.content += (viewModel.content.isEmpty ? "" : "\n\n") + text
+                }
             }
-        }
-        .onChange(of: HistoryStore.shared.pendingRestore?.persistentModelID) { _, newID in
-            if newID != nil, let record = HistoryStore.shared.pendingRestore {
-                viewModel.restoreFromHistory(record)
-                HistoryStore.shared.pendingRestore = nil
-                toastService.showSuccess("Restored from history")
+            .onReceive(NotificationCenter.default.publisher(for: .vaporFocusEditor)) { _ in
+                focusStore.focus(.editor)
+                EditorTextViewRegistry.refocus()
             }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .vaporCopyOriginal)) { _ in
-            viewModel.copyOriginalToClipboard()
-            toastService.showSuccess("Original copied to clipboard")
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .vaporCompressAndCopy)) { _ in
-            Task { await performCompressAndCopy() }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .vaporCopyAndClear)) { _ in
-            viewModel.copyAndClear()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .vaporShowHistory)) { _ in
-            openWindow(id: "prompt-history")
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .vaporShowHelp)) { _ in
-            openWindow(id: "keyboard-shortcuts")
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .vaporSendToBrowser)) { _ in
-            sendToBrowser()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .vaporChooseBrowserTarget)) { _ in
-            chooseBrowserTarget()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .vaporInsertContextItem)) { notification in
-            if let text = notification.object as? String {
-                viewModel.content += (viewModel.content.isEmpty ? "" : "\n\n") + text
+            .onReceive(NotificationCenter.default.publisher(for: .vaporFocusContextTray)) { _ in
+                if !showContextTray {
+                    windowManager.resizeForPanels(showContextTray: true, showTestSidebar: showTestSidebar)
+                    withAnimation {
+                        showContextTray = true
+                    }
+                }
+                focusStore.focus(.contextTray)
             }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .vaporLLMDownloadCompleted)) { _ in
-            Task { await compressionService.reloadLocalLLMIfNeeded() }
-        }
+            .onReceive(NotificationCenter.default.publisher(for: .vaporFocusToolRail)) { _ in
+                focusStore.focus(.toolRail)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .vaporLLMDownloadCompleted)) { _ in
+                Task { await compressionService.reloadLocalLLMIfNeeded() }
+            }
     }
 
     private var minimizedView: some View {
@@ -263,123 +296,210 @@ struct ContentView: View {
     }
 
     private var expandedContent: some View {
-        HStack(spacing: 0) {
-            ToolSidebarView(
-                viewModel: viewModel,
-                dictationService: dictationService,
-                preferences: preferences,
-                onChooseTarget: {
-                    chooseBrowserTarget()
-                },
-                onPostToTarget: {
-                    sendToBrowser()
-                },
-                onToggleDictation: {
-                    toggleDictation()
-                }
-            )
+        GeometryReader { proxy in
+            let toolSidebarWidth: CGFloat = 42
+            let contextTrayWidth: CGFloat = showContextTray ? 248 : 0
+            let testSidebarWidth: CGFloat = showTestSidebar ? 350 : 0
+            let dividerCount = 1 + (showContextTray ? 1 : 0) + (showTestSidebar ? 1 : 0)
+            let centerWidth = max(640, proxy.size.width - toolSidebarWidth - contextTrayWidth - testSidebarWidth - CGFloat(dividerCount))
 
-            Divider()
-
-            VStack(spacing: 0) {
-                ToolbarView(
+            HStack(spacing: 0) {
+                ToolSidebarView(
                     viewModel: viewModel,
+                    dictationService: dictationService,
                     preferences: preferences,
-                    onCompressAndCopy: {
-                        Task { await performCompressAndCopy() }
+                    onChooseTarget: {
+                        chooseBrowserTarget()
                     },
-                    onCopyOriginal: {
-                        viewModel.copyOriginalToClipboard()
-                        toastService.showSuccess("Original copied to clipboard")
+                    onPostToTarget: {
+                        sendToBrowser()
                     },
-                    onShowHistory: {
-                        openWindow(id: "prompt-history")
-                    },
-                    onToggleTest: {
-                        let willShow = !showTestSidebar
-                        windowManager.resizeForPanels(
-                            showContextTray: showContextTray,
-                            showTestSidebar: willShow
-                        )
-                        withAnimation {
-                            showTestSidebar.toggle()
-                        }
-                        refocusEditorAfterTransition()
-                    },
-                    onToggleContextTray: {
-                        let willShow = !showContextTray
-                        windowManager.resizeForPanels(
-                            showContextTray: willShow,
-                            showTestSidebar: showTestSidebar
-                        )
-                        withAnimation {
-                            showContextTray.toggle()
-                        }
-                        refocusEditorAfterTransition()
-                    },
-                    onMinimize: {
-                        windowManager.minimize()
+                    onToggleDictation: {
+                        toggleDictation()
                     }
                 )
+                .frame(width: toolSidebarWidth)
 
-                NativeTextEditor(text: $viewModel.content, isFocused: $isEditorFocused)
-                    .editorGlow(
-                        isFocused: isEditorFocused,
-                        isDictating: viewModel.isDictating,
-                        inputLevel: dictationService.inputLevel
-                    )
-                    .padding(EdgeInsets(top: 8, leading: 16, bottom: 12, trailing: 16))
-                    .frame(maxHeight: .infinity)
+                Divider()
 
-                if viewModel.originalTokenCount > 0 {
-                    Divider()
-                    StatsBarView(
-                        originalTokens: viewModel.originalTokenCount,
-                        compressedTokens: viewModel.compressedTokenCount,
-                        ratio: viewModel.compressionRatio
-                    )
-                }
-
-                if !viewModel.compressedContent.isEmpty {
-                    Divider()
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Compressed Preview")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(.secondary)
-                            .padding(.horizontal, 12)
-
-                        ScrollView {
-                            Text(viewModel.compressedContent)
-                                .font(.system(size: 13, design: .monospaced))
-                                .textSelection(.enabled)
-                                .padding(12)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                VStack(spacing: 0) {
+                    ToolbarView(
+                        viewModel: viewModel,
+                        preferences: preferences,
+                        onCompressAndCopy: {
+                            Task { await performCompressAndCopy() }
+                        },
+                        onCopyOriginal: {
+                            viewModel.copyOriginalToClipboard()
+                            toastService.showSuccess("Original copied to clipboard")
+                        },
+                        onShowHistory: {
+                            openWindow(id: "prompt-history")
+                        },
+                        onToggleTest: {
+                            let willShow = !showTestSidebar
+                            windowManager.resizeForPanels(
+                                showContextTray: showContextTray,
+                                showTestSidebar: willShow
+                            )
+                            withAnimation {
+                                showTestSidebar.toggle()
+                            }
+                            refocusEditorAfterTransition()
+                        },
+                        onToggleContextTray: {
+                            let willShow = !showContextTray
+                            windowManager.resizeForPanels(
+                                showContextTray: willShow,
+                                showTestSidebar: showTestSidebar
+                            )
+                            withAnimation {
+                                showContextTray.toggle()
+                            }
+                            refocusEditorAfterTransition()
+                        },
+                        onMinimize: {
+                            windowManager.minimize()
                         }
-                        .frame(maxHeight: 100)
-                        .background(Color.secondary.opacity(0.05))
+                    )
+
+                    Divider()
+
+                    editorSection
+
+                    if viewModel.originalTokenCount > 0 {
+                        Divider()
+                        StatsBarView(
+                            originalTokens: viewModel.originalTokenCount,
+                            compressedTokens: viewModel.compressedTokenCount,
+                            ratio: viewModel.compressionRatio
+                        )
                     }
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                    .animation(.easeInOut(duration: 0.2), value: viewModel.compressedContent.isEmpty)
+
+                    if !viewModel.compressedContent.isEmpty {
+                        Divider()
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Compressed Preview")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(.secondary)
+                                .padding(.horizontal, 12)
+
+                            ScrollView {
+                                Text(viewModel.compressedContent)
+                                    .font(.system(size: 13, design: .monospaced))
+                                    .textSelection(.enabled)
+                                    .padding(12)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .frame(maxHeight: 100)
+                            .background(Color(nsColor: .underPageBackgroundColor))
+                        }
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .animation(.easeInOut(duration: 0.2), value: viewModel.compressedContent.isEmpty)
+                    }
+
+                    if windowManager.windowState == .expanded {
+                        ScreenshotShelfView()
+                    }
+                }
+                .frame(width: centerWidth, alignment: .leading)
+                .frame(minHeight: 300, maxHeight: .infinity)
+
+                if showContextTray {
+                    Divider()
+                    ContextTrayView()
+                        .frame(width: contextTrayWidth)
+                }
+
+                if showTestSidebar {
+                    Divider()
+                    OpenRouterTestSidebar(
+                        prompt: $sidebarPrompt
+                    )
+                    .frame(width: testSidebarWidth)
                 }
             }
-            .frame(width: 640)
-            .frame(minHeight: 300)
-
-            if showContextTray {
-                Divider()
-                ContextTrayView()
-            }
-
-            if showTestSidebar {
-                Divider()
-                OpenRouterTestSidebar(
-                    prompt: $sidebarPrompt
-                )
-                .frame(width: 350)
-            }
+            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .leading)
         }
         .focusable()
+        .onKeyPress(.leftArrow) {
+            switch focusStore.activeZone {
+            case .screenshots:
+                NotificationCenter.default.post(name: .vaporScreenshotMoveLeft, object: nil)
+                return .handled
+            case .editor, .contextTray, .toolRail:
+                return .ignored
+            }
+        }
+        .onKeyPress(.rightArrow) {
+            switch focusStore.activeZone {
+            case .screenshots:
+                NotificationCenter.default.post(name: .vaporScreenshotMoveRight, object: nil)
+                return .handled
+            case .editor, .contextTray, .toolRail:
+                return .ignored
+            }
+        }
+        .onKeyPress(.upArrow) {
+            switch focusStore.activeZone {
+            case .contextTray:
+                NotificationCenter.default.post(name: .vaporContextMoveUp, object: nil)
+                return .handled
+            case .toolRail:
+                NotificationCenter.default.post(name: .vaporToolMoveUp, object: nil)
+                return .handled
+            case .editor, .screenshots:
+                return .ignored
+            }
+        }
+        .onKeyPress(.downArrow) {
+            switch focusStore.activeZone {
+            case .contextTray:
+                NotificationCenter.default.post(name: .vaporContextMoveDown, object: nil)
+                return .handled
+            case .toolRail:
+                NotificationCenter.default.post(name: .vaporToolMoveDown, object: nil)
+                return .handled
+            case .editor, .screenshots:
+                return .ignored
+            }
+        }
+        .onKeyPress(.space) {
+            switch focusStore.activeZone {
+            case .screenshots:
+                NotificationCenter.default.post(name: .vaporScreenshotInsertSelected, object: nil)
+                return .handled
+            case .contextTray:
+                NotificationCenter.default.post(name: .vaporContextActivateSecondary, object: nil)
+                return .handled
+            case .toolRail:
+                NotificationCenter.default.post(name: .vaporToolActivate, object: nil)
+                return .handled
+            case .editor:
+                return .ignored
+            }
+        }
+        .onKeyPress(.return) {
+            switch focusStore.activeZone {
+            case .screenshots:
+                NotificationCenter.default.post(name: .vaporScreenshotInsertSelected, object: nil)
+                return .handled
+            case .contextTray:
+                NotificationCenter.default.post(name: .vaporContextActivatePrimary, object: nil)
+                return .handled
+            case .toolRail:
+                NotificationCenter.default.post(name: .vaporToolActivate, object: nil)
+                return .handled
+            case .editor:
+                return .ignored
+            }
+        }
         .onKeyPress(.escape) {
+            if focusStore.activeZone != .editor {
+                focusStore.focus(.editor)
+                EditorTextViewRegistry.refocus()
+                return .handled
+            }
             windowManager.minimize()
             return .handled
         }
@@ -414,6 +534,22 @@ struct ContentView: View {
         } catch {
             toastService.showError("Compression failed: \(error.localizedDescription)")
         }
+    }
+
+    private var editorSection: some View {
+        NativeTextEditor(text: $viewModel.content, isFocused: $isEditorFocused)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color(nsColor: .textBackgroundColor))
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .editorGlow(
+                isFocused: isEditorFocused,
+                isDictating: viewModel.isDictating,
+                inputLevel: dictationService.inputLevel
+            )
+            .padding(EdgeInsets(top: 8, leading: 10, bottom: 10, trailing: 10))
+        .frame(maxHeight: .infinity)
     }
 
     private func performAutoCompress() async {

@@ -125,6 +125,17 @@ final class VectorizationService {
         }
     }
 
+    func deleteAllEmbeddings() async throws {
+        if !isReady {
+            await initialize()
+        }
+        guard isReady else { throw CocoaError(.fileNoSuchFile) }
+        let database = try await Self.sharedDatabase()
+        try await database.execute("DELETE FROM \(Self.tableName)")
+        await refreshVectorCount()
+        StatusBarService.shared.log("Cleared all vector embeddings", domain: .vectorization)
+    }
+
     func backfillMissingPromptEmbeddings(in context: ModelContext) async {
         await initialize()
         guard isReady else { return }

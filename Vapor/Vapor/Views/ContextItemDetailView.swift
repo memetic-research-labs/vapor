@@ -1,5 +1,6 @@
-import SwiftUI
+import AppKit
 import SwiftData
+import SwiftUI
 
 struct ContextItemDetailView: View {
     @Environment(\.modelContext) private var modelContext
@@ -26,6 +27,11 @@ struct ContextItemDetailView: View {
 
                         if item.status == .processing || item.status == .pending {
                             processingBanner(item: item)
+                        }
+
+                        if item.primaryImageAsset != nil {
+                            Divider()
+                            imageSection(item: item)
                         }
 
                         Divider()
@@ -296,6 +302,50 @@ struct ContextItemDetailView: View {
                                 .foregroundColor(.secondary)
                         }
                     }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func imageSection(item: ContextItem) -> some View {
+        if let asset = item.primaryImageAsset {
+            VStack(alignment: .leading, spacing: 8) {
+                sectionHeader("Image")
+
+                ImageAssetThumbnailView(asset: asset, size: nil, preferThumbnail: false, contentMode: .fit) {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color.secondary.opacity(0.08))
+                        .overlay {
+                            ProgressView()
+                                .controlSize(.small)
+                        }
+                }
+                .frame(maxWidth: .infinity)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+
+                HStack(spacing: 8) {
+                    Text(asset.sourceKind.displayName)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(Capsule().fill(Color.secondary.opacity(0.12)))
+
+                    if asset.pixelWidth > 0, asset.pixelHeight > 0 {
+                        Text("\(asset.pixelWidth) x \(asset.pixelHeight)")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                    }
+
+                    Spacer()
+
+                    Button("Reveal") {
+                        if let imageURL = imageURL(for: asset) {
+                            NSWorkspace.shared.activateFileViewerSelecting([imageURL])
+                        }
+                    }
+                    .buttonStyle(.borderless)
                 }
             }
         }
@@ -801,6 +851,18 @@ struct ContextItemDetailView: View {
                 .font(.system(size: 11))
                 .foregroundColor(.secondary)
         }
+    }
+
+    private func imageURL(for asset: ImageAsset) -> URL? {
+        if let originalPath = asset.originalPath, FileManager.default.fileExists(atPath: originalPath) {
+            return URL(fileURLWithPath: originalPath)
+        }
+
+        if BlobStore.shared.exists(relativePath: asset.blobPath) {
+            return BlobStore.shared.fileURL(relativePath: asset.blobPath)
+        }
+
+        return nil
     }
 
     private func openExplorer(for link: ContextItemURLLink) {

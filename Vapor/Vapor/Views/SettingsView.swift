@@ -1,6 +1,9 @@
 import SwiftUI
 import KeyboardShortcuts
 import OSLog
+#if DEBUG
+import SwiftData
+#endif
 
 private let logger = Logger(subsystem: "lol.mrl.app.Vapor", category: "Settings")
 
@@ -9,6 +12,9 @@ struct SettingsView: View {
     let preferences: UserPreferences
     @Environment(BrowserBridge.self) private var browserBridge
     @Environment(VectorizationService.self) private var vectorizationService
+    #if DEBUG
+    @Environment(\.modelContext) private var modelContext
+    #endif
     @State private var openRouterModelService = OpenRouterModelService()
     @State private var openRouterApiKey: String = ""
     @State private var compressionOpenRouterModel: String = "glm-5"
@@ -32,10 +38,15 @@ struct SettingsView: View {
     @State private var useCustomSummarizationOpenRouterModel: Bool = false
     @State private var customSummarizationOpenRouterModel: String = ""
     @State private var cloudModelSearchText: String = ""
+    #if DEBUG
+    @State private var swiftDataClearStatus: String = ""
+    @State private var vectorStoreClearStatus: String = ""
+    @State private var blobStoreClearStatus: String = ""
+    #endif
 
     private let validPortRange = 1...65_535
 
-    enum SettingsTab: String, CaseIterable, Identifiable {
+    enum SettingsTab: String, Identifiable {
         case compression = "Compression"
         case contextProcessing = "Context Processing"
         case cloud = "Cloud"
@@ -43,6 +54,9 @@ struct SettingsView: View {
         case general = "General"
         case browser = "Browser"
         case telemetry = "Telemetry"
+        #if DEBUG
+        case dataManagement = "Data Management"
+        #endif
 
         var id: String { rawValue }
 
@@ -55,8 +69,23 @@ struct SettingsView: View {
             case .cloud: return "cloud"
             case .general: return "gearshape.2"
             case .telemetry: return "chart.bar"
+            #if DEBUG
+            case .dataManagement: return "trash"
+            #endif
             }
         }
+
+        #if DEBUG
+        static let allCases: [SettingsTab] = [
+            .compression, .contextProcessing, .cloud, .ollama,
+            .general, .browser, .telemetry, .dataManagement
+        ]
+        #else
+        static let allCases: [SettingsTab] = [
+            .compression, .contextProcessing, .cloud, .ollama,
+            .general, .browser, .telemetry
+        ]
+        #endif
     }
 
     enum SettingsGroup: String, CaseIterable, Identifiable {
@@ -68,9 +97,14 @@ struct SettingsView: View {
         var tabs: [SettingsTab] {
             switch self {
             case .ai:
-                [.compression, .contextProcessing, .cloud, .ollama]
+                let aiTabs: [SettingsTab] = [.compression, .contextProcessing, .cloud, .ollama]
+                return aiTabs
             case .app:
-                [.general, .browser, .telemetry]
+                var appTabs: [SettingsTab] = [.general, .browser, .telemetry]
+                #if DEBUG
+                appTabs.append(.dataManagement)
+                #endif
+                return appTabs
             }
         }
     }
@@ -105,6 +139,10 @@ struct SettingsView: View {
                     generalTab
                 case .telemetry:
                     telemetryTab
+                #if DEBUG
+                case .dataManagement:
+                    dataManagementTab
+                #endif
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -473,6 +511,149 @@ struct SettingsView: View {
         }
         .padding(.horizontal, 8)
     }
+
+    // MARK: - Data Management Tab (DEBUG)
+
+    #if DEBUG
+    private var dataManagementTab: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                Text("DEBUG — Clear all rows from persistent stores. This cannot be undone.")
+                    .font(.system(size: 11))
+                    .foregroundColor(.red)
+
+                GroupBox("SwiftData Store") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Deletes all rows from: PromptRecord, ContextItem, URLRecord, ContextItemURLLink, EntityRecord, ContextItemEntityLink, ImageAsset, ContextItemImageLink")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+
+                        if !swiftDataClearStatus.isEmpty {
+                            Text(swiftDataClearStatus)
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundColor(swiftDataClearStatus.hasPrefix("Error") ? .red : .green)
+                        }
+
+                        Button("Clear SwiftData") {
+                            clearSwiftData()
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .foregroundColor(.red)
+                    }
+                    .padding(8)
+                }
+
+                GroupBox("Vector Store") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Deletes all embeddings from vectors.db (SQLiteVec table: \(VectorizationService.shared.providerDisplayName))")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+
+                        if !vectorStoreClearStatus.isEmpty {
+                            Text(vectorStoreClearStatus)
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundColor(vectorStoreClearStatus.hasPrefix("Error") ? .red : .green)
+                        }
+
+                        Button("Clear Vector Store") {
+                            clearVectorStore()
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .foregroundColor(.red)
+                    }
+                    .padding(8)
+                }
+
+                GroupBox("Blob Store") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Deletes all files from the blob storage directory (content-addressed assets, screenshots, etc.)")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+
+                        if !blobStoreClearStatus.isEmpty {
+                            Text(blobStoreClearStatus)
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundColor(blobStoreClearStatus.hasPrefix("Error") ? .red : .green)
+                        }
+
+                        Button("Clear Blob Store") {
+                            clearBlobStore()
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .foregroundColor(.red)
+                    }
+                    .padding(8)
+                }
+            }
+            .padding(20)
+        }
+    }
+
+    private func clearSwiftData() {
+        swiftDataClearStatus = "Clearing..."
+        do {
+            let context = modelContext
+
+            let promptRecords: [PromptRecord] = try context.fetch(FetchDescriptor())
+            for record in promptRecords { context.delete(record) }
+
+            let contextItems: [ContextItem] = try context.fetch(FetchDescriptor())
+            for item in contextItems { context.delete(item) }
+
+            let urlRecords: [URLRecord] = try context.fetch(FetchDescriptor())
+            for record in urlRecords { context.delete(record) }
+
+            let urlLinks: [ContextItemURLLink] = try context.fetch(FetchDescriptor())
+            for link in urlLinks { context.delete(link) }
+
+            let entityRecords: [EntityRecord] = try context.fetch(FetchDescriptor())
+            for record in entityRecords { context.delete(record) }
+
+            let entityLinks: [ContextItemEntityLink] = try context.fetch(FetchDescriptor())
+            for link in entityLinks { context.delete(link) }
+
+            let imageAssets: [ImageAsset] = try context.fetch(FetchDescriptor())
+            for asset in imageAssets { context.delete(asset) }
+
+            let imageLinks: [ContextItemImageLink] = try context.fetch(FetchDescriptor())
+            for link in imageLinks { context.delete(link) }
+
+            try context.save()
+            swiftDataClearStatus = "All SwiftData rows deleted"
+        } catch {
+            swiftDataClearStatus = "Error: \(error.localizedDescription)"
+        }
+    }
+
+    private func clearVectorStore() {
+        vectorStoreClearStatus = "Clearing..."
+        Task {
+            do {
+                try await VectorizationService.shared.deleteAllEmbeddings()
+                await MainActor.run {
+                    vectorStoreClearStatus = "Cleared all vector embeddings"
+                }
+            } catch {
+                await MainActor.run {
+                    vectorStoreClearStatus = "Error: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    private func clearBlobStore() {
+        blobStoreClearStatus = "Clearing..."
+        do {
+            try BlobStore.shared.clearAll()
+            blobStoreClearStatus = "Cleared all blobs"
+        } catch {
+            blobStoreClearStatus = "Error: \(error.localizedDescription)"
+        }
+    }
+    #endif
 
     // MARK: - Compression Tab
 

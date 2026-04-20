@@ -1,5 +1,11 @@
 import SwiftUI
 
+private enum ToolRailItem: CaseIterable {
+    case target
+    case post
+    case dictation
+}
+
 struct ToolSidebarView: View {
     private let railWidth: CGFloat = 42
     private let buttonSize: CGFloat = 34
@@ -8,27 +14,45 @@ struct ToolSidebarView: View {
     let dictationService: SpeechDictationService
     let preferences: UserPreferences
     @Environment(BrowserBridge.self) private var browserBridge
+    @Environment(MainWindowFocusStore.self) private var focusStore
     let onChooseTarget: () -> Void
     let onPostToTarget: () -> Void
     let onToggleDictation: () -> Void
 
+    @State private var selectedItem: ToolRailItem = .target
+
     var body: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 8) {
             targetButton
             postButton
             dictationButton
 
             Spacer(minLength: 0)
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, 6)
         .frame(width: railWidth)
         .frame(maxHeight: .infinity, alignment: .top)
         .background(Color(nsColor: .controlBackgroundColor))
+        .onReceive(NotificationCenter.default.publisher(for: .vaporFocusToolRail)) { _ in
+            focusStore.focus(.toolRail)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .vaporToolMoveUp)) { _ in
+            guard focusStore.activeZone == .toolRail else { return }
+            moveSelection(delta: -1)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .vaporToolMoveDown)) { _ in
+            guard focusStore.activeZone == .toolRail else { return }
+            moveSelection(delta: 1)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .vaporToolActivate)) { _ in
+            guard focusStore.activeZone == .toolRail else { return }
+            activateSelectedTool()
+        }
     }
 
     private var targetButton: some View {
         Button(action: onChooseTarget) {
-            sidebarIcon(symbol: "safari", tint: targetTint)
+            sidebarIcon(symbol: "safari", tint: targetTint, isSelected: focusStore.activeZone == .toolRail && selectedItem == .target)
                 .frame(width: buttonSize, height: buttonSize)
         }
         .buttonStyle(.plain)
@@ -47,7 +71,7 @@ struct ToolSidebarView: View {
 
     private var postButton: some View {
         Button(action: onPostToTarget) {
-            sidebarIcon(symbol: browserBridge.canPostToSelectedTarget ? "paperplane.fill" : "paperplane", tint: postTint)
+            sidebarIcon(symbol: browserBridge.canPostToSelectedTarget ? "paperplane.fill" : "paperplane", tint: postTint, isSelected: focusStore.activeZone == .toolRail && selectedItem == .post)
                 .frame(width: buttonSize, height: buttonSize)
         }
         .buttonStyle(.plain)
@@ -69,8 +93,13 @@ struct ToolSidebarView: View {
                 if viewModel.isDictating {
                     AudioLevelView(inputLevel: dictationService.inputLevel, isActive: true)
                         .frame(width: buttonSize, height: buttonSize)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke((focusStore.activeZone == .toolRail && selectedItem == .dictation) ? Color.accentColor.opacity(0.3) : Color.clear, lineWidth: 1.5)
+                        )
+                        .editorGlow(isFocused: focusStore.activeZone == .toolRail && selectedItem == .dictation)
                 } else {
-                    sidebarIcon(symbol: "mic", tint: .secondary)
+                    sidebarIcon(symbol: "mic", tint: .secondary, isSelected: focusStore.activeZone == .toolRail && selectedItem == .dictation)
                 }
             }
             .overlay(alignment: .topTrailing) {
@@ -87,13 +116,13 @@ struct ToolSidebarView: View {
         .help(dictationHelpText)
     }
 
-    private func sidebarIcon(symbol: String, tint: Color) -> some View {
+    private func sidebarIcon(symbol: String, tint: Color, isSelected: Bool) -> some View {
         ZStack {
             RoundedRectangle(cornerRadius: 10)
                 .fill(Color(nsColor: .windowBackgroundColor))
                 .overlay(
                     RoundedRectangle(cornerRadius: 10)
-                        .stroke(tint.opacity(0.25), lineWidth: 1)
+                        .stroke(isSelected ? Color.accentColor.opacity(0.3) : tint.opacity(0.25), lineWidth: isSelected ? 1.5 : 1)
                 )
                 .frame(width: buttonSize, height: buttonSize)
 
@@ -109,6 +138,26 @@ struct ToolSidebarView: View {
                     .offset(x: 3, y: -3)
             }
         }
+        .editorGlow(isFocused: isSelected)
+    }
+
+    private func activateSelectedTool() {
+        switch selectedItem {
+        case .target: onChooseTarget()
+        case .post: onPostToTarget()
+        case .dictation: onToggleDictation()
+        }
+    }
+
+    private func moveSelection(delta: Int) {
+        let items = ToolRailItem.allCases
+        guard let currentIndex = items.firstIndex(of: selectedItem) else {
+            selectedItem = items.first ?? .target
+            return
+        }
+
+        let nextIndex = min(max(0, currentIndex + delta), items.count - 1)
+        selectedItem = items[nextIndex]
     }
 
     private var targetTint: Color {

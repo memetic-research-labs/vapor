@@ -28,8 +28,10 @@ struct NativeTextEditor: NSViewRepresentable {
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
         textView.isAutomaticTextReplacementEnabled = false
-        textView.drawsBackground = true
-        textView.backgroundColor = .textBackgroundColor
+        // Let SwiftUI own the visible editor card so AppKit does not
+        // paint a rectangular background during resize/redraw.
+        textView.drawsBackground = false
+        textView.backgroundColor = .clear
         textView.textContainerInset = NSSize(width: 12, height: 10)
         textView.focusRingType = .none
         textView.isVerticallyResizable = true

@@ -2,10 +2,12 @@ import SwiftUI
 
 struct ContextTrayView: View {
     @Environment(ContextQueueService.self) private var contextQueue
+    @Environment(MainWindowFocusStore.self) private var focusStore
     @Environment(\.openWindow) private var openWindow
 
     @State private var searchText = ""
     @State private var showReadyOnly = false
+    @State private var selectedItemID: UUID?
 
     private var filteredItems: [ContextItem] {
         var items = showReadyOnly ? contextQueue.ready : contextQueue.ready + contextQueue.queue + contextQueue.processing + contextQueue.failed
@@ -32,36 +34,47 @@ struct ContextTrayView: View {
             if filteredItems.isEmpty {
                 emptyState
             } else {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 2) {
-                        ForEach(filteredItems) { item in
-                            Button {
-                                openDetail(item: item)
-                            } label: {
-                                ContextItemRow(item: item)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 3)
-                            }
-                            .buttonStyle(.plain)
-                            .contentShape(Rectangle())
-                            .contextMenu {
-                                Button("Open") {
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 2) {
+                            ForEach(filteredItems) { item in
+                                Button {
+                                    focusStore.focus(.contextTray)
+                                    selectedItemID = item.id
                                     openDetail(item: item)
+                                } label: {
+                                    ContextItemRow(item: item, isSelected: focusStore.activeZone == .contextTray && selectedItemID == item.id)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 3)
                                 }
-                                Button("Insert into editor") {
-                                    insertItem(item)
-                                }
-                                Button("Copy text") {
-                                    copyItemText(item)
-                                }
-                                Divider()
-                                Button("Remove", role: .destructive) {
-                                    contextQueue.remove(item)
+                                .buttonStyle(.plain)
+                                .contentShape(Rectangle())
+                                .id(item.id)
+                                .contextMenu {
+                                    Button("Open") {
+                                        openDetail(item: item)
+                                    }
+                                    Button("Insert into editor") {
+                                        insertItem(item)
+                                    }
+                                    Button("Copy text") {
+                                        copyItemText(item)
+                                    }
+                                    Divider()
+                                    Button("Remove", role: .destructive) {
+                                        contextQueue.remove(item)
+                                    }
                                 }
                             }
                         }
+                        .padding(.vertical, 4)
                     }
-                    .padding(.vertical, 4)
+                    .onChange(of: selectedItemID) { _, id in
+                        guard focusStore.activeZone == .contextTray, let id else { return }
+                        withAnimation(.easeInOut(duration: 0.12)) {
+                            proxy.scrollTo(id, anchor: .center)
+                        }
+                    }
                 }
             }
 
@@ -69,8 +82,50 @@ struct ContextTrayView: View {
 
             footerBar
         }
-        .frame(width: 260)
+        .frame(width: 248)
         .background(Color(nsColor: .windowBackgroundColor))
+        .onReceive(NotificationCenter.default.publisher(for: .vaporFocusContextTray)) { _ in
+            focusStore.focus(.contextTray)
+            if selectedItemID == nil {
+                selectedItemID = filteredItems.first?.id
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .vaporContextMoveUp)) { _ in
+            guard focusStore.activeZone == .contextTray,
+                  let current = selectedItemID else {
+                selectedItemID = filteredItems.first?.id
+                return
+            }
+            moveSelection(from: current, delta: -1)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .vaporContextMoveDown)) { _ in
+            guard focusStore.activeZone == .contextTray,
+                  let current = selectedItemID else {
+                selectedItemID = filteredItems.first?.id
+                return
+            }
+            moveSelection(from: current, delta: 1)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .vaporContextActivatePrimary)) { _ in
+            guard focusStore.activeZone == .contextTray,
+                  let item = selectedItem else { return }
+            openDetail(item: item)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .vaporContextActivateSecondary)) { _ in
+            guard focusStore.activeZone == .contextTray,
+                  let item = selectedItem else { return }
+            insertItem(item)
+        }
+        .onChange(of: filteredItems.map(\.id)) { _, ids in
+            guard let selectedItemID else {
+                self.selectedItemID = ids.first
+                return
+            }
+
+            if !ids.contains(selectedItemID) {
+                self.selectedItemID = ids.first
+            }
+        }
     }
 
     private var headerBar: some View {
@@ -87,8 +142,9 @@ struct ContextTrayView: View {
                 .padding(.vertical, 2)
                 .background(Capsule().fill(Color.secondary.opacity(0.12)))
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 8)
         .padding(.vertical, 8)
+        .frame(height: 44)
         .background(.bar)
     }
 
@@ -109,8 +165,10 @@ struct ContextTrayView: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 8)
         .padding(.vertical, 4)
+        .frame(height: 36)
+        .background(Color(nsColor: .windowBackgroundColor))
     }
 
     private var emptyState: some View {
@@ -162,9 +220,10 @@ struct ContextTrayView: View {
             .buttonStyle(.plain)
             .disabled(contextQueue.ready.isEmpty && contextQueue.failed.isEmpty)
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 8)
         .padding(.vertical, 6)
-        .background(Color(nsColor: .controlBackgroundColor))
+        .frame(height: 36)
+        .background(.bar)
     }
 
     private func openDetail(item: ContextItem) {
@@ -182,10 +241,27 @@ struct ContextTrayView: View {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
     }
+
+    private var selectedItem: ContextItem? {
+        guard let selectedItemID else { return nil }
+        return filteredItems.first(where: { $0.id == selectedItemID })
+    }
+
+    private func moveSelection(from itemID: UUID, delta: Int) {
+        let ids = filteredItems.map(\.id)
+        guard let currentIndex = ids.firstIndex(of: itemID) else {
+            selectedItemID = ids.first
+            return
+        }
+
+        let nextIndex = min(max(0, currentIndex + delta), ids.count - 1)
+        selectedItemID = ids[nextIndex]
+    }
 }
 
 struct ContextItemRow: View {
     let item: ContextItem
+    let isSelected: Bool
 
     var body: some View {
         HStack(spacing: 8) {
@@ -233,7 +309,11 @@ struct ContextItemRow: View {
         .padding(.vertical, 5)
         .padding(.leading, 4)
         .padding(.trailing, 8)
-        .background(RoundedRectangle(cornerRadius: 4).fill(Color(nsColor: .controlBackgroundColor)))
+        .background(RoundedRectangle(cornerRadius: 4).fill(isSelected ? Color.accentColor.opacity(0.12) : Color(nsColor: .controlBackgroundColor)))
+        .overlay(
+            RoundedRectangle(cornerRadius: 4)
+                .stroke(isSelected ? Color.accentColor.opacity(0.3) : Color.clear, lineWidth: 1)
+        )
     }
 
     @ViewBuilder
