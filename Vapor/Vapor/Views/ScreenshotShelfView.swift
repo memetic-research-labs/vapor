@@ -18,23 +18,10 @@ struct ScreenshotShelfView: View {
         let screenshotRaw = ImageSourceKind.screenshot.rawValue
         _imageAssets = Query(
             filter: #Predicate<ImageAsset> { asset in
-                asset.sourceKindRaw == screenshotRaw
+                asset.sourceKindRaw == screenshotRaw && !asset.dismissedFromShelf
             },
             sort: [SortDescriptor(\ImageAsset.createdAt, order: .reverse)]
         )
-    }
-
-    private var visibleAssets: [ImageAsset] {
-        imageAssets
-            .filter { asset in
-                asset.sourceKind == .screenshot && !screenshotShelf.dismissedAssetIDs.contains(asset.id)
-            }
-            .sorted { lhs, rhs in
-                if lhs.createdAt == rhs.createdAt {
-                    return lhs.displayTitle.localizedCaseInsensitiveCompare(rhs.displayTitle) == .orderedAscending
-                }
-                return lhs.createdAt > rhs.createdAt
-            }
     }
 
     var body: some View {
@@ -51,10 +38,10 @@ struct ScreenshotShelfView: View {
         }
         .background(Color(nsColor: .windowBackgroundColor))
         .onReceive(NotificationCenter.default.publisher(for: .vaporFocusScreenshots)) { _ in
-            guard !visibleAssets.isEmpty else { return }
+            guard !imageAssets.isEmpty else { return }
             screenshotShelf.isExpanded = true
             focusStore.focus(.screenshots)
-            focusedAssetID = visibleAssets.first?.id
+            focusedAssetID = imageAssets.first?.id
         }
         .onReceive(NotificationCenter.default.publisher(for: .vaporScreenshotMoveLeft)) { _ in
             guard focusStore.activeZone == .screenshots,
@@ -83,8 +70,8 @@ struct ScreenshotShelfView: View {
                         .font(.system(size: 10, weight: .semibold))
                     Text("Screenshots")
                         .font(.system(size: 11, weight: .semibold))
-                    if !visibleAssets.isEmpty {
-                        Text("\(visibleAssets.count)")
+                    if !imageAssets.isEmpty {
+                        Text("\(imageAssets.count)")
                             .font(.system(size: 10, weight: .medium))
                             .foregroundColor(.secondary)
                             .padding(.horizontal, 6)
@@ -95,7 +82,7 @@ struct ScreenshotShelfView: View {
             }
             .buttonStyle(.plain)
 
-            Text(visibleAssets.isEmpty ? "Take a screenshot to stage it here." : headerHintText)
+            Text(imageAssets.isEmpty ? "Take a screenshot to stage it here." : headerHintText)
                 .font(.system(size: 10))
                 .foregroundColor(.secondary)
                 .lineLimit(1)
@@ -127,7 +114,7 @@ struct ScreenshotShelfView: View {
 
     @ViewBuilder
     private var contentView: some View {
-        if visibleAssets.isEmpty {
+        if imageAssets.isEmpty {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Take a macOS screenshot and it will appear here for quick prompt insertion.")
                     .font(.system(size: 11))
@@ -143,7 +130,7 @@ struct ScreenshotShelfView: View {
             ScrollViewReader { proxy in
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(alignment: .top, spacing: 12) {
-                        ForEach(visibleAssets) { asset in
+                        ForEach(imageAssets) { asset in
                             ScreenshotShelfCard(
                                 asset: asset,
                                 thumbnailSize: thumbnailSize,
@@ -164,10 +151,10 @@ struct ScreenshotShelfView: View {
                 }
                 .onAppear {
                     if focusedAssetID == nil {
-                        focusedAssetID = visibleAssets.first?.id
+                        focusedAssetID = imageAssets.first?.id
                     }
                 }
-                .onChange(of: visibleAssets.map(\.id)) { _, ids in
+                .onChange(of: imageAssets.map(\.id)) { _, ids in
                     guard let focusedAssetID else {
                         self.focusedAssetID = ids.first
                         return
@@ -189,7 +176,7 @@ struct ScreenshotShelfView: View {
 
     private var currentSelectedAsset: ImageAsset? {
         if let focusedAssetID,
-           let asset = visibleAssets.first(where: { $0.id == focusedAssetID }) {
+           let asset = imageAssets.first(where: { $0.id == focusedAssetID }) {
             return asset
         }
 
@@ -197,7 +184,7 @@ struct ScreenshotShelfView: View {
     }
 
     private func moveFocus(by delta: Int, currentAssetID: UUID) {
-        let ids = visibleAssets.map(\.id)
+        let ids = imageAssets.map(\.id)
         guard let currentIndex = ids.firstIndex(of: currentAssetID) else {
             focusedAssetID = ids.first
             return
@@ -223,10 +210,6 @@ private struct ScreenshotShelfCard: View {
     let isFocused: Bool
     let onSelect: () -> Void
     let onInsert: () -> Void
-
-    private var nsImage: NSImage? {
-        NSImage(contentsOf: screenshotShelf.fileURL(for: asset))
-    }
 
     var body: some View {
         Button {

@@ -120,6 +120,13 @@ final class ImageAssetService {
         return item
     }
 
+    @MainActor
+    func setDismissed(_ dismissed: Bool, for asset: ImageAsset) throws {
+        guard let modelContext else { throw ImageAssetServiceError.noModelContext }
+        asset.dismissedFromShelf = dismissed
+        try modelContext.save()
+    }
+
     func fileURL(for asset: ImageAsset) -> URL {
         blobStore.fileURL(relativePath: asset.blobPath)
     }

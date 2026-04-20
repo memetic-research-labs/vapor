@@ -61,6 +61,7 @@ final class ImageAsset {
     var lastObservedAt: Date
     var sourceKindRaw: String
     var lifecycleStateRaw: String
+    var dismissedFromShelf: Bool
 
     @Relationship(deleteRule: .cascade, inverse: \ContextItemImageLink.imageAsset)
     var links: [ContextItemImageLink] = []
@@ -79,7 +80,8 @@ final class ImageAsset {
         importedAt: Date = Date(),
         lastObservedAt: Date = Date(),
         sourceKind: ImageSourceKind,
-        lifecycleState: ImageLifecycleState = .shelf
+        lifecycleState: ImageLifecycleState = .shelf,
+        dismissedFromShelf: Bool = false
     ) {
         self.id = UUID()
         self.contentHash = contentHash
@@ -96,6 +98,7 @@ final class ImageAsset {
         self.lastObservedAt = lastObservedAt
         self.sourceKindRaw = sourceKind.rawValue
         self.lifecycleStateRaw = lifecycleState.rawValue
+        self.dismissedFromShelf = dismissedFromShelf
     }
 
     var sourceKind: ImageSourceKind {

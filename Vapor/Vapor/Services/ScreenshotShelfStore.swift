@@ -10,7 +10,6 @@ final class ScreenshotShelfStore {
     static let shared = ScreenshotShelfStore()
 
     private static let isExpandedKey = "screenshotShelf.isExpanded"
-    private static let dismissedAssetIDsKey = "screenshotShelf.dismissedAssetIDs"
 
     var isExpanded = UserDefaults.standard.object(forKey: isExpandedKey) as? Bool ?? true {
         didSet {
@@ -20,23 +19,13 @@ final class ScreenshotShelfStore {
     var isScanning = false
     var lastScanDate: Date?
     var insertedAssetIDs: Set<UUID> = []
-    var dismissedAssetIDs: Set<UUID> = [] {
-        didSet {
-            let values = dismissedAssetIDs.map(\.uuidString)
-            UserDefaults.standard.set(values, forKey: Self.dismissedAssetIDsKey)
-        }
-    }
 
     private let imageAssetService = ImageAssetService()
     private weak var contextQueueService: ContextQueueService?
     private var pollTask: Task<Void, Never>?
     private var knownCandidates: [String: Date] = [:]
 
-    private init() {
-        if let storedIDs = UserDefaults.standard.array(forKey: Self.dismissedAssetIDsKey) as? [String] {
-            dismissedAssetIDs = Set(storedIDs.compactMap(UUID.init(uuidString:)))
-        }
-    }
+    private init() {}
 
     func setModelContext(_ context: ModelContext) {
         imageAssetService.setModelContext(context)
@@ -107,14 +96,13 @@ final class ScreenshotShelfStore {
     }
 
     func dismiss(_ asset: ImageAsset) {
-        dismissedAssetIDs.insert(asset.id)
+        try? imageAssetService.setDismissed(true, for: asset)
     }
 
     func addToContext(_ asset: ImageAsset) {
         guard let contextQueueService else { return }
         do {
             _ = try imageAssetService.makeImageContextItem(for: asset, in: contextQueueService)
-            dismissedAssetIDs.remove(asset.id)
         } catch {
             screenshotLogger.error("Failed to add screenshot asset to context: \(error.localizedDescription, privacy: .public)")
         }
