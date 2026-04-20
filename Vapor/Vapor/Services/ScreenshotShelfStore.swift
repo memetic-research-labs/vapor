@@ -18,7 +18,6 @@ final class ScreenshotShelfStore {
     }
     var isScanning = false
     var lastScanDate: Date?
-    var insertedAssetIDs: Set<UUID> = []
 
     private let imageAssetService = ImageAssetService()
     private weak var contextQueueService: ContextQueueService?
@@ -71,7 +70,7 @@ final class ScreenshotShelfStore {
         for candidate in candidates {
             let url = candidate.url
             updatedKnownCandidates[url.path] = candidate.date
-            if knownCandidates[url.path] == candidate.date {
+            if let knownDate = knownCandidates[url.path], abs(knownDate.timeIntervalSince(candidate.date)) < 1.0 {
                 continue
             }
 
@@ -87,12 +86,10 @@ final class ScreenshotShelfStore {
 
     func insertAnnotatedReference(for asset: ImageAsset) {
         NotificationCenter.default.post(name: .vaporInsertContextItem, object: imageAssetService.promptReference(for: asset, annotated: true))
-        insertedAssetIDs.insert(asset.id)
     }
 
     func insertPlainPath(for asset: ImageAsset) {
         NotificationCenter.default.post(name: .vaporInsertContextItem, object: imageAssetService.promptReference(for: asset, annotated: false))
-        insertedAssetIDs.insert(asset.id)
     }
 
     func dismiss(_ asset: ImageAsset) {
@@ -104,7 +101,10 @@ final class ScreenshotShelfStore {
     }
 
     func addToContext(_ asset: ImageAsset) {
-        guard let contextQueueService else { return }
+        guard let contextQueueService else {
+            screenshotLogger.warning("Cannot add screenshot asset to context because ContextQueueService is unavailable")
+            return
+        }
         do {
             _ = try imageAssetService.makeImageContextItem(for: asset, in: contextQueueService)
             try imageAssetService.setDismissed(false, for: asset)

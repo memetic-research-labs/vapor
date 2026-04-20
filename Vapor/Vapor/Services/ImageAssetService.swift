@@ -49,7 +49,9 @@ final class ImageAssetService {
             existing.originalPath = originalPath
             existing.originalFilename = originalFilename
             existing.lastObservedAt = Date()
-            existing.sourceKind = sourceKind
+            if shouldReplaceSourceKind(existing.sourceKind, with: sourceKind) {
+                existing.sourceKind = sourceKind
+            }
             existing.thumbnailPath = prepared.thumbnailRelativePath
             if lifecycleState == .context {
                 existing.lifecycleState = .context
@@ -249,6 +251,20 @@ final class ImageAssetService {
             tags.append("screenshot")
         }
         return tags
+    }
+
+    private func shouldReplaceSourceKind(_ existing: ImageSourceKind, with newValue: ImageSourceKind) -> Bool {
+        guard existing != newValue else { return false }
+
+        if newValue == .screenshot, existing != .screenshot {
+            return false
+        }
+
+        if existing == .screenshot, newValue != .screenshot {
+            return true
+        }
+
+        return false
     }
 }
 

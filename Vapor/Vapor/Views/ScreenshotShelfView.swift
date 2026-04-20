@@ -212,48 +212,50 @@ private struct ScreenshotShelfCard: View {
     let onInsert: () -> Void
 
     var body: some View {
-        Button {
-            onSelect()
-            onInsert()
-        } label: {
-            VStack(alignment: .leading, spacing: 8) {
-                Group {
-                    ImageAssetThumbnailView(asset: asset, size: thumbnailSize, preferThumbnail: true, contentMode: .fill) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 10)
-                                .fill(Color.secondary.opacity(0.08))
-                            Image(systemName: "photo")
-                                .font(.system(size: 22))
-                                .foregroundColor(.secondary)
-                        }
+        VStack(alignment: .leading, spacing: 8) {
+            Group {
+                ImageAssetThumbnailView(asset: asset, size: thumbnailSize, preferThumbnail: true, contentMode: .fill) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(Color.secondary.opacity(0.08))
+                        Image(systemName: "photo")
+                            .font(.system(size: 22))
+                            .foregroundColor(.secondary)
                     }
                 }
-                .frame(width: thumbnailSize.width, height: thumbnailSize.height)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(asset.displayTitle)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.primary)
-                        .lineLimit(1)
-
-                    Text(asset.createdAt.formatted(date: .omitted, time: .shortened))
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                }
             }
-            .frame(width: 152, alignment: .leading)
-            .padding(8)
-            .background(RoundedRectangle(cornerRadius: 12).fill(Color(nsColor: .windowBackgroundColor)))
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .strokeBorder((isFocused ? Color.accentColor.opacity(0.28) : Color.secondary.opacity(0.08)), lineWidth: isFocused ? 1.5 : 1)
-            )
-            .editorGlow(isFocused: isFocused)
-            .scaleEffect(isFocused ? 1.02 : 1)
+            .frame(width: thumbnailSize.width, height: thumbnailSize.height)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(asset.displayTitle)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
+
+                Text(asset.createdAt.formatted(date: .omitted, time: .shortened))
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
         }
-        .buttonStyle(.plain)
+        .frame(width: 152, alignment: .leading)
+        .padding(8)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color(nsColor: .windowBackgroundColor)))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder((isFocused ? Color.accentColor.opacity(0.28) : Color.secondary.opacity(0.08)), lineWidth: isFocused ? 1.5 : 1)
+        )
+        .editorGlow(isFocused: isFocused)
+        .scaleEffect(isFocused ? 1.02 : 1)
+        .contentShape(RoundedRectangle(cornerRadius: 12))
+        .onTapGesture(count: 2) {
+            onSelect()
+            onInsert()
+        }
+        .onTapGesture {
+            onSelect()
+        }
         .zIndex(isFocused ? 10 : 0)
         .contextMenu {
             Button("Insert Screenshot Reference") {
