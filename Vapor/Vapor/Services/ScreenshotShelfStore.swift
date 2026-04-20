@@ -76,7 +76,7 @@ final class ScreenshotShelfStore {
             lastScanDate = Date()
         }
 
-        let candidates = screenshotCandidateURLs()
+        let candidates = await Self.screenshotCandidateURLs()
         var updatedKnownCandidates: [String: Date] = [:]
 
         for candidate in candidates {
@@ -87,7 +87,7 @@ final class ScreenshotShelfStore {
             }
 
             do {
-                _ = try imageAssetService.importImage(from: url, sourceKind: .screenshot, lifecycleState: .shelf)
+                _ = try await imageAssetService.importImage(from: url, sourceKind: .screenshot, lifecycleState: .shelf)
             } catch {
                 screenshotLogger.warning("Skipping screenshot candidate \(url.lastPathComponent, privacy: .public): \(error.localizedDescription, privacy: .public)")
             }
@@ -128,36 +128,37 @@ final class ScreenshotShelfStore {
         imageAssetService.preferredReferencePath(for: asset)
     }
 
-    private func screenshotCandidateURLs() -> [(url: URL, date: Date)] {
-        let desktopURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Desktop", isDirectory: true)
-        guard let enumerator = FileManager.default.enumerator(
-            at: desktopURL,
-            includingPropertiesForKeys: [.creationDateKey, .contentModificationDateKey, .isRegularFileKey],
-            options: [.skipsHiddenFiles, .skipsPackageDescendants]
-        ) else {
-            return []
-        }
+    private static func screenshotCandidateURLs() async -> [(url: URL, date: Date)] {
+        await Task.detached(priority: .utility) {
+            let desktopURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Desktop", isDirectory: true)
+            let cutoff = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? .distantPast
 
-        let cutoff = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? .distantPast
-        var candidates: [(url: URL, date: Date)] = []
-
-        for case let url as URL in enumerator {
-            guard url.lastPathComponent.localizedCaseInsensitiveContains("screenshot") else { continue }
-
-            let ext = url.pathExtension.lowercased()
-            guard ["png", "jpg", "jpeg", "heic", "gif", "webp"].contains(ext) else { continue }
-
-            guard let values = try? url.resourceValues(forKeys: [.creationDateKey, .contentModificationDateKey, .isRegularFileKey]),
-                  values.isRegularFile == true else {
-                continue
+            guard let urls = try? FileManager.default.contentsOfDirectory(
+                at: desktopURL,
+                includingPropertiesForKeys: [.creationDateKey, .contentModificationDateKey, .isRegularFileKey],
+                options: [.skipsHiddenFiles, .skipsPackageDescendants]
+            ) else {
+                return []
             }
 
-            let date = values.creationDate ?? values.contentModificationDate ?? .distantPast
-            guard date >= cutoff else { continue }
+            let candidates = urls.compactMap { url -> (url: URL, date: Date)? in
+                guard url.lastPathComponent.localizedCaseInsensitiveContains("screenshot") else { return nil }
 
-            candidates.append((url, date))
-        }
+                let ext = url.pathExtension.lowercased()
+                guard ["png", "jpg", "jpeg", "heic", "gif", "webp"].contains(ext) else { return nil }
 
-        return Array(candidates.sorted { $0.date > $1.date }.prefix(20))
+                guard let values = try? url.resourceValues(forKeys: [.creationDateKey, .contentModificationDateKey, .isRegularFileKey]),
+                      values.isRegularFile == true else {
+                    return nil
+                }
+
+                let date = values.creationDate ?? values.contentModificationDate ?? .distantPast
+                guard date >= cutoff else { return nil }
+
+                return (url, date)
+            }
+
+            return Array(candidates.sorted { $0.date > $1.date }.prefix(20))
+        }.value
     }
 }

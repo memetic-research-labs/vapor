@@ -6,13 +6,23 @@ struct ScreenshotShelfView: View {
     @Environment(ScreenshotShelfStore.self) private var screenshotShelf
     @Environment(MainWindowFocusStore.self) private var focusStore
 
-    @Query(sort: [SortDescriptor(\ImageAsset.createdAt, order: .reverse)]) private var imageAssets: [ImageAsset]
+    @Query private var imageAssets: [ImageAsset]
 
     private let thumbnailSize = CGSize(width: 132, height: 82)
     private let horizontalInset: CGFloat = 10
     private let headerHeight: CGFloat = 44
 
     @State private var focusedAssetID: UUID?
+
+    init() {
+        let screenshotRaw = ImageSourceKind.screenshot.rawValue
+        _imageAssets = Query(
+            filter: #Predicate<ImageAsset> { asset in
+                asset.sourceKindRaw == screenshotRaw
+            },
+            sort: [SortDescriptor(\ImageAsset.createdAt, order: .reverse)]
+        )
+    }
 
     private var visibleAssets: [ImageAsset] {
         imageAssets
@@ -225,11 +235,7 @@ private struct ScreenshotShelfCard: View {
         } label: {
             VStack(alignment: .leading, spacing: 8) {
                 Group {
-                    if let nsImage {
-                        Image(nsImage: nsImage)
-                            .resizable()
-                            .scaledToFill()
-                    } else {
+                    ImageAssetThumbnailView(asset: asset, size: thumbnailSize, preferThumbnail: true, contentMode: .fill) {
                         ZStack {
                             RoundedRectangle(cornerRadius: 10)
                                 .fill(Color.secondary.opacity(0.08))

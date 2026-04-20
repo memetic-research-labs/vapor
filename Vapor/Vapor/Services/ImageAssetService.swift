@@ -1,5 +1,4 @@
 import AppKit
-import CryptoKit
 import Foundation
 import ImageIO
 import OSLog
@@ -22,34 +21,28 @@ enum ImageAssetServiceError: LocalizedError {
     }
 }
 
-@MainActor
-@Observable
 final class ImageAssetService {
     private let blobStore = BlobStore.shared
     private var modelContext: ModelContext?
 
+    @MainActor
     func setModelContext(_ context: ModelContext) {
         modelContext = context
     }
 
+    @MainActor
     func importImage(
         from fileURL: URL,
         sourceKind: ImageSourceKind,
         lifecycleState: ImageLifecycleState = .shelf
-    ) throws -> ImageAsset {
+    ) async throws -> ImageAsset {
         guard let modelContext else { throw ImageAssetServiceError.noModelContext }
 
-        guard let data = try? Data(contentsOf: fileURL) else {
-            throw ImageAssetServiceError.missingData(fileURL)
-        }
-
-        let mimeType = try mimeType(for: fileURL, data: data)
-        let dimensions = imageDimensions(for: data)
-        let storeResult = try blobStore.storeContentAddressed(data: data, mimeType: mimeType, namespace: "images")
-        let contentHash = storeResult.contentHash
-        let createdAt = fileCreationDate(for: fileURL) ?? Date()
-        let originalPath = fileURL.path
-        let originalFilename = fileURL.lastPathComponent
+        let prepared = try await Self.prepareImport(from: fileURL)
+        let contentHash = prepared.contentHash
+        let createdAt = prepared.createdAt
+        let originalPath = prepared.originalPath
+        let originalFilename = prepared.originalFilename
 
         let descriptor = FetchDescriptor<ImageAsset>(predicate: #Predicate { $0.contentHash == contentHash })
         if let existing = try modelContext.fetch(descriptor).first {
@@ -57,6 +50,7 @@ final class ImageAssetService {
             existing.originalFilename = originalFilename
             existing.lastObservedAt = Date()
             existing.sourceKind = sourceKind
+            existing.thumbnailPath = prepared.thumbnailRelativePath
             if lifecycleState == .context {
                 existing.lifecycleState = .context
             }
@@ -66,13 +60,14 @@ final class ImageAssetService {
 
         let asset = ImageAsset(
             contentHash: contentHash,
-            mimeType: mimeType,
-            pixelWidth: dimensions.width,
-            pixelHeight: dimensions.height,
-            byteSize: data.count,
+            mimeType: prepared.mimeType,
+            pixelWidth: prepared.dimensions.width,
+            pixelHeight: prepared.dimensions.height,
+            byteSize: prepared.byteSize,
             originalFilename: originalFilename,
             originalPath: originalPath,
-            blobPath: storeResult.relativePath,
+            blobPath: prepared.blobRelativePath,
+            thumbnailPath: prepared.thumbnailRelativePath,
             createdAt: createdAt,
             importedAt: Date(),
             lastObservedAt: Date(),
@@ -86,6 +81,7 @@ final class ImageAssetService {
         return asset
     }
 
+    @MainActor
     func makeImageContextItem(for asset: ImageAsset, in queueService: ContextQueueService) throws -> ContextItem {
         if let existing = asset.linkedContextItems.first(where: { $0.kind == .image }) {
             return existing
@@ -128,6 +124,14 @@ final class ImageAssetService {
         blobStore.fileURL(relativePath: asset.blobPath)
     }
 
+    func thumbnailURL(for asset: ImageAsset) -> URL? {
+        guard let thumbnailPath = asset.thumbnailPath,
+              blobStore.exists(relativePath: thumbnailPath) else {
+            return nil
+        }
+        return blobStore.fileURL(relativePath: thumbnailPath)
+    }
+
     func promptReference(for asset: ImageAsset, annotated: Bool) -> String {
         let referencePath = preferredReferencePath(for: asset)
         guard annotated else { return referencePath }
@@ -141,7 +145,34 @@ final class ImageAssetService {
         return fileURL(for: asset).path
     }
 
-    private func mimeType(for fileURL: URL, data: Data) throws -> String {
+    nonisolated private static func prepareImport(from fileURL: URL) async throws -> PreparedImageImport {
+        try await Task.detached(priority: .userInitiated) {
+            let blobStore = BlobStore.shared
+
+            guard let data = try? Data(contentsOf: fileURL) else {
+                throw ImageAssetServiceError.missingData(fileURL)
+            }
+
+            let mimeType = try mimeType(for: fileURL, data: data)
+            let dimensions = imageDimensions(for: data)
+            let storeResult = try blobStore.storeContentAddressed(data: data, mimeType: mimeType, namespace: "images")
+            let thumbnailRelativePath = try makeThumbnailIfPossible(data: data, mimeType: mimeType, dimensions: dimensions, blobStore: blobStore)
+
+            return PreparedImageImport(
+                contentHash: storeResult.contentHash,
+                mimeType: mimeType,
+                dimensions: dimensions,
+                byteSize: data.count,
+                originalPath: fileURL.path,
+                originalFilename: fileURL.lastPathComponent,
+                blobRelativePath: storeResult.relativePath,
+                thumbnailRelativePath: thumbnailRelativePath,
+                createdAt: fileCreationDate(for: fileURL) ?? Date()
+            )
+        }.value
+    }
+
+    nonisolated private static func mimeType(for fileURL: URL, data: Data) throws -> String {
         if let type = UTType(filenameExtension: fileURL.pathExtension),
            let mimeType = type.preferredMIMEType {
             return mimeType
@@ -157,7 +188,7 @@ final class ImageAssetService {
         throw ImageAssetServiceError.unsupportedImage(fileURL)
     }
 
-    private func imageDimensions(for data: Data) -> (width: Int, height: Int) {
+    nonisolated private static func imageDimensions(for data: Data) -> (width: Int, height: Int) {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil),
               let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
               let width = properties[kCGImagePropertyPixelWidth] as? Int,
@@ -167,9 +198,42 @@ final class ImageAssetService {
         return (width, height)
     }
 
-    private func fileCreationDate(for fileURL: URL) -> Date? {
+    nonisolated private static func fileCreationDate(for fileURL: URL) -> Date? {
         let values = try? fileURL.resourceValues(forKeys: [.creationDateKey, .contentModificationDateKey])
         return values?.creationDate ?? values?.contentModificationDate
+    }
+
+    nonisolated private static func makeThumbnailIfPossible(
+        data: Data,
+        mimeType: String,
+        dimensions: (width: Int, height: Int),
+        blobStore: BlobStore
+    ) throws -> String? {
+        guard dimensions.width > 0, dimensions.height > 0,
+              let source = CGImageSourceCreateWithData(data as CFData, nil) else {
+            return nil
+        }
+
+        let maxPixelSize = 320
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
+            kCGImageSourceCreateThumbnailWithTransform: true
+        ]
+
+        guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
+            return nil
+        }
+
+        let thumbnailData = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(thumbnailData, UTType.png.identifier as CFString, 1, nil) else {
+            return nil
+        }
+        CGImageDestinationAddImage(destination, thumbnail, nil)
+        guard CGImageDestinationFinalize(destination) else { return nil }
+
+        let stored = try blobStore.storeContentAddressed(data: thumbnailData as Data, mimeType: "image/png", namespace: "image-thumbnails")
+        return stored.relativePath
     }
 
     private func baseTags(for asset: ImageAsset) -> [String] {
@@ -179,4 +243,16 @@ final class ImageAssetService {
         }
         return tags
     }
+}
+
+private struct PreparedImageImport {
+    let contentHash: String
+    let mimeType: String
+    let dimensions: (width: Int, height: Int)
+    let byteSize: Int
+    let originalPath: String
+    let originalFilename: String
+    let blobRelativePath: String
+    let thumbnailRelativePath: String?
+    let createdAt: Date
 }

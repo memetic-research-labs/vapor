@@ -259,9 +259,9 @@ This is important for a future prompt viewer that can inline images and show com
 
 ## Sandbox constraint
 
-Vapor is sandboxed and only has user-selected file read permission today. It cannot assume unrestricted Desktop watching.
+The long-term design should assume explicit user-approved watched folders rather than unrestricted Desktop access.
 
-Therefore screenshot awareness must be based on explicit user-approved watched folders.
+If and when Vapor is sandboxed, screenshot awareness should be based on explicit folder grants and persisted access tokens/bookmarks instead of assuming direct Desktop watching.
 
 ### Recommended folder watching model
 

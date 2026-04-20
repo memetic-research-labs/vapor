@@ -313,13 +313,16 @@ struct ContextItemDetailView: View {
             VStack(alignment: .leading, spacing: 8) {
                 sectionHeader("Image")
 
-                if let imageURL = imageURL(for: asset), let image = NSImage(contentsOf: imageURL) {
-                    Image(nsImage: image)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(maxWidth: .infinity)
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                ImageAssetThumbnailView(asset: asset, size: nil, preferThumbnail: false, contentMode: .fit) {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color.secondary.opacity(0.08))
+                        .overlay {
+                            ProgressView()
+                                .controlSize(.small)
+                        }
                 }
+                .frame(maxWidth: .infinity)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
 
                 HStack(spacing: 8) {
                     Text(asset.sourceKind.displayName)
@@ -338,9 +341,7 @@ struct ContextItemDetailView: View {
                     Spacer()
 
                     Button("Reveal") {
-                        if let originalPath = asset.originalPath {
-                            NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: originalPath)])
-                        } else if let imageURL = imageURL(for: asset) {
+                        if let imageURL = imageURL(for: asset) {
                             NSWorkspace.shared.activateFileViewerSelecting([imageURL])
                         }
                     }
@@ -856,7 +857,12 @@ struct ContextItemDetailView: View {
         if let originalPath = asset.originalPath, FileManager.default.fileExists(atPath: originalPath) {
             return URL(fileURLWithPath: originalPath)
         }
-        return BlobStore.shared.fileURL(relativePath: asset.blobPath)
+
+        if BlobStore.shared.exists(relativePath: asset.blobPath) {
+            return BlobStore.shared.fileURL(relativePath: asset.blobPath)
+        }
+
+        return nil
     }
 
     private func openExplorer(for link: ContextItemURLLink) {

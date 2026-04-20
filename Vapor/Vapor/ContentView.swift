@@ -469,10 +469,13 @@ struct ContentView: View {
             case .screenshots:
                 NotificationCenter.default.post(name: .vaporScreenshotInsertSelected, object: nil)
                 return .handled
+            case .contextTray:
+                NotificationCenter.default.post(name: .vaporContextActivateSecondary, object: nil)
+                return .handled
             case .toolRail:
                 NotificationCenter.default.post(name: .vaporToolActivate, object: nil)
                 return .handled
-            case .editor, .contextTray:
+            case .editor:
                 return .ignored
             }
         }

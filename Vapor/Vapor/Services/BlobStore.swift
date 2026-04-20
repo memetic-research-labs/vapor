@@ -4,9 +4,8 @@ import CryptoKit
 
 nonisolated private let blobLogger = Logger(subsystem: "lol.mrl.app.Vapor", category: "BlobStore")
 
-@MainActor
 final class BlobStore {
-    static let shared = BlobStore()
+    nonisolated static let shared = BlobStore()
 
     private let baseURL: URL
 
@@ -24,7 +23,7 @@ final class BlobStore {
         self.baseURL = blobsDir
     }
 
-    func store(data: Data, mimeType: String) throws -> String {
+    nonisolated func store(data: Data, mimeType: String) throws -> String {
         let id = UUID().uuidString
         let ext = extensionFor(mimeType: mimeType)
         let relativePath = "\(id)\(ext)"
@@ -40,20 +39,20 @@ final class BlobStore {
         }
     }
 
-    func retrieve(relativePath: String) -> Data? {
+    nonisolated func retrieve(relativePath: String) -> Data? {
         let fileURL = baseURL.appendingPathComponent(relativePath)
         return try? Data(contentsOf: fileURL)
     }
 
-    func fileURL(relativePath: String) -> URL {
+    nonisolated func fileURL(relativePath: String) -> URL {
         baseURL.appendingPathComponent(relativePath)
     }
 
-    func exists(relativePath: String) -> Bool {
+    nonisolated func exists(relativePath: String) -> Bool {
         FileManager.default.fileExists(atPath: fileURL(relativePath: relativePath).path)
     }
 
-    func storeContentAddressed(data: Data, mimeType: String, namespace: String = "assets") throws -> (relativePath: String, contentHash: String) {
+    nonisolated func storeContentAddressed(data: Data, mimeType: String, namespace: String = "assets") throws -> (relativePath: String, contentHash: String) {
         let contentHash = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
         let ext = extensionFor(mimeType: mimeType)
         let relativePath = [namespace, String(contentHash.prefix(2)), "\(contentHash)\(ext)"]
@@ -65,7 +64,7 @@ final class BlobStore {
         }
 
         do {
-            try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true, attributes: nil)
             try data.write(to: fileURL, options: .atomic)
             blobLogger.debug("Stored content-addressed blob: \(relativePath) (\(data.count) bytes, \(mimeType))")
             return (relativePath, contentHash)
@@ -75,14 +74,14 @@ final class BlobStore {
         }
     }
 
-    func delete(relativePath: String) throws {
+    nonisolated func delete(relativePath: String) throws {
         let fileURL = baseURL.appendingPathComponent(relativePath)
         guard FileManager.default.fileExists(atPath: fileURL.path) else { return }
         try FileManager.default.removeItem(at: fileURL)
         blobLogger.debug("Deleted blob: \(relativePath)")
     }
 
-    func totalSize() -> Int64 {
+    nonisolated func totalSize() -> Int64 {
         let enumerator = FileManager.default.enumerator(
             at: baseURL,
             includingPropertiesForKeys: [.fileSizeKey],
@@ -97,7 +96,7 @@ final class BlobStore {
         return total
     }
 
-    func itemCount() -> Int {
+    nonisolated func itemCount() -> Int {
         let enumerator = FileManager.default.enumerator(
             at: baseURL,
             includingPropertiesForKeys: nil,
@@ -118,7 +117,7 @@ final class BlobStore {
         }
     }
 
-    private func extensionFor(mimeType: String) -> String {
+    nonisolated private func extensionFor(mimeType: String) -> String {
         switch mimeType {
         case "image/png": return ".png"
         case "image/jpeg": return ".jpg"

@@ -1,5 +1,11 @@
 import SwiftUI
 
+private enum ToolRailItem: CaseIterable {
+    case target
+    case post
+    case dictation
+}
+
 struct ToolSidebarView: View {
     private let railWidth: CGFloat = 42
     private let buttonSize: CGFloat = 34
@@ -13,7 +19,7 @@ struct ToolSidebarView: View {
     let onPostToTarget: () -> Void
     let onToggleDictation: () -> Void
 
-    @State private var selectedIndex = 0
+    @State private var selectedItem: ToolRailItem = .target
 
     var body: some View {
         VStack(spacing: 8) {
@@ -32,11 +38,11 @@ struct ToolSidebarView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .vaporToolMoveUp)) { _ in
             guard focusStore.activeZone == .toolRail else { return }
-            selectedIndex = max(0, selectedIndex - 1)
+            moveSelection(delta: -1)
         }
         .onReceive(NotificationCenter.default.publisher(for: .vaporToolMoveDown)) { _ in
             guard focusStore.activeZone == .toolRail else { return }
-            selectedIndex = min(2, selectedIndex + 1)
+            moveSelection(delta: 1)
         }
         .onReceive(NotificationCenter.default.publisher(for: .vaporToolActivate)) { _ in
             guard focusStore.activeZone == .toolRail else { return }
@@ -46,7 +52,7 @@ struct ToolSidebarView: View {
 
     private var targetButton: some View {
         Button(action: onChooseTarget) {
-            sidebarIcon(symbol: "safari", tint: targetTint, isSelected: focusStore.activeZone == .toolRail && selectedIndex == 0)
+            sidebarIcon(symbol: "safari", tint: targetTint, isSelected: focusStore.activeZone == .toolRail && selectedItem == .target)
                 .frame(width: buttonSize, height: buttonSize)
         }
         .buttonStyle(.plain)
@@ -65,7 +71,7 @@ struct ToolSidebarView: View {
 
     private var postButton: some View {
         Button(action: onPostToTarget) {
-            sidebarIcon(symbol: browserBridge.canPostToSelectedTarget ? "paperplane.fill" : "paperplane", tint: postTint, isSelected: focusStore.activeZone == .toolRail && selectedIndex == 1)
+            sidebarIcon(symbol: browserBridge.canPostToSelectedTarget ? "paperplane.fill" : "paperplane", tint: postTint, isSelected: focusStore.activeZone == .toolRail && selectedItem == .post)
                 .frame(width: buttonSize, height: buttonSize)
         }
         .buttonStyle(.plain)
@@ -89,11 +95,11 @@ struct ToolSidebarView: View {
                         .frame(width: buttonSize, height: buttonSize)
                         .overlay(
                             RoundedRectangle(cornerRadius: 10)
-                                .stroke((focusStore.activeZone == .toolRail && selectedIndex == 2) ? Color.accentColor.opacity(0.3) : Color.clear, lineWidth: 1.5)
+                                .stroke((focusStore.activeZone == .toolRail && selectedItem == .dictation) ? Color.accentColor.opacity(0.3) : Color.clear, lineWidth: 1.5)
                         )
-                        .editorGlow(isFocused: focusStore.activeZone == .toolRail && selectedIndex == 2)
+                        .editorGlow(isFocused: focusStore.activeZone == .toolRail && selectedItem == .dictation)
                 } else {
-                    sidebarIcon(symbol: "mic", tint: .secondary, isSelected: focusStore.activeZone == .toolRail && selectedIndex == 2)
+                    sidebarIcon(symbol: "mic", tint: .secondary, isSelected: focusStore.activeZone == .toolRail && selectedItem == .dictation)
                 }
             }
             .overlay(alignment: .topTrailing) {
@@ -136,12 +142,22 @@ struct ToolSidebarView: View {
     }
 
     private func activateSelectedTool() {
-        switch selectedIndex {
-        case 0: onChooseTarget()
-        case 1: onPostToTarget()
-        case 2: onToggleDictation()
-        default: break
+        switch selectedItem {
+        case .target: onChooseTarget()
+        case .post: onPostToTarget()
+        case .dictation: onToggleDictation()
         }
+    }
+
+    private func moveSelection(delta: Int) {
+        let items = ToolRailItem.allCases
+        guard let currentIndex = items.firstIndex(of: selectedItem) else {
+            selectedItem = items.first ?? .target
+            return
+        }
+
+        let nextIndex = min(max(0, currentIndex + delta), items.count - 1)
+        selectedItem = items[nextIndex]
     }
 
     private var targetTint: Color {
