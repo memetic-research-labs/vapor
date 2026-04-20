@@ -7,9 +7,6 @@ private let logger = Logger(subsystem: "lol.mrl.app.Vapor", category: "App")
 
 @main
 struct VaporApp: App {
-    private static let persistentSchemaVersion = 4
-    private static let persistentSchemaVersionKey = "persistentSchemaVersion"
-
     @State private var preferences = UserPreferences()
     @State private var windowManager: WindowManager
     @State private var compressionService = CompressionService()
@@ -32,38 +29,6 @@ struct VaporApp: App {
 
     private static var hasSetupBrowserBridge = false
 
-    private static func ensureFreshPersistentStores() {
-#if !DEBUG
-        return
-#endif
-
-        let defaults = UserDefaults.standard
-        let storedVersion = defaults.integer(forKey: persistentSchemaVersionKey)
-        guard storedVersion < persistentSchemaVersion else { return }
-
-        logger.info("Resetting persistent stores for debug schema version \(persistentSchemaVersion)")
-
-        do {
-            try deleteSwiftDataStoreFiles()
-        } catch {
-            logger.error("Failed to reset SwiftData store: \(error.localizedDescription)")
-        }
-
-        do {
-            try deleteVectorStoreFiles()
-        } catch {
-            logger.error("Failed to reset vector store: \(error.localizedDescription)")
-        }
-
-        do {
-            try BlobStore.shared.clearAll()
-        } catch {
-            logger.error("Failed to clear blob store: \(error.localizedDescription)")
-        }
-
-        defaults.set(persistentSchemaVersion, forKey: persistentSchemaVersionKey)
-    }
-
     private static func deleteSwiftDataStoreFiles() throws {
         guard let appSupportURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
             return
@@ -83,19 +48,6 @@ struct VaporApp: App {
             try? FileManager.default.removeItem(at: dirURL.appendingPathComponent(storeName + "-shm"))
             try? FileManager.default.removeItem(at: dirURL.appendingPathComponent(storeName + "-wal"))
         }
-    }
-
-    private static func deleteVectorStoreFiles() throws {
-        guard let appSupportURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
-            return
-        }
-
-        let vectorDirectory = appSupportURL.appendingPathComponent("Vapor", isDirectory: true)
-        let vectorStoreURL = vectorDirectory.appendingPathComponent("vectors.db")
-
-        try? FileManager.default.removeItem(at: vectorStoreURL)
-        try? FileManager.default.removeItem(at: vectorDirectory.appendingPathComponent("vectors.db-shm"))
-        try? FileManager.default.removeItem(at: vectorDirectory.appendingPathComponent("vectors.db-wal"))
     }
 
     private func setupBrowserBridge() {
@@ -128,8 +80,6 @@ struct VaporApp: App {
     }
 
     var sharedModelContainer: ModelContainer = {
-        ensureFreshPersistentStores()
-
         let schema = Schema([
             PromptRecord.self,
             ContextItem.self,
@@ -370,6 +320,7 @@ struct VaporApp: App {
             SettingsView(compressionService: compressionService, preferences: preferences)
                 .environment(browserBridge)
                 .environment(vectorizationService)
+                .modelContainer(sharedModelContainer)
         }
 
         WindowGroup("Context Item", for: ContextItemDetailPayload.self) { $payload in
