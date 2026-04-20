@@ -96,13 +96,18 @@ final class ScreenshotShelfStore {
     }
 
     func dismiss(_ asset: ImageAsset) {
-        try? imageAssetService.setDismissed(true, for: asset)
+        do {
+            try imageAssetService.setDismissed(true, for: asset)
+        } catch {
+            screenshotLogger.error("Failed to dismiss screenshot asset: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     func addToContext(_ asset: ImageAsset) {
         guard let contextQueueService else { return }
         do {
             _ = try imageAssetService.makeImageContextItem(for: asset, in: contextQueueService)
+            try imageAssetService.setDismissed(false, for: asset)
         } catch {
             screenshotLogger.error("Failed to add screenshot asset to context: \(error.localizedDescription, privacy: .public)")
         }
