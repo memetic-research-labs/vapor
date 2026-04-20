@@ -4,6 +4,7 @@ import SwiftUI
 
 struct ScreenshotShelfView: View {
     @Environment(ScreenshotShelfStore.self) private var screenshotShelf
+    @Environment(MainWindowFocusStore.self) private var focusStore
 
     @Query(sort: [SortDescriptor(\ImageAsset.createdAt, order: .reverse)]) private var imageAssets: [ImageAsset]
 
@@ -42,21 +43,21 @@ struct ScreenshotShelfView: View {
         .onReceive(NotificationCenter.default.publisher(for: .vaporFocusScreenshots)) { _ in
             guard !visibleAssets.isEmpty else { return }
             screenshotShelf.isExpanded = true
-            screenshotShelf.isKeyboardNavigating = true
+            focusStore.focus(.screenshots)
             focusedAssetID = visibleAssets.first?.id
         }
         .onReceive(NotificationCenter.default.publisher(for: .vaporScreenshotMoveLeft)) { _ in
-            guard screenshotShelf.isKeyboardNavigating,
+            guard focusStore.activeZone == .screenshots,
                   let focusedAssetID else { return }
             moveFocus(by: -1, currentAssetID: focusedAssetID)
         }
         .onReceive(NotificationCenter.default.publisher(for: .vaporScreenshotMoveRight)) { _ in
-            guard screenshotShelf.isKeyboardNavigating,
+            guard focusStore.activeZone == .screenshots,
                   let focusedAssetID else { return }
             moveFocus(by: 1, currentAssetID: focusedAssetID)
         }
         .onReceive(NotificationCenter.default.publisher(for: .vaporScreenshotInsertSelected)) { _ in
-            guard screenshotShelf.isKeyboardNavigating,
+            guard focusStore.activeZone == .screenshots,
                   let focusedAsset = currentSelectedAsset else { return }
             screenshotShelf.insertAnnotatedReference(for: focusedAsset)
         }
@@ -84,7 +85,7 @@ struct ScreenshotShelfView: View {
             }
             .buttonStyle(.plain)
 
-            Text(visibleAssets.isEmpty ? "Take a screenshot or paste an image to stage it here." : "Recent screenshots stay here until you insert them or add them to context.")
+            Text(visibleAssets.isEmpty ? "Take a screenshot to stage it here." : headerHintText)
                 .font(.system(size: 10))
                 .foregroundColor(.secondary)
                 .lineLimit(1)
@@ -121,7 +122,7 @@ struct ScreenshotShelfView: View {
                 Text("Take a macOS screenshot and it will appear here for quick prompt insertion.")
                     .font(.system(size: 11))
                     .foregroundColor(.secondary)
-                Text("Click to insert an annotated path, or promote the image into context when it deserves to stick around.")
+                Text("Press Return to insert, or Add to Context when the image deserves to stick around.")
                     .font(.system(size: 10))
                     .foregroundColor(.secondary.opacity(0.9))
             }
@@ -138,7 +139,7 @@ struct ScreenshotShelfView: View {
                                 thumbnailSize: thumbnailSize,
                                 isFocused: focusedAssetID == asset.id,
                                 onSelect: {
-                                    screenshotShelf.isKeyboardNavigating = true
+                                    focusStore.focus(.screenshots)
                                     focusedAssetID = asset.id
                                 },
                                 onInsert: {
@@ -194,6 +195,13 @@ struct ScreenshotShelfView: View {
 
         let nextIndex = min(max(0, currentIndex + delta), ids.count - 1)
         focusedAssetID = ids[nextIndex]
+    }
+
+    private var headerHintText: String {
+        if focusStore.activeZone == .screenshots {
+            return "Return inserts · ⌘⇧I returns to the editor"
+        }
+        return "Recent screenshots stay here until you insert them or add them to context."
     }
 }
 
@@ -257,9 +265,6 @@ private struct ScreenshotShelfCard: View {
             .scaleEffect(isFocused ? 1.02 : 1)
         }
         .buttonStyle(.plain)
-        .simultaneousGesture(TapGesture().onEnded {
-            onSelect()
-        })
         .zIndex(isFocused ? 10 : 0)
         .contextMenu {
             Button("Insert Screenshot Reference") {
@@ -288,12 +293,6 @@ private struct ScreenshotShelfCard: View {
 
             Button("Dismiss") {
                 screenshotShelf.dismiss(asset)
-            }
-
-            if screenshotShelf.dismissedAssetIDs.contains(asset.id) {
-                Button("Restore") {
-                    screenshotShelf.restoreDismissed(asset)
-                }
             }
         }
     }

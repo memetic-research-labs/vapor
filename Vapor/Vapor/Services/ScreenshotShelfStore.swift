@@ -17,7 +17,6 @@ final class ScreenshotShelfStore {
             UserDefaults.standard.set(isExpanded, forKey: Self.isExpandedKey)
         }
     }
-    var isKeyboardNavigating = false
     var isScanning = false
     var lastScanDate: Date?
     var insertedAssetIDs: Set<UUID> = []
@@ -31,6 +30,7 @@ final class ScreenshotShelfStore {
     private let imageAssetService = ImageAssetService()
     private weak var contextQueueService: ContextQueueService?
     private var pollTask: Task<Void, Never>?
+    private var knownCandidates: [String: Date] = [:]
 
     private init() {
         if let storedIDs = UserDefaults.standard.array(forKey: Self.dismissedAssetIDsKey) as? [String] {
@@ -54,7 +54,7 @@ final class ScreenshotShelfStore {
 
             while !Task.isCancelled {
                 do {
-                    try await Task.sleep(for: .seconds(5))
+                    try await Task.sleep(for: .seconds(10))
                 } catch {
                     return
                 }
@@ -77,13 +77,23 @@ final class ScreenshotShelfStore {
         }
 
         let candidates = screenshotCandidateURLs()
-        for url in candidates {
+        var updatedKnownCandidates: [String: Date] = [:]
+
+        for candidate in candidates {
+            let url = candidate.url
+            updatedKnownCandidates[url.path] = candidate.date
+            if knownCandidates[url.path] == candidate.date {
+                continue
+            }
+
             do {
                 _ = try imageAssetService.importImage(from: url, sourceKind: .screenshot, lifecycleState: .shelf)
             } catch {
                 screenshotLogger.warning("Skipping screenshot candidate \(url.lastPathComponent, privacy: .public): \(error.localizedDescription, privacy: .public)")
             }
         }
+
+        knownCandidates = updatedKnownCandidates
     }
 
     func insertAnnotatedReference(for asset: ImageAsset) {
@@ -98,10 +108,6 @@ final class ScreenshotShelfStore {
 
     func dismiss(_ asset: ImageAsset) {
         dismissedAssetIDs.insert(asset.id)
-    }
-
-    func restoreDismissed(_ asset: ImageAsset) {
-        dismissedAssetIDs.remove(asset.id)
     }
 
     func addToContext(_ asset: ImageAsset) {
@@ -122,7 +128,7 @@ final class ScreenshotShelfStore {
         imageAssetService.preferredReferencePath(for: asset)
     }
 
-    private func screenshotCandidateURLs() -> [URL] {
+    private func screenshotCandidateURLs() -> [(url: URL, date: Date)] {
         let desktopURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Desktop", isDirectory: true)
         guard let enumerator = FileManager.default.enumerator(
             at: desktopURL,
@@ -133,29 +139,25 @@ final class ScreenshotShelfStore {
         }
 
         let cutoff = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? .distantPast
+        var candidates: [(url: URL, date: Date)] = []
 
-        let urls = (enumerator.allObjects as? [URL] ?? [])
-            .filter { url in
-                guard url.lastPathComponent.localizedCaseInsensitiveContains("screenshot") else { return false }
-                let ext = url.pathExtension.lowercased()
-                return ["png", "jpg", "jpeg", "heic", "gif", "webp"].contains(ext)
-            }
-            .filter { url in
-                let values = try? url.resourceValues(forKeys: [.creationDateKey, .contentModificationDateKey, .isRegularFileKey])
-                guard values?.isRegularFile == true else { return false }
-                let date = values?.creationDate ?? values?.contentModificationDate ?? .distantPast
-                return date >= cutoff
-            }
-            .sorted { lhs, rhs in
-                let leftDate = (try? lhs.resourceValues(forKeys: [.creationDateKey, .contentModificationDateKey]).creationDate)
-                    ?? (try? lhs.resourceValues(forKeys: [.creationDateKey, .contentModificationDateKey]).contentModificationDate)
-                    ?? .distantPast
-                let rightDate = (try? rhs.resourceValues(forKeys: [.creationDateKey, .contentModificationDateKey]).creationDate)
-                    ?? (try? rhs.resourceValues(forKeys: [.creationDateKey, .contentModificationDateKey]).contentModificationDate)
-                    ?? .distantPast
-                return leftDate > rightDate
+        for case let url as URL in enumerator {
+            guard url.lastPathComponent.localizedCaseInsensitiveContains("screenshot") else { continue }
+
+            let ext = url.pathExtension.lowercased()
+            guard ["png", "jpg", "jpeg", "heic", "gif", "webp"].contains(ext) else { continue }
+
+            guard let values = try? url.resourceValues(forKeys: [.creationDateKey, .contentModificationDateKey, .isRegularFileKey]),
+                  values.isRegularFile == true else {
+                continue
             }
 
-        return Array(urls.prefix(20))
+            let date = values.creationDate ?? values.contentModificationDate ?? .distantPast
+            guard date >= cutoff else { continue }
+
+            candidates.append((url, date))
+        }
+
+        return Array(candidates.sorted { $0.date > $1.date }.prefix(20))
     }
 }

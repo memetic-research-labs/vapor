@@ -18,6 +18,7 @@ struct VaporApp: App {
     @State private var vectorizationService = VectorizationService.shared
     @State private var contextExplorerStore = ContextExplorerStore.shared
     @State private var screenshotShelfStore = ScreenshotShelfStore.shared
+    @State private var mainWindowFocusStore = MainWindowFocusStore()
     @Environment(\.openWindow) private var openWindow
 
     init() {
@@ -171,6 +172,7 @@ struct VaporApp: App {
                 .environment(vectorizationService)
                 .environment(contextExplorerStore)
                 .environment(screenshotShelfStore)
+                .environment(mainWindowFocusStore)
                 .environment(StatusBarService.shared)
                 .onAppear {
                     browserBridge.setContextQueueService(contextQueueService)
@@ -250,6 +252,16 @@ struct VaporApp: App {
                     NotificationCenter.default.post(name: .vaporFocusScreenshots, object: nil)
                 }
                 .keyboardShortcut("s", modifiers: [.command, .shift])
+
+                Button("Focus Context") {
+                    NotificationCenter.default.post(name: .vaporFocusContextTray, object: nil)
+                }
+                .keyboardShortcut("c", modifiers: [.command, .shift])
+
+                Button("Focus Tools") {
+                    NotificationCenter.default.post(name: .vaporFocusToolRail, object: nil)
+                }
+                .keyboardShortcut("t", modifiers: [.command, .shift])
 
                 Button("Focus Editor") {
                     NotificationCenter.default.post(name: .vaporFocusEditor, object: nil)

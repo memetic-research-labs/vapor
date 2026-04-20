@@ -12,6 +12,7 @@ struct ContentView: View {
     @Environment(BrowserBridge.self) private var browserBridge
     @Environment(ContextQueueService.self) private var contextQueue
     @Environment(ScreenshotShelfStore.self) private var screenshotShelf
+    @Environment(MainWindowFocusStore.self) private var focusStore
     @Environment(StatusBarService.self) private var statusBar
     @State private var viewModel = EditorViewModel()
     @State private var historyService = PromptHistoryService()
@@ -139,64 +140,91 @@ struct ContentView: View {
     }
 
     private var contentGroup: some View {
-        Group {
+        let baseContent = AnyView(Group {
             switch windowManager.windowState {
             case .minimized:
                 minimizedView
             case .expanded:
                 expandedView
             }
-        }
-        .onChange(of: windowManager.windowState) { _, newState in
-            if newState == .expanded {
-                windowManager.resizeForPanels(
-                    showContextTray: showContextTray,
-                    showTestSidebar: showTestSidebar
-                )
-                refocusEditorAfterTransition()
+        })
+
+        let layoutAwareContent = AnyView(
+            baseContent
+                .onChange(of: windowManager.windowState) { _, newState in
+                    if newState == .expanded {
+                        windowManager.resizeForPanels(
+                            showContextTray: showContextTray,
+                            showTestSidebar: showTestSidebar
+                        )
+                        refocusEditorAfterTransition()
+                    }
+                }
+                .onChange(of: HistoryStore.shared.pendingRestore?.persistentModelID) { _, newID in
+                    if newID != nil, let record = HistoryStore.shared.pendingRestore {
+                        viewModel.restoreFromHistory(record)
+                        HistoryStore.shared.pendingRestore = nil
+                        toastService.showSuccess("Restored from history")
+                    }
+                }
+                .onChange(of: isEditorFocused) { _, focused in
+                    if focused {
+                        focusStore.focus(.editor)
+                    }
+                }
+        )
+
+        let commandContent = AnyView(
+            layoutAwareContent
+                .onReceive(NotificationCenter.default.publisher(for: .vaporCopyOriginal)) { _ in
+                    viewModel.copyOriginalToClipboard()
+                    toastService.showSuccess("Original copied to clipboard")
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .vaporCompressAndCopy)) { _ in
+                    Task { await performCompressAndCopy() }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .vaporCopyAndClear)) { _ in
+                    viewModel.copyAndClear()
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .vaporShowHistory)) { _ in
+                    openWindow(id: "prompt-history")
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .vaporShowHelp)) { _ in
+                    openWindow(id: "keyboard-shortcuts")
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .vaporSendToBrowser)) { _ in
+                    sendToBrowser()
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .vaporChooseBrowserTarget)) { _ in
+                    chooseBrowserTarget()
+                }
+        )
+
+        return commandContent
+            .onReceive(NotificationCenter.default.publisher(for: .vaporInsertContextItem)) { notification in
+                if let text = notification.object as? String {
+                    viewModel.content += (viewModel.content.isEmpty ? "" : "\n\n") + text
+                }
             }
-        }
-        .onChange(of: HistoryStore.shared.pendingRestore?.persistentModelID) { _, newID in
-            if newID != nil, let record = HistoryStore.shared.pendingRestore {
-                viewModel.restoreFromHistory(record)
-                HistoryStore.shared.pendingRestore = nil
-                toastService.showSuccess("Restored from history")
+            .onReceive(NotificationCenter.default.publisher(for: .vaporFocusEditor)) { _ in
+                focusStore.focus(.editor)
+                EditorTextViewRegistry.refocus()
             }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .vaporCopyOriginal)) { _ in
-            viewModel.copyOriginalToClipboard()
-            toastService.showSuccess("Original copied to clipboard")
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .vaporCompressAndCopy)) { _ in
-            Task { await performCompressAndCopy() }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .vaporCopyAndClear)) { _ in
-            viewModel.copyAndClear()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .vaporShowHistory)) { _ in
-            openWindow(id: "prompt-history")
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .vaporShowHelp)) { _ in
-            openWindow(id: "keyboard-shortcuts")
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .vaporSendToBrowser)) { _ in
-            sendToBrowser()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .vaporChooseBrowserTarget)) { _ in
-            chooseBrowserTarget()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .vaporInsertContextItem)) { notification in
-            if let text = notification.object as? String {
-                viewModel.content += (viewModel.content.isEmpty ? "" : "\n\n") + text
+            .onReceive(NotificationCenter.default.publisher(for: .vaporFocusContextTray)) { _ in
+                if !showContextTray {
+                    windowManager.resizeForPanels(showContextTray: true, showTestSidebar: showTestSidebar)
+                    withAnimation {
+                        showContextTray = true
+                    }
+                }
+                focusStore.focus(.contextTray)
             }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .vaporFocusEditor)) { _ in
-            screenshotShelf.isKeyboardNavigating = false
-            EditorTextViewRegistry.refocus()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .vaporLLMDownloadCompleted)) { _ in
-            Task { await compressionService.reloadLocalLLMIfNeeded() }
-        }
+            .onReceive(NotificationCenter.default.publisher(for: .vaporFocusToolRail)) { _ in
+                focusStore.focus(.toolRail)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .vaporLLMDownloadCompleted)) { _ in
+                Task { await compressionService.reloadLocalLLMIfNeeded() }
+            }
     }
 
     private var minimizedView: some View {
@@ -395,28 +423,78 @@ struct ContentView: View {
         }
         .focusable()
         .onKeyPress(.leftArrow) {
-            guard screenshotShelf.isKeyboardNavigating else { return .ignored }
-            NotificationCenter.default.post(name: .vaporScreenshotMoveLeft, object: nil)
-            return .handled
+            switch focusStore.activeZone {
+            case .screenshots:
+                NotificationCenter.default.post(name: .vaporScreenshotMoveLeft, object: nil)
+                return .handled
+            case .editor, .contextTray, .toolRail:
+                return .ignored
+            }
         }
         .onKeyPress(.rightArrow) {
-            guard screenshotShelf.isKeyboardNavigating else { return .ignored }
-            NotificationCenter.default.post(name: .vaporScreenshotMoveRight, object: nil)
-            return .handled
+            switch focusStore.activeZone {
+            case .screenshots:
+                NotificationCenter.default.post(name: .vaporScreenshotMoveRight, object: nil)
+                return .handled
+            case .editor, .contextTray, .toolRail:
+                return .ignored
+            }
+        }
+        .onKeyPress(.upArrow) {
+            switch focusStore.activeZone {
+            case .contextTray:
+                NotificationCenter.default.post(name: .vaporContextMoveUp, object: nil)
+                return .handled
+            case .toolRail:
+                NotificationCenter.default.post(name: .vaporToolMoveUp, object: nil)
+                return .handled
+            case .editor, .screenshots:
+                return .ignored
+            }
+        }
+        .onKeyPress(.downArrow) {
+            switch focusStore.activeZone {
+            case .contextTray:
+                NotificationCenter.default.post(name: .vaporContextMoveDown, object: nil)
+                return .handled
+            case .toolRail:
+                NotificationCenter.default.post(name: .vaporToolMoveDown, object: nil)
+                return .handled
+            case .editor, .screenshots:
+                return .ignored
+            }
         }
         .onKeyPress(.space) {
-            guard screenshotShelf.isKeyboardNavigating else { return .ignored }
-            NotificationCenter.default.post(name: .vaporScreenshotInsertSelected, object: nil)
-            return .handled
+            switch focusStore.activeZone {
+            case .screenshots:
+                NotificationCenter.default.post(name: .vaporScreenshotInsertSelected, object: nil)
+                return .handled
+            case .toolRail:
+                NotificationCenter.default.post(name: .vaporToolActivate, object: nil)
+                return .handled
+            case .editor, .contextTray:
+                return .ignored
+            }
         }
         .onKeyPress(.return) {
-            guard screenshotShelf.isKeyboardNavigating else { return .ignored }
-            NotificationCenter.default.post(name: .vaporScreenshotInsertSelected, object: nil)
-            return .handled
+            switch focusStore.activeZone {
+            case .screenshots:
+                NotificationCenter.default.post(name: .vaporScreenshotInsertSelected, object: nil)
+                return .handled
+            case .contextTray:
+                NotificationCenter.default.post(name: .vaporContextActivatePrimary, object: nil)
+                return .handled
+            case .toolRail:
+                NotificationCenter.default.post(name: .vaporToolActivate, object: nil)
+                return .handled
+            case .editor:
+                return .ignored
+            }
         }
         .onKeyPress(.escape) {
-            if screenshotShelf.isKeyboardNavigating {
-                screenshotShelf.isKeyboardNavigating = false
+            if focusStore.activeZone != .editor {
+                focusStore.focus(.editor)
+                EditorTextViewRegistry.refocus()
                 return .handled
             }
             windowManager.minimize()
