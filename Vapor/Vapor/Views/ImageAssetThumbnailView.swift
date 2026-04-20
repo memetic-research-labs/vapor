@@ -33,22 +33,20 @@ struct ImageAssetThumbnailView<Placeholder: View>: View {
     private func loadImage() async {
         let url = imageURL(for: asset, preferThumbnail: preferThumbnail)
         guard let url else {
-            await MainActor.run { nsImage = nil }
+            nsImage = nil
             return
         }
 
         let targetSize = size
-        let loadedImage = await Task.detached(priority: .userInitiated) { () -> NSImage? in
+        let loadedImage: NSImage? = await {
             guard let image = NSImage(contentsOf: url) else { return nil }
             if let targetSize {
                 image.size = targetSize
             }
             return image
-        }.value
+        }()
 
-        await MainActor.run {
-            nsImage = loadedImage
-        }
+        nsImage = loadedImage
     }
 }
 

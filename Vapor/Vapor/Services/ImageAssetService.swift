@@ -257,11 +257,11 @@ final class ImageAssetService {
         guard existing != newValue else { return false }
 
         if newValue == .screenshot, existing != .screenshot {
-            return false
+            return true
         }
 
         if existing == .screenshot, newValue != .screenshot {
-            return true
+            return false
         }
 
         return false
