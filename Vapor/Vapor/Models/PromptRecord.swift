@@ -4,6 +4,14 @@ import CryptoKit
 
 @Model
 final class PromptRecord {
+    enum UsageReason: String, Codable {
+        case copiedOriginal
+        case compressedAndCopied
+        case sentToBrowser
+        case copiedAndCleared
+        case draftSnapshot
+    }
+
     var id: UUID
     var contentHash: String = ""
     var originalText: String
@@ -14,6 +22,9 @@ final class PromptRecord {
     var compressorUsed: String
     var createdAt: Date
     var modifiedAt: Date
+    var lastUsedAt: Date?
+    var useCount: Int
+    var lastUsageReasonRaw: String?
     var isFavorite: Bool
     var tags: [String]
     var embeddingID: String?
@@ -40,9 +51,22 @@ final class PromptRecord {
         self.compressorUsed = compressorUsed.rawValue
         self.createdAt = Date()
         self.modifiedAt = Date()
+        self.lastUsedAt = nil
+        self.useCount = 0
+        self.lastUsageReasonRaw = nil
         self.isFavorite = false
         self.tags = []
         self.embeddingID = nil
+    }
+
+    var lastUsageReason: UsageReason? {
+        get {
+            guard let lastUsageReasonRaw else { return nil }
+            return UsageReason(rawValue: lastUsageReasonRaw)
+        }
+        set {
+            lastUsageReasonRaw = newValue?.rawValue
+        }
     }
 
     var stableIdentifier: String {

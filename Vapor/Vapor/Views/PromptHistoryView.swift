@@ -2,7 +2,7 @@ import SwiftUI
 import SwiftData
 
 struct PromptHistoryView: View {
-    @Query(sort: \PromptRecord.createdAt, order: .reverse)
+    @Query(sort: \PromptRecord.modifiedAt, order: .reverse)
     private var allRecords: [PromptRecord]
 
     @State private var searchText = ""
@@ -36,14 +36,14 @@ struct PromptHistoryView: View {
     private var groupedRecords: [(String, [PromptRecord])] {
         let calendar = Calendar.current
         let grouped = Dictionary(grouping: filteredRecords) { record -> String in
-            if calendar.isDateInToday(record.createdAt) {
+            if calendar.isDateInToday(record.modifiedAt) {
                 return "Today"
-            } else if calendar.isDateInYesterday(record.createdAt) {
+            } else if calendar.isDateInYesterday(record.modifiedAt) {
                 return "Yesterday"
             } else {
                 let formatter = DateFormatter()
                 formatter.dateFormat = "MMM d, yyyy"
-                return formatter.string(from: record.createdAt)
+                return formatter.string(from: record.modifiedAt)
             }
         }
 
@@ -56,8 +56,8 @@ struct PromptHistoryView: View {
             if aIdx != nil { return true }
             if bIdx != nil { return false }
             // Both are date strings — sort by first record's date descending
-            let aDate = a.value.first?.createdAt ?? .distantPast
-            let bDate = b.value.first?.createdAt ?? .distantPast
+            let aDate = a.value.first?.modifiedAt ?? .distantPast
+            let bDate = b.value.first?.modifiedAt ?? .distantPast
             return aDate > bDate
         }
     }

@@ -40,8 +40,10 @@ final class EditorViewModel {
         self.preferences = prefs
     }
 
-    func copyOriginalToClipboard() {
-        saveCurrentPromptToHistory()
+    func copyOriginalToClipboard(recordInHistory: Bool = true) {
+        if recordInHistory {
+            saveCurrentPromptToHistory(reason: .copiedOriginal, countsAsUse: true)
+        }
         clipboardService.copy(content)
     }
 
@@ -77,7 +79,7 @@ final class EditorViewModel {
             )
         }
 
-        saveCurrentPromptToHistory()
+        saveCurrentPromptToHistory(reason: .compressedAndCopied, countsAsUse: true)
     }
 
     func clear() {
@@ -92,14 +94,14 @@ final class EditorViewModel {
     /// Copies the original text to the clipboard, then clears the buffer.
     func copyAndClear() {
         if !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            saveCurrentPromptToHistory()
+            saveCurrentPromptToHistory(reason: .copiedAndCleared, countsAsUse: true)
             clipboardService.copy(content)
         }
         clear()
     }
 
-    func recordCurrentPromptInHistory() {
-        saveCurrentPromptToHistory()
+    func recordCurrentPromptInHistory(reason: PromptRecord.UsageReason, countsAsUse: Bool = true) {
+        saveCurrentPromptToHistory(reason: reason, countsAsUse: countsAsUse)
     }
 
     /// Auto-saves the current content (if any), then replaces with the restored record's original text.
@@ -108,7 +110,7 @@ final class EditorViewModel {
         if !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
            let historyService {
             do {
-                _ = try historyService.saveSnapshot(currentPromptSnapshot())
+                _ = try historyService.saveSnapshot(currentPromptSnapshot(reason: .draftSnapshot, countsAsUse: false))
             } catch {
                 logger.error("Failed to auto-save before restore: \(error)")
             }
@@ -168,7 +170,7 @@ final class EditorViewModel {
         }
     }
 
-    private func saveCurrentPromptToHistory() {
+    private func saveCurrentPromptToHistory(reason: PromptRecord.UsageReason, countsAsUse: Bool) {
         guard let historyService else { return }
         guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
 
@@ -177,10 +179,12 @@ final class EditorViewModel {
             compressedText: compressedContent,
             compressorUsed: selectedCompressor.rawValue
         )
-        guard snapshotHash != lastSavedHistoryHash else { return }
+        if !countsAsUse {
+            guard snapshotHash != lastSavedHistoryHash else { return }
+        }
 
         do {
-            if let record = try historyService.saveSnapshot(currentPromptSnapshot()) {
+            if let record = try historyService.saveSnapshot(currentPromptSnapshot(reason: reason, countsAsUse: countsAsUse)) {
                 lastSavedHistoryHash = record.stableIdentifier
             }
         } catch {
@@ -188,14 +192,16 @@ final class EditorViewModel {
         }
     }
 
-    private func currentPromptSnapshot() -> PromptHistorySnapshot {
+    private func currentPromptSnapshot(reason: PromptRecord.UsageReason = .draftSnapshot, countsAsUse: Bool = false) -> PromptHistorySnapshot {
         PromptHistorySnapshot(
             originalText: content,
             compressedText: compressedContent,
             originalTokenCount: originalTokenCount,
             compressedTokenCount: compressedTokenCount,
             compressionRatio: compressionRatio,
-            compressorUsed: selectedCompressor
+            compressorUsed: selectedCompressor,
+            usageReason: reason,
+            countsAsUse: countsAsUse
         )
     }
 }

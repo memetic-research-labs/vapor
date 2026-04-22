@@ -19,10 +19,10 @@ final class WindowManager {
     }
 
     private let preferences: UserPreferences
-    private let expandedSize = CGSize(width: 683, height: 540)
+    private let composeExpandedSize = CGSize(width: 780, height: 660)
+    private let researchExpandedSize = CGSize(width: 1120, height: 620)
     private let minimizedSize = CGSize(width: 320, height: 200)
     private let contextTrayWidth: CGFloat = 261
-    private let testSidebarWidth: CGFloat = 351
 
     private init(preferences: UserPreferences) {
         self.preferences = preferences
@@ -39,18 +39,9 @@ final class WindowManager {
 
     /// Base window configuration shared by both states.
     private func configureWindow(_ window: NSWindow) {
-        window.level = .floating
-        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         window.isMovableByWindowBackground = true
-        window.titlebarAppearsTransparent = true
-
-        // Unified compact toolbar eliminates the separator line between title bar and content
-        if window.toolbar == nil {
-            let toolbar = NSToolbar(identifier: "vapor.main")
-            toolbar.showsBaselineSeparator = false
-            window.toolbar = toolbar
-            window.toolbarStyle = .unifiedCompact
-        }
+        window.titlebarAppearsTransparent = false
+        window.toolbar = nil
 
         // Eliminate content border thickness on all edges
         window.setContentBorderThickness(0, for: .minY)
@@ -62,11 +53,23 @@ final class WindowManager {
         window.contentView?.layer?.borderColor = nil
     }
 
-    func expand() {
-        expand(showContextTray: false, showTestSidebar: false)
+    private func configureExpandedWindow(_ window: NSWindow) {
+        configureWindow(window)
+        window.level = .normal
+        window.collectionBehavior = []
     }
 
-    func expand(showContextTray: Bool, showTestSidebar: Bool) {
+    private func configureMinimizedWindow(_ window: NSWindow) {
+        configureWindow(window)
+        window.level = .floating
+        window.collectionBehavior = [.fullScreenAuxiliary]
+    }
+
+    func expand() {
+        expand(workspace: .compose, showContextTray: false)
+    }
+
+    func expand(workspace: AppWorkspace, showContextTray: Bool) {
         windowState = .expanded
         preferences.windowState = .expanded
 
@@ -75,7 +78,7 @@ final class WindowManager {
             return
         }
 
-        configureWindow(window)
+        configureExpandedWindow(window)
 
         window.titleVisibility = .visible
         window.backgroundColor = .windowBackgroundColor
@@ -84,8 +87,8 @@ final class WindowManager {
         let targetFrame = expandedFrame(
             from: window.frame,
             for: window,
-            showContextTray: showContextTray,
-            showTestSidebar: showTestSidebar
+            workspace: workspace,
+            showContextTray: showContextTray
         )
 
         NSAnimationContext.runAnimationGroup { context in
@@ -107,7 +110,7 @@ final class WindowManager {
             return
         }
 
-        configureWindow(window)
+        configureMinimizedWindow(window)
 
         // Minimized: opaque title bar with "Vapor" title visible
         window.titleVisibility = .visible
@@ -147,13 +150,13 @@ final class WindowManager {
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    func resizeForPanels(showContextTray: Bool, showTestSidebar: Bool) {
+    func resizeForLayout(workspace: AppWorkspace, showContextTray: Bool) {
         guard let window = findWindow(), windowState == .expanded else { return }
         let targetFrame = expandedFrame(
             from: window.frame,
             for: window,
-            showContextTray: showContextTray,
-            showTestSidebar: showTestSidebar
+            workspace: workspace,
+            showContextTray: showContextTray
         )
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.25
@@ -162,11 +165,10 @@ final class WindowManager {
         }
     }
 
-    private func expandedFrame(from currentFrame: NSRect, for window: NSWindow, showContextTray: Bool, showTestSidebar: Bool) -> NSRect {
-        let targetWidth = expandedSize.width
-            + (showContextTray ? contextTrayWidth : 0)
-            + (showTestSidebar ? testSidebarWidth : 0)
-        let targetHeight = expandedSize.height
+    private func expandedFrame(from currentFrame: NSRect, for window: NSWindow, workspace: AppWorkspace, showContextTray: Bool) -> NSRect {
+        let baseSize = workspace == .compose ? composeExpandedSize : researchExpandedSize
+        let targetWidth = baseSize.width + ((workspace == .compose && showContextTray) ? contextTrayWidth : 0)
+        let targetHeight = baseSize.height
         let topEdge = currentFrame.origin.y + currentFrame.height
         var originX = currentFrame.origin.x
 
@@ -197,7 +199,11 @@ final class WindowManager {
 
     func setupWindowOnAppear() {
         guard let window = findWindow() else { return }
-        configureWindow(window)
+        if windowState == .minimized {
+            configureMinimizedWindow(window)
+        } else {
+            configureExpandedWindow(window)
+        }
 
         if windowState == .minimized {
             window.titleVisibility = .visible
@@ -219,8 +225,8 @@ final class WindowManager {
             let targetFrame = expandedFrame(
                 from: window.frame,
                 for: window,
-                showContextTray: false,
-                showTestSidebar: false
+                workspace: .compose,
+                showContextTray: false
             )
             window.setFrame(targetFrame, display: true)
         }

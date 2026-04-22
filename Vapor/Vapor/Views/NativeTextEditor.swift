@@ -4,6 +4,7 @@ import SwiftUI
 struct NativeTextEditor: NSViewRepresentable {
     @Binding var text: String
     @Binding var isFocused: Bool
+    var isDictating: Bool = false
     var onTextChange: ((String) -> Void)?
     var font: NSFont = .monospacedSystemFont(ofSize: 13, weight: .regular)
 
@@ -67,12 +68,26 @@ struct NativeTextEditor: NSViewRepresentable {
         guard let textView = scrollView.documentView as? NSTextView else { return }
 
         if textView.string != text {
+            let wasAtEnd = isScrolledToBottom(scrollView)
             textView.string = text
+            if isDictating || wasAtEnd {
+                let endRange = NSRange(location: textView.string.count, length: 0)
+                textView.setSelectedRange(endRange)
+                textView.scrollRangeToVisible(endRange)
+            }
         }
     }
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
+    }
+
+    private func isScrolledToBottom(_ scrollView: NSScrollView) -> Bool {
+        let clipView = scrollView.contentView
+        let documentHeight = scrollView.documentView?.frame.height ?? 0
+        let clipHeight = clipView.bounds.height
+        let scrollY = clipView.bounds.origin.y
+        return scrollY + clipHeight >= documentHeight - 10
     }
 
     class Coordinator: NSObject, NSTextViewDelegate {

@@ -46,6 +46,19 @@ final class BrowserBridge {
     var isPresentingTabPicker: Bool = false
     var selectedTarget: BrowserTarget?
 
+    var interrogationAvailableTabs: [BrowserTab] = []
+    var isLoadingInterrogationTabs: Bool = false
+    var interrogationTabID: Int?
+    var interrogationTabURL: String?
+    var interrogationTabTitle: String?
+    var discoveredSources: [DiscoveredSource] = []
+    var selectedInterrogationSourceID: String?
+    var isInterrogating: Bool = false
+    var interrogationError: String?
+    var activePreview: SourcePreview?
+    var isLoadingPreview: Bool = false
+    private var isQueryingForInterrogation = false
+
     var serverPort: Int {
         get {
             UserDefaults.standard.object(forKey: UserPreferences.Keys.embeddedServerPort) as? Int ?? 8766
@@ -205,10 +218,14 @@ final class BrowserBridge {
         sendPrompt(compressed, original: original, autoSubmit: autoSubmit)
     }
 
-    func queryTabs() {
+    func queryTabs(forInterrogation: Bool = false) {
         guard isExtensionConnected else {
             lastError = "No browser extension connected"
             return
+        }
+        if forInterrogation {
+            isQueryingForInterrogation = true
+            isLoadingInterrogationTabs = true
         }
         StatusBarService.shared.setTransient("Fetching browser tabs", domain: .browser)
         server?.broadcast(event: "prompt", json: [
@@ -233,6 +250,11 @@ final class BrowserBridge {
         isPresentingTabPicker = false
         availableTabs = []
         pendingPromptRequest = nil
+    }
+
+    func dismissInterrogationPicker() {
+        interrogationAvailableTabs = []
+        isLoadingInterrogationTabs = false
     }
 
     func verifySelectedTarget() {
@@ -267,10 +289,91 @@ final class BrowserBridge {
         isExtensionConnected && selectedTarget != nil && selectedTarget?.isConnected == false
     }
 
+    var selectedInterrogationSource: DiscoveredSource? {
+        guard let selectedInterrogationSourceID else { return nil }
+        return discoveredSources.first(where: { $0.id == selectedInterrogationSourceID })
+    }
+
     func activatePicker() {
         server?.broadcast(event: "prompt", json: [
             "type": "ACTIVATE_PICKER"
         ])
+    }
+
+    func interrogateTab(_ tab: BrowserTab) {
+        guard isExtensionConnected else {
+            interrogationError = "No browser extension connected"
+            return
+        }
+        interrogationAvailableTabs = []
+        isLoadingInterrogationTabs = false
+        interrogationTabID = tab.id
+        interrogationTabURL = tab.url
+        interrogationTabTitle = tab.title
+        discoveredSources = []
+        selectedInterrogationSourceID = nil
+        activePreview = nil
+        interrogationError = nil
+        isInterrogating = true
+        isLoadingPreview = false
+        StatusBarService.shared.setTransient("Interrogating \(tab.displayHost)", domain: .browser)
+        server?.broadcast(event: "prompt", json: [
+            "type": "INTERROGATE_TAB",
+            "tab_id": tab.id
+        ])
+    }
+
+    func selectInterrogationSource(_ source: DiscoveredSource) {
+        selectedInterrogationSourceID = source.id
+        interrogationError = nil
+
+        if activePreview?.sourceId == source.id {
+            return
+        }
+
+        activePreview = nil
+        previewSource(source.id)
+    }
+
+    func clearInterrogationSourceSelection() {
+        selectedInterrogationSourceID = nil
+        activePreview = nil
+        isLoadingPreview = false
+    }
+
+    func previewSource(_ sourceId: String) {
+        guard isExtensionConnected, let tabID = interrogationTabID else {
+            interrogationError = "Not interrogating any tab"
+            return
+        }
+        isLoadingPreview = true
+        server?.broadcast(event: "prompt", json: [
+            "type": "PREVIEW_SOURCE",
+            "tab_id": tabID,
+            "source_id": sourceId
+        ])
+    }
+
+    func refreshXHRSources() {
+        guard isExtensionConnected, let tabID = interrogationTabID else { return }
+        server?.broadcast(event: "prompt", json: [
+            "type": "REFRESH_XHR_SOURCES",
+            "tab_id": tabID
+        ])
+    }
+
+    func endInterrogation() {
+        interrogationAvailableTabs = []
+        isLoadingInterrogationTabs = false
+        interrogationTabID = nil
+        interrogationTabURL = nil
+        interrogationTabTitle = nil
+        discoveredSources = []
+        selectedInterrogationSourceID = nil
+        activePreview = nil
+        interrogationError = nil
+        isInterrogating = false
+        isLoadingPreview = false
     }
 
     func handleExtensionResponse(_ json: [String: Any]) {
@@ -326,14 +429,89 @@ final class BrowserBridge {
         case "PICKER_CANCELLED":
             logger.info("Picker cancelled")
 
+        case "RESEARCH_SOURCES_DISCOVERED":
+            handleSourcesDiscovered(json)
+
+        case "RESEARCH_SOURCE_PREVIEW":
+            handleSourcePreview(json)
+
+        case "XHR_SOURCES_REFRESHED":
+            handleXHRRefreshed(json)
+
         default:
             logger.debug("Unknown extension response type: \(type)")
+        }
+    }
+
+    private func handleSourcesDiscovered(_ json: [String: Any]) {
+        isInterrogating = false
+        if let error = json["error"] as? String {
+            interrogationError = error
+            logger.error("Interrogation failed: \(error)")
+            return
+        }
+        interrogationTabURL = json["tabUrl"] as? String ?? interrogationTabURL
+        interrogationTabTitle = json["tabTitle"] as? String ?? interrogationTabTitle
+        if let rawSources = json["sources"] as? [[String: Any]] {
+            discoveredSources = rawSources.compactMap(Self.parseDiscoveredSource)
+            if let selectedInterrogationSourceID,
+               discoveredSources.contains(where: { $0.id == selectedInterrogationSourceID }) == false {
+                self.selectedInterrogationSourceID = nil
+                activePreview = nil
+            }
+        }
+        StatusBarService.shared.setTransient("Found \(self.discoveredSources.count) sources", domain: .browser)
+        logger.info("Discovered \(self.discoveredSources.count) research sources")
+    }
+
+    private func handleSourcePreview(_ json: [String: Any]) {
+        isLoadingPreview = false
+        if let error = json["error"] as? String {
+            interrogationError = error
+            logger.error("Source preview failed: \(error)")
+            return
+        }
+        guard let rawPreview = json["preview"] as? [String: Any] else {
+            interrogationError = "Missing preview data"
+            return
+        }
+        activePreview = SourcePreview(
+            sourceId: rawPreview["sourceId"] as? String ?? "",
+            content: rawPreview["content"] as? String ?? "",
+            mimeType: rawPreview["mimeType"] as? String ?? "text/plain",
+            truncated: rawPreview["truncated"] as? Bool ?? false,
+            sizeBytes: rawPreview["sizeBytes"] as? Int
+        )
+    }
+
+    private func handleXHRRefreshed(_ json: [String: Any]) {
+        if let error = json["error"] as? String {
+            logger.error("XHR refresh failed: \(error)")
+            return
+        }
+        if let rawSources = json["sources"] as? [[String: Any]] {
+            let newXHRSources = rawSources.compactMap(Self.parseDiscoveredSource)
+            let existingNonXHR = self.discoveredSources.filter { $0.sourceKind != .xhrFeed }
+            self.discoveredSources = existingNonXHR + newXHRSources
+            if let selectedInterrogationSourceID,
+               self.discoveredSources.contains(where: { $0.id == selectedInterrogationSourceID }) == false {
+                self.selectedInterrogationSourceID = nil
+                self.activePreview = nil
+            }
         }
     }
 
     private func handleTabsResult(_ json: [String: Any]) {
         guard let rawTabs = json["tabs"] as? [[String: Any]] else { return }
         let tabs = rawTabs.compactMap(Self.parseBrowserTab).sorted(by: Self.sortTabs)
+
+        if isQueryingForInterrogation {
+            isQueryingForInterrogation = false
+            isLoadingInterrogationTabs = false
+            interrogationAvailableTabs = tabs
+            return
+        }
+
         availableTabs = tabs
 
         if let pendingPromptRequest,
@@ -452,6 +630,22 @@ final class BrowserBridge {
             return lhs.matchesKnownAIHost && !rhs.matchesKnownAIHost
         }
         return lhs.displayTitle.localizedCaseInsensitiveCompare(rhs.displayTitle) == .orderedAscending
+    }
+
+    private static func parseDiscoveredSource(_ json: [String: Any]) -> DiscoveredSource? {
+        guard let id = json["id"] as? String,
+              let kindRaw = json["sourceKind"] as? String,
+              let sourceKind = ResearchSourceKind(rawValue: kindRaw) else {
+            return nil
+        }
+        return DiscoveredSource(
+            id: id,
+            sourceKind: sourceKind,
+            label: json["label"] as? String ?? "",
+            detail: json["detail"] as? String ?? "",
+            recordEstimate: json["recordEstimate"] as? Int,
+            sizeHint: json["sizeHint"] as? String
+        )
     }
 
     func handleContextCapture(_ json: [String: Any]) {

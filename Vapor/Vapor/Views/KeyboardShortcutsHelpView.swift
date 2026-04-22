@@ -1,16 +1,15 @@
 import SwiftUI
 
 struct KeyboardShortcutsHelpView: View {
-    @Environment(\.dismiss) private var dismiss
+    private let sections = AppCommandRegistry.helpSections()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Header
             HStack {
                 Text("Keyboard Shortcuts")
                     .font(.system(size: 14, weight: .semibold))
                 Spacer()
-                Text("⌘ /")
+                Text(AppCommandRegistry.command(.keyboardShortcuts).helpShortcutDisplay ?? "")
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundColor(.secondary)
             }
@@ -22,50 +21,26 @@ struct KeyboardShortcutsHelpView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    shortcutSection("Dictation") {
-                        shortcutRow("Fn (hold)", "Start dictating")
-                        shortcutRow("Fn (release)", "Stop dictating, commit text")
-                    }
-
-                    shortcutSection("Compression") {
-                        shortcutRow("⌘ ↩", "Compress & copy to clipboard")
-                        shortcutRow("⌘ ⇧ P", "Post to selected browser tab")
-                        shortcutRow("⌘ ⇧ C", "Copy original text to clipboard")
-                        shortcutRow("⌘ K", "Copy original & clear")
-                    }
-
-                    shortcutSection("Window") {
-                        shortcutRow("⌃ ⌥ Space", "Focus Vapor (global)")
-                        shortcutRow("⌘ \\", "Toggle compact / full view")
-                        shortcutRow("Escape", "Minimize to compact view")
-                    }
-
-                    shortcutSection("Editing") {
-                        shortcutRow("⌘ A", "Select all text")
-                        shortcutRow("⌘ Z", "Undo")
-                        shortcutRow("⌘ ⇧ Z", "Redo")
-                        shortcutRow("⌘ V", "Paste")
-                    }
-
-                    shortcutSection("Navigation") {
-                        shortcutRow("⌘ Y", "Open prompt history")
-                        shortcutRow("⌘ ,", "Open settings")
-                        shortcutRow("⌘ /", "Show this help")
+                    ForEach(sections, id: \.title) { section in
+                        shortcutSection(section.title, rows: section.rows)
                     }
                 }
                 .padding(16)
             }
         }
-        .frame(width: 340, height: 360)
+        .frame(width: 360, height: 420)
         .background(Color(nsColor: .windowBackgroundColor))
     }
 
-    private func shortcutSection(_ title: String, @ViewBuilder content: () -> some View) -> some View {
+    private func shortcutSection(_ title: String, rows: [(shortcut: String, description: String)]) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundColor(.secondary)
-            content()
+
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                shortcutRow(row.shortcut, row.description)
+            }
         }
     }
 

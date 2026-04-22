@@ -1,80 +1,84 @@
 import SwiftUI
 
-struct OpenRouterTestSidebar: View {
-    @Binding var prompt: String
-
+struct OpenRouterTestWindowView: View {
     @State private var apiKey: String = ""
+    @State private var prompt: String = ""
     @State private var response: String = ""
-    @State private var isLoading: Bool = false
+    @State private var isLoading = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("OpenRouter")
-                .font(.system(size: 14, weight: .semibold))
-                .padding(.horizontal, 12)
-                .padding(.top, 8)
-
-            Divider()
-
+        VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("API Key")
-                    .font(.system(size: 10, weight: .medium))
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundColor(.secondary)
 
                 SecureField("sk-...", text: $apiKey)
                     .textFieldStyle(.roundedBorder)
-                    .font(.system(size: 11))
+                    .font(.system(size: 12))
                     .onSubmit {
                         if !apiKey.isEmpty {
                             UserDefaults.standard.set(apiKey, forKey: "openRouterApiKey")
                         }
                     }
             }
-            .padding(.horizontal, 12)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("Prompt")
-                    .font(.system(size: 10, weight: .medium))
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundColor(.secondary)
 
                 TextEditor(text: $prompt)
-                    .font(.system(size: 10, design: .monospaced))
-                    .frame(height: 120)
-                    .border(Color.gray.opacity(0.3))
+                    .font(.system(size: 12, design: .monospaced))
+                    .frame(minHeight: 160)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+                    )
             }
-            .padding(.horizontal, 12)
 
-            Button {
-                Task { await send() }
-            } label: {
-                HStack(spacing: 4) {
-                    if isLoading { ProgressView().scaleEffect(0.6) }
-                    Text("Send")
+            HStack {
+                Spacer()
+
+                Button {
+                    Task { await send() }
+                } label: {
+                    HStack(spacing: 6) {
+                        if isLoading {
+                            ProgressView()
+                                .controlSize(.small)
+                        }
+                        Text("Send")
+                    }
                 }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .disabled(apiKey.isEmpty || prompt.isEmpty || isLoading)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
-            .disabled(apiKey.isEmpty || prompt.isEmpty || isLoading)
-            .padding(.horizontal, 12)
 
             Divider()
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("Response")
-                    .font(.system(size: 10, weight: .medium))
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundColor(.secondary)
 
                 ScrollView {
                     Text(response)
-                        .font(.system(size: 10, design: .monospaced))
+                        .font(.system(size: 12, design: .monospaced))
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .textSelection(.enabled)
+                        .padding(.vertical, 4)
                 }
+                .frame(maxHeight: .infinity)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+                )
             }
-            .padding(.horizontal, 12)
-
-            Spacer()
         }
+        .padding(16)
+        .frame(minWidth: 420, minHeight: 520)
         .onAppear {
             if let savedKey = UserDefaults.standard.string(forKey: "openRouterApiKey") {
                 apiKey = savedKey
