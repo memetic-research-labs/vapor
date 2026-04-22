@@ -8,7 +8,7 @@ struct OnboardingView: View {
     @State private var slideDirection: SlideDirection = .forward
     @Environment(\.dismiss) private var dismiss
 
-    private let totalSteps = 8
+    private let totalSteps = 11
 
     enum SlideDirection {
         case forward, backward
@@ -174,7 +174,8 @@ struct OnboardingView: View {
 
     private func completeOnboarding() {
         UserDefaults.standard.set(true, forKey: "hasCompletedOnboarding")
-        dismiss()
+        FnDictationMonitor.shared.resumeAfterOnboarding()
+        NSApp.keyWindow?.close()
     }
 
     // MARK: - Step Router
@@ -199,6 +200,12 @@ struct OnboardingView: View {
         case 6:
             WindowManagementStepView()
         case 7:
+            ScreenshotShelfStepView()
+        case 8:
+            BrowserBridgeStepView()
+        case 9:
+            ContextAndResearchStepView()
+        case 10:
             AllSetStepView()
         default:
             EmptyView()
@@ -330,7 +337,7 @@ private struct WelcomeStepView: View {
                 Text("Welcome to Vapor")
                     .font(.system(size: 26, weight: .bold))
 
-                Text("Voice-to-text dictation & AI prompt compression for macOS.\nVapor floats above all your windows so you can dictate prompts and paste them anywhere.")
+                Text("Vapor is your AI workflow companion.\nDictate, capture context from screenshots and websites, compress prompts, and send them to any AI — all from a floating window.")
                     .font(.system(size: 14))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -548,7 +555,7 @@ private struct CompressAndCopyStepView: View {
             icon: "bolt.fill",
             iconColor: .yellow,
             title: "Compress & Copy",
-            description: "Press ⌘ ↩ to compress your prompt and copy it to the clipboard. Vapor removes filler words and fuses related concepts for maximum token efficiency."
+            description: "Press ⌘ ↩ to compress your prompt and copy it to the clipboard. Vapor removes filler words and fuses related concepts — saving tokens when it matters."
         ) {
             ShortcutRow(key: "⌘ ↩", label: "Compress & copy")
             ShortcutRow(key: "⌘ ⇧ C", label: "Copy original (no compression)")
@@ -815,13 +822,30 @@ private struct OpenRouterSetupStepView: View {
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.secondary)
 
-                TextField("Model name", text: $store.openRouterCompressionModel)
-                    .frame(maxWidth: 320)
-                    .textFieldStyle(.roundedBorder)
+                Picker("Compression Model", selection: $store.selectedCompressionModel) {
+                    ForEach(CompressionModelOption.curatedModels) { model in
+                        HStack {
+                            Text(model.displayName)
+                            Spacer()
+                            Text(model.priceLabel)
+                                .foregroundStyle(.secondary)
+                        }
+                        .tag(model)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .frame(maxWidth: 320, alignment: .leading)
 
-                Text("Default: glm-5 (cheap, fast)")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
+                Toggle("Use custom model", isOn: $store.useCustomCompressionModel)
+                    .toggleStyle(.checkbox)
+                    .controlSize(.small)
+
+                if store.useCustomCompressionModel {
+                    TextField("Custom model ID (e.g. anthropic/claude-sonnet-4)", text: $store.openRouterCompressionModel)
+                        .frame(maxWidth: 320)
+                        .textFieldStyle(.roundedBorder)
+                }
             }
             .padding(.horizontal, 8)
         }
@@ -846,7 +870,131 @@ private struct WindowManagementStepView: View {
     }
 }
 
-// MARK: - Step 7: All Set
+// MARK: - Step 7: Screenshot Shelf
+
+private struct ScreenshotShelfStepView: View {
+    var body: some View {
+        StepCard(
+            icon: "photo.on.rectangle.angled",
+            iconColor: .orange,
+            title: "Screenshot Shelf",
+            description: "Vapor automatically detects screenshots on your Desktop. They appear in the screenshot panel where you can add them to your prompt context."
+        ) {
+            VStack(spacing: 12) {
+                ShortcutRow(key: "⌘ ⇧ S", label: "Focus screenshot shelf")
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("How it works:")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    Text("1. Take a screenshot (⌘ ⇧ 4 or ⌘ ⇧ 5)")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                    Text("2. It appears in the shelf within ~10 seconds")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                    Text("3. Select it and press Enter to add to context")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(10)
+                .background(Color.secondary.opacity(0.07))
+                .cornerRadius(8)
+            }
+            .padding(.horizontal, 8)
+        }
+    }
+}
+
+// MARK: - Step 8: Browser Bridge
+
+private struct BrowserBridgeStepView: View {
+    var body: some View {
+        StepCard(
+            icon: "safari.fill",
+            iconColor: .blue,
+            title: "Browser Integration",
+            description: "Send compressed prompts directly into AI chat tabs in Chrome. No copy-paste needed."
+        ) {
+            VStack(alignment: .leading, spacing: 12) {
+                ShortcutRow(key: "⌘ ⇧ P", label: "Send to browser tab")
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Setup:")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    Text("1. Load the Browser Extension from the DMG")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                    Text("   (Help menu → Show Onboarding → reinstall from DMG)")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.tertiary)
+                    Text("2. Open chrome://extensions → Enable Developer mode")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                    Text("3. Click \"Load unpacked\" → select the Browser Extension folder")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                    Text("4. Enable browser integration in Settings → Browser")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(10)
+                .background(Color.secondary.opacity(0.07))
+                .cornerRadius(8)
+
+                Text("You can set this up later — Vapor works great without it.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 8)
+        }
+    }
+}
+
+// MARK: - Step 9: Context & Research
+
+private struct ContextAndResearchStepView: View {
+    var body: some View {
+        StepCard(
+            icon: "text.magnifyingglass",
+            iconColor: .mint,
+            title: "Context & Research",
+            description: "Vapor builds a searchable index of everything you capture — web pages, screenshots, entities, and more."
+        ) {
+            VStack(spacing: 12) {
+                ShortcutRow(key: "⌘ ⇧ E", label: "Context explorer")
+                ShortcutRow(key: "⌘ ⇧ L", label: "Activity log")
+                ShortcutRow(key: "⌘ ⌥ C", label: "Focus context tray")
+                ShortcutRow(key: "⌘ ⇧ T", label: "Focus tool rail")
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("What's inside:")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    Text("• Full-text search powered by on-device embeddings")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                    Text("• Entity extraction (people, orgs, products, locations)")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                    Text("• Automatic summarization of captured content")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                    Text("• Vector-based similarity search across all items")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(10)
+                .background(Color.secondary.opacity(0.07))
+                .cornerRadius(8)
+            }
+            .padding(.horizontal, 8)
+        }
+    }
+}
+
+// MARK: - Step 10: All Set
 
 private struct AllSetStepView: View {
     var body: some View {
@@ -867,13 +1015,35 @@ private struct AllSetStepView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 10) {
+                    Text("Dictation & Editing")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
                     ShortcutRow(key: "Fn (hold)", label: "Dictate")
                     ShortcutRow(key: "⌘ ↩", label: "Compress & copy")
                     ShortcutRow(key: "⌘ ⇧ C", label: "Copy original")
                     ShortcutRow(key: "⌘ K", label: "Copy & clear")
+                }
+                .padding(.horizontal, 32)
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Panels & Windows")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    ShortcutRow(key: "⌘ ⇧ S", label: "Screenshot shelf")
+                    ShortcutRow(key: "⌘ ⌥ C", label: "Context tray")
+                    ShortcutRow(key: "⌘ ⇧ E", label: "Context explorer")
                     ShortcutRow(key: "⌘ Y", label: "Prompt history")
-                    ShortcutRow(key: "⌘ /", label: "All shortcuts")
-                    ShortcutRow(key: "⌃ ⌥ Space", label: "Focus Vapor")
+                    ShortcutRow(key: "⌘ ⇧ L", label: "Activity log")
+                }
+                .padding(.horizontal, 32)
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Window & Navigation")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    ShortcutRow(key: "⌃ ⌥ Space", label: "Focus Vapor from any app")
+                    ShortcutRow(key: "⌘ \\", label: "Toggle compact / full")
+                    ShortcutRow(key: "⌘ /", label: "All shortcuts help")
                 }
                 .padding(.horizontal, 32)
 

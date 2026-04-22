@@ -2,6 +2,23 @@ import AVFoundation
 import Speech
 import SwiftUI
 
+struct CompressionModelOption: Identifiable, Hashable {
+    let id: String
+    let displayName: String
+    let priceLabel: String
+
+    static let curatedModels: [CompressionModelOption] = [
+        CompressionModelOption(id: "z-ai/glm-5", displayName: "GLM-5", priceLabel: "$0.00/M"),
+        CompressionModelOption(id: "deepseek/deepseek-chat-v3-0324:free", displayName: "DeepSeek V3 (Free)", priceLabel: "Free"),
+        CompressionModelOption(id: "google/gemma-3n-e4b-it", displayName: "Gemma 3N E4B", priceLabel: "$0.02/M"),
+        CompressionModelOption(id: "meta-llama/llama-3.1-8b-instruct", displayName: "Llama 3.1 8B", priceLabel: "$0.02/M"),
+        CompressionModelOption(id: "google/gemma-3-4b-it", displayName: "Gemma 3 4B", priceLabel: "$0.04/M"),
+        CompressionModelOption(id: "qwen/qwen3-8b", displayName: "Qwen 3 8B", priceLabel: "$0.05/M"),
+        CompressionModelOption(id: "anthropic/claude-sonnet-4", displayName: "Claude Sonnet 4", priceLabel: "$3.00/M"),
+        CompressionModelOption(id: "openai/gpt-4.1-mini", displayName: "GPT-4.1 Mini", priceLabel: "$0.40/M"),
+    ]
+}
+
 @MainActor
 @Observable
 final class OnboardingStore {
@@ -68,6 +85,8 @@ final class OnboardingStore {
 
     var openRouterApiKey: String = ""
     var openRouterCompressionModel: String = "glm-5"
+    var selectedCompressionModel: CompressionModelOption = CompressionModelOption.curatedModels[0]
+    var useCustomCompressionModel: Bool = false
     var selectedNERModel: NERModel = NERModel.curatedModels.first ?? NERModel(id: NERModel.defaultModel, displayName: NERModel.defaultModel, priceLabel: "")
     var useCustomNERModel: Bool = false
     var customNERModel: String = ""
@@ -155,7 +174,8 @@ final class OnboardingStore {
 
     func saveOpenRouterConfig() {
         UserDefaults.standard.set(openRouterApiKey, forKey: "openRouterApiKey")
-        compressionService.setOpenRouterApiKey(openRouterApiKey, model: openRouterCompressionModel)
+        let compressionModel = useCustomCompressionModel ? openRouterCompressionModel : selectedCompressionModel.id
+        compressionService.setOpenRouterApiKey(openRouterApiKey, model: compressionModel)
 
         let nerModel = useCustomNERModel ? customNERModel : selectedNERModel.id
         UserDefaults.standard.set(nerModel, forKey: "entityExtractionModel")

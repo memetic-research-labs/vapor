@@ -1677,7 +1677,7 @@ struct SettingsView: View {
                         .font(.system(size: 13))
                         .disabled(preferences.autoCompressEnabled)
 
-                        Text("Copy the uncompressed dictated text to clipboard when you stop speaking.")
+                        Text("Copy the uncompressed dictated text to clipboard when you stop speaking. This does not create a prompt-history entry unless you explicitly use Copy Original.")
                             .font(.system(size: 11))
                             .foregroundColor(.secondary)
 
@@ -1702,7 +1702,17 @@ struct SettingsView: View {
                         ))
                         .font(.system(size: 13))
 
-                        Text("Show the OpenRouter test sidebar button in the expanded toolbar.")
+                        Text("Show the OpenRouter test utility window button in the toolbar.")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+
+                        Toggle("Enable research workspace", isOn: Binding(
+                            get: { preferences.researchToolsEnabled },
+                            set: { preferences.researchToolsEnabled = $0 }
+                        ))
+                        .font(.system(size: 13))
+
+                        Text("Show the Compose/Research workspace switcher while research tools are still under active design.")
                             .font(.system(size: 11))
                             .foregroundColor(.secondary)
                     }
@@ -1747,6 +1757,24 @@ struct SettingsView: View {
                             .foregroundColor(.secondary)
 
                         Text("When you first set a hotkey, macOS will ask for Input Monitoring permission. Grant it to enable the global shortcut.")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(8)
+                }
+
+                GroupBox("Onboarding") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Button {
+                            UserDefaults.standard.set(false, forKey: "hasCompletedOnboarding")
+                            NSApp.activate(ignoringOtherApps: true)
+                            NotificationCenter.default.post(name: .vaporShowOnboarding, object: nil)
+                        } label: {
+                            Label("Show Onboarding", systemImage: "hand.wave.fill")
+                        }
+                        .font(.system(size: 13))
+
+                        Text("Replay the first-launch setup walkthrough.")
                             .font(.system(size: 11))
                             .foregroundColor(.secondary)
                     }

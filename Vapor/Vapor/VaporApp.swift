@@ -112,13 +112,6 @@ struct VaporApp: App {
     var body: some Scene {
         mainAppScene
 
-        Window("Transcript Preview", id: "transcript-preview") {
-            TranscriptPreviewView()
-        }
-        .windowStyle(.titleBar)
-        .windowResizability(.contentSize)
-        .defaultSize(width: 320, height: 240)
-
         WindowGroup("Prompt History", id: "prompt-history") {
             PromptHistoryView()
                 .environment(vectorizationService)
@@ -147,12 +140,12 @@ struct VaporApp: App {
         .windowResizability(.contentSize)
         .defaultSize(width: 340, height: 360)
 
-        Window("Vapor Onboarding", id: "onboarding") {
+        WindowGroup("Vapor Onboarding", id: "onboarding") {
             OnboardingView()
         }
         .windowStyle(.titleBar)
         .windowResizability(.contentSize)
-        .defaultSize(width: 480, height: 540)
+        .defaultSize(width: 520, height: 580)
 
         Settings {
             SettingsView(compressionService: compressionService, preferences: preferences)
@@ -213,6 +206,10 @@ struct VaporApp: App {
                     if !UserDefaults.standard.bool(forKey: "hasCompletedOnboarding") {
                         openWindow(id: "onboarding")
                     }
+                    NotificationCenter.default.addObserver(forName: .vaporShowOnboarding, object: nil, queue: .main) { _ in
+                        openWindow(id: "onboarding")
+                        NSApp.activate(ignoringOtherApps: true)
+                    }
                 }
         }
         .modelContainer(sharedModelContainer)
@@ -236,6 +233,7 @@ struct VaporApp: App {
         let focusContextCommand = AppCommandRegistry.command(.focusContext)
         let focusToolsCommand = AppCommandRegistry.command(.focusTools)
         let focusEditorCommand = AppCommandRegistry.command(.focusEditor)
+        let focusPromptHistoryCommand = AppCommandRegistry.command(.focusPromptHistory)
         let promptHistoryCommand = AppCommandRegistry.command(.promptHistory)
         let contextExplorerCommand = AppCommandRegistry.command(.contextExplorer)
         let activityLogCommand = AppCommandRegistry.command(.activityLog)
@@ -321,10 +319,20 @@ struct VaporApp: App {
             }
             .keyboardShortcut(focusEditorCommand.key ?? "i", modifiers: focusEditorCommand.modifiers)
 
+            Button(focusPromptHistoryCommand.title) {
+                NotificationCenter.default.post(name: .vaporFocusPromptHistory, object: nil)
+            }
+            .keyboardShortcut(focusPromptHistoryCommand.key ?? "h", modifiers: focusPromptHistoryCommand.modifiers)
+        }
+
+        CommandGroup(replacing: .toolbar) { }
+
+        CommandGroup(after: .windowArrangement) {
             Divider()
 
             Button(promptHistoryCommand.title) {
                 openWindow(id: "prompt-history")
+                NSApp.activate(ignoringOtherApps: true)
             }
             .keyboardShortcut(promptHistoryCommand.key ?? "y", modifiers: promptHistoryCommand.modifiers)
 
@@ -337,33 +345,18 @@ struct VaporApp: App {
 
             Button(activityLogCommand.title) {
                 openWindow(id: "activity-log")
+                NSApp.activate(ignoringOtherApps: true)
             }
             .keyboardShortcut(activityLogCommand.key ?? "l", modifiers: activityLogCommand.modifiers)
 
             Button(openRouterTestCommand.title) {
                 openWindow(id: "openrouter-test")
-            }
-
-            Button(keyboardShortcutsCommand.title) {
-                openWindow(id: "keyboard-shortcuts")
-            }
-            .keyboardShortcut(keyboardShortcutsCommand.key ?? "/", modifiers: keyboardShortcutsCommand.modifiers)
-        }
-
-        CommandGroup(replacing: .toolbar) { }
-
-        CommandGroup(after: .windowArrangement) {
-            Divider()
-
-            Button(contextExplorerCommand.title) {
-                contextExplorerStore.openOverview()
-                openWindow(id: "context-explorer")
                 NSApp.activate(ignoringOtherApps: true)
             }
-            .keyboardShortcut(contextExplorerCommand.key ?? "e", modifiers: contextExplorerCommand.modifiers)
 
-            Button(openRouterTestCommand.title) {
-                openWindow(id: "openrouter-test")
+            Button(showOnboardingCommand.title) {
+                UserDefaults.standard.set(false, forKey: "hasCompletedOnboarding")
+                openWindow(id: "onboarding")
                 NSApp.activate(ignoringOtherApps: true)
             }
 
@@ -371,18 +364,9 @@ struct VaporApp: App {
                 windowManager.toggleState()
             }
             .keyboardShortcut(toggleCompactFullCommand.key ?? "\\", modifiers: toggleCompactFullCommand.modifiers)
-
-            Button(minimizeToCompactCommand.title) {
-                windowManager.minimize()
-            }
-            .keyboardShortcut(minimizeToCompactCommand.key ?? .escape, modifiers: minimizeToCompactCommand.modifiers)
         }
 
         CommandGroup(after: .help) {
-            Button(showOnboardingCommand.title) {
-                openWindow(id: "onboarding")
-            }
-
             Button(keyboardShortcutsCommand.title) {
                 openWindow(id: "keyboard-shortcuts")
             }
