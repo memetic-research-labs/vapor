@@ -60,17 +60,6 @@ struct VaporApp: App {
     }
 
     private static func makeSharedModelContainer(deleteOldStore: Bool = false) throws -> ModelContainer {
-        let schema = Schema([
-            PromptRecord.self,
-            ContextItem.self,
-            URLRecord.self,
-            ContextItemURLLink.self,
-            EntityRecord.self,
-            ContextItemEntityLink.self,
-            ImageAsset.self,
-            ContextItemImageLink.self
-        ])
-
         if deleteOldStore {
             let url = storeURL
             for suffix in ["", "-wal", "-shm"] {
@@ -78,22 +67,11 @@ struct VaporApp: App {
             }
         }
 
-        let persistentConfig = ModelConfiguration(url: storeURL)
-        return try ModelContainer(for: schema, configurations: [persistentConfig])
+        return try ModelContainer.forVapor(url: storeURL)
     }
 
     private static func makeInMemoryModelContainer() throws -> ModelContainer {
-        let schema = Schema([
-            PromptRecord.self,
-            ContextItem.self,
-            URLRecord.self,
-            ContextItemURLLink.self,
-            EntityRecord.self,
-            ContextItemEntityLink.self,
-            ImageAsset.self,
-            ContextItemImageLink.self
-        ])
-        return try ModelContainer(for: schema, configurations: [ModelConfiguration(isStoredInMemoryOnly: true)])
+        return try ModelContainer.forVapor(url: URL(fileURLWithPath: "/dev/null"))
     }
 
     private static var hasSetupBrowserBridge = false
