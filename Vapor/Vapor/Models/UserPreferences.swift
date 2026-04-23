@@ -15,6 +15,9 @@ final class UserPreferences {
     var showExperimentsButton: Bool {
         didSet { UserDefaults.standard.set(showExperimentsButton, forKey: Keys.showExperiments) }
     }
+    var researchToolsEnabled: Bool {
+        didSet { UserDefaults.standard.set(researchToolsEnabled, forKey: Keys.researchToolsEnabled) }
+    }
     var autoCopyOriginalEnabled: Bool {
         didSet { UserDefaults.standard.set(autoCopyOriginalEnabled, forKey: Keys.autoCopyOriginal) }
     }
@@ -43,6 +46,7 @@ final class UserPreferences {
         static let autoCompress = "autoCompressEnabled"
         static let autoMinimize = "autoMinimizeEnabled"
         static let showExperiments = "showExperimentsButton"
+        static let researchToolsEnabled = "researchToolsEnabled"
         static let autoCopyOriginal = "autoCopyOriginalEnabled"
         static let windowPositionX = "windowPositionX"
         static let windowPositionY = "windowPositionY"
@@ -58,7 +62,8 @@ final class UserPreferences {
         self.autoCompressEnabled = UserDefaults.standard.object(forKey: Keys.autoCompress) as? Bool ?? false
         self.autoMinimizeEnabled = UserDefaults.standard.object(forKey: Keys.autoMinimize) as? Bool ?? false
         self.showExperimentsButton = UserDefaults.standard.object(forKey: Keys.showExperiments) as? Bool ?? false
-        self.autoCopyOriginalEnabled = UserDefaults.standard.object(forKey: Keys.autoCopyOriginal) as? Bool ?? true
+        self.researchToolsEnabled = UserDefaults.standard.object(forKey: Keys.researchToolsEnabled) as? Bool ?? false
+        self.autoCopyOriginalEnabled = UserDefaults.standard.object(forKey: Keys.autoCopyOriginal) as? Bool ?? false
         self.browserIntegrationEnabled = UserDefaults.standard.object(forKey: Keys.browserIntegrationEnabled) as? Bool ?? false
         self.autoSendToBrowser = UserDefaults.standard.object(forKey: Keys.autoSendToBrowser) as? Bool ?? false
         self.autoSubmitToAI = UserDefaults.standard.object(forKey: Keys.autoSubmitToAI) as? Bool ?? false

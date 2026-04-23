@@ -2,6 +2,7 @@ import Foundation
 
 enum MainWindowFocusZone: String, Codable {
     case editor
+    case promptHistory
     case screenshots
     case contextTray
     case toolRail

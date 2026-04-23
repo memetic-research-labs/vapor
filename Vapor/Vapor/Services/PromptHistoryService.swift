@@ -11,6 +11,8 @@ struct PromptHistorySnapshot {
     let compressedTokenCount: Int
     let compressionRatio: Double
     let compressorUsed: CompressorType
+    let usageReason: PromptRecord.UsageReason
+    let countsAsUse: Bool
 }
 
 @MainActor
@@ -56,7 +58,10 @@ final class PromptHistoryService {
         descriptor.fetchLimit = 1
 
         if let existing = try modelContext.fetch(descriptor).first {
-            existing.modifiedAt = Date()
+            if snapshot.countsAsUse {
+                existing.modifiedAt = Date()
+            }
+            applyUsageMetadata(to: existing, snapshot: snapshot)
             try modelContext.save()
             if existing.embeddingID == nil {
                 scheduleEmbedding(for: existing)
@@ -73,6 +78,7 @@ final class PromptHistoryService {
             compressionRatio: snapshot.compressionRatio,
             compressorUsed: snapshot.compressorUsed
         )
+        applyUsageMetadata(to: record, snapshot: snapshot)
         modelContext.insert(record)
         try modelContext.save()
         scheduleEmbedding(for: record)
@@ -83,7 +89,7 @@ final class PromptHistoryService {
     func fetchRecent(limit: Int = 50) throws -> [PromptRecord] {
         guard let modelContext else { return [] }
         var descriptor = FetchDescriptor<PromptRecord>(
-            sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+            sortBy: [SortDescriptor(\.modifiedAt, order: .reverse)]
         )
         descriptor.fetchLimit = limit
         return try modelContext.fetch(descriptor)
@@ -97,7 +103,7 @@ final class PromptHistoryService {
         }
         let descriptor = FetchDescriptor<PromptRecord>(
             predicate: predicate,
-            sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+            sortBy: [SortDescriptor(\.modifiedAt, order: .reverse)]
         )
         return try modelContext.fetch(descriptor)
     }
@@ -130,6 +136,14 @@ final class PromptHistoryService {
             } catch {
                 logger.error("Failed to vectorize prompt record: \(error.localizedDescription)")
             }
+        }
+    }
+
+    private func applyUsageMetadata(to record: PromptRecord, snapshot: PromptHistorySnapshot) {
+        if snapshot.countsAsUse {
+            record.lastUsedAt = Date()
+            record.useCount += 1
+            record.lastUsageReason = snapshot.usageReason
         }
     }
 }

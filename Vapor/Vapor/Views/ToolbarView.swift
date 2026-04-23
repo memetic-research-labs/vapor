@@ -3,70 +3,93 @@ import SwiftUI
 struct ToolbarView: View {
     @Bindable var viewModel: EditorViewModel
     let preferences: UserPreferences
+    let workspace: AppWorkspace
+    let isContextTrayVisible: Bool
     let onCompressAndCopy: () async -> Void
     let onCopyOriginal: () -> Void
     let onShowHistory: () -> Void
-    let onToggleTest: () -> Void
+    let onSelectWorkspace: (AppWorkspace) -> Void
+    let onOpenExperiments: () -> Void
     let onToggleContextTray: () -> Void
     let onMinimize: () -> Void
 
     var body: some View {
+        ZStack {
+            workspaceSwitcher
+
+            HStack(spacing: 12) {
+                leftGroup
+                Spacer(minLength: 24)
+                rightGroup
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .frame(height: 46)
+        .background(.bar)
+    }
+
+    @ViewBuilder
+    private var leftGroup: some View {
         HStack(spacing: 8) {
-            Button {
-                Task { await onCompressAndCopy() }
-            } label: {
-                HStack(spacing: 4) {
-                    if viewModel.isCompressing {
-                        ProgressView()
-                            .scaleEffect(0.7)
-                            .frame(width: 14, height: 14)
-                    } else {
-                        Image(systemName: "bolt.horizontal")
+            if workspace == .compose {
+                Button {
+                    Task { await onCompressAndCopy() }
+                } label: {
+                    HStack(spacing: 4) {
+                        if viewModel.isCompressing {
+                            ProgressView()
+                                .scaleEffect(0.7)
+                                .frame(width: 14, height: 14)
+                        } else {
+                            Image(systemName: "bolt.horizontal")
+                        }
+                        Text("Compress & Copy")
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
                     }
-                    Text("Compress & Copy")
-                        .lineLimit(1)
-                        .fixedSize(horizontal: true, vertical: false)
+                    .font(.system(size: 12, weight: .semibold))
+                    .padding(.horizontal, 11)
+                    .padding(.vertical, 5)
+                    .background(Color.accentColor.opacity(viewModel.content.isEmpty ? 0.08 : 0.14))
+                    .foregroundColor(viewModel.content.isEmpty ? .secondary : .accentColor)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 7)
+                            .stroke(Color.accentColor.opacity(viewModel.content.isEmpty ? 0.08 : 0.2), lineWidth: 1)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 7))
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(Color.accentColor)
-                .foregroundColor(.white)
-                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .buttonStyle(.plain)
+                .disabled(viewModel.content.isEmpty || viewModel.isCompressing)
             }
-            .buttonStyle(.plain)
-            .disabled(viewModel.content.isEmpty || viewModel.isCompressing)
+        }
+    }
 
-            Button {
-                onCopyOriginal()
-            } label: {
-                Image(systemName: "doc.on.doc")
-                    .foregroundColor(.primary)
+    private var workspaceSwitcher: some View {
+        Group {
+            if preferences.researchToolsEnabled {
+                Picker("Workspace", selection: Binding(
+                    get: { workspace },
+                    set: onSelectWorkspace
+                )) {
+                    ForEach(AppWorkspace.allCases) { workspace in
+                        Text(workspace.rawValue).tag(workspace)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .frame(width: 180)
+            } else {
+                Text("Compose")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.secondary)
             }
-            .buttonStyle(.plain)
-            .disabled(viewModel.content.isEmpty)
-            .help("Copy Original ( ⌘ ⇧ C )")
+        }
+    }
 
-            Button {
-                onShowHistory()
-            } label: {
-                Image(systemName: "clock.arrow.circlepath")
-                    .foregroundColor(.primary)
-            }
-            .buttonStyle(.plain)
-            .help("Prompt History ( ⌘ Y )")
-
-            Spacer()
-
-            Button {
-                onToggleContextTray()
-            } label: {
-                Image(systemName: "sidebar.trailing")
-                    .font(.system(size: 12))
-                    .foregroundColor(.primary)
-            }
-            .buttonStyle(.plain)
-            .help("Toggle context tray")
-
+    @ViewBuilder
+    private var rightGroup: some View {
+        HStack(spacing: 8) {
             SettingsLink {
                 Image(systemName: "gearshape")
                     .foregroundColor(.primary)
@@ -74,29 +97,54 @@ struct ToolbarView: View {
             .buttonStyle(.plain)
             .keyboardShortcut(",", modifiers: .command)
 
-            if preferences.showExperimentsButton {
+            Menu {
+                if workspace == .compose {
+                    Button("Copy Original", action: onCopyOriginal)
+                        .disabled(viewModel.content.isEmpty)
+                    Button("Prompt History", action: onShowHistory)
+                    Divider()
+                }
+                if preferences.showExperimentsButton {
+                    Button("OpenRouter Test", action: onOpenExperiments)
+                }
+                Button("Minimize to Compact", action: onMinimize)
+            } label: {
+                Text("Window")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color.secondary.opacity(0.06))
+                    )
+            }
+            .menuStyle(.borderlessButton)
+            .help("More window actions")
+
+            if workspace == .compose {
                 Button {
-                    onToggleTest()
+                    onToggleContextTray()
                 } label: {
-                    Image(systemName: "flask")
-                        .foregroundColor(.primary)
+                    Text("Context")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(isContextTrayVisible ? .accentColor : .primary)
+                        .padding(.horizontal, 2)
                 }
                 .buttonStyle(.plain)
-                .help("OpenRouter Test")
+                .controlSize(.small)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(isContextTrayVisible ? Color.accentColor.opacity(0.12) : Color.clear)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(isContextTrayVisible ? Color.accentColor.opacity(0.28) : Color.secondary.opacity(0.14), lineWidth: 1)
+                )
+                .help("Toggle context tray")
             }
-
-            Button {
-                onMinimize()
-            } label: {
-                Image(systemName: "arrow.down.right.and.arrow.up.left")
-                    .foregroundColor(.primary)
-            }
-            .buttonStyle(.plain)
-            .help("Minimize to compact view ( Escape )")
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .frame(height: 44)
-        .background(.bar)
     }
 }

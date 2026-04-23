@@ -91,13 +91,13 @@ struct PromptHistoryCardView: View {
         let calendar = Calendar.current
         let formatter = DateFormatter()
 
-        if calendar.isDateInToday(record.createdAt) {
+        if calendar.isDateInToday(record.modifiedAt) {
             formatter.dateFormat = "h:mm a"
-        } else if calendar.isDateInYesterday(record.createdAt) {
+        } else if calendar.isDateInYesterday(record.modifiedAt) {
             formatter.dateFormat = "'Yesterday' h:mm a"
         } else {
             formatter.dateFormat = "MMM d, h:mm a"
         }
-        return formatter.string(from: record.createdAt)
+        return formatter.string(from: record.modifiedAt)
     }
 }

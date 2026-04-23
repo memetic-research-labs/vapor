@@ -141,6 +141,12 @@ async function connect() {
           await handleOpenTab(data);
         } else if (data.type === 'ACTIVATE_PICKER') {
           await handleActivatePicker();
+        } else if (data.type === 'INTERROGATE_TAB') {
+          await handleInterrogateTab(data);
+        } else if (data.type === 'PREVIEW_SOURCE') {
+          await handlePreviewSource(data);
+        } else if (data.type === 'REFRESH_XHR_SOURCES') {
+          await handleRefreshXHRSources(data);
         }
       } catch (err) {
         console.error('[Vapor] Error parsing prompt event:', err);
@@ -296,6 +302,118 @@ async function handleActivatePicker() {
     await chrome.tabs.sendMessage(tab.id, { type: 'ACTIVATE_PICKER' });
   } catch (err) {
     console.error('[Vapor] Failed to activate picker:', err);
+  }
+}
+
+async function handleInterrogateTab(data) {
+  const tabId = typeof data.tab_id === 'number' ? data.tab_id : null;
+  if (!tabId) {
+    await postResponse({ type: 'RESEARCH_SOURCES_DISCOVERED', tabId: null, sources: [], error: 'Missing tab_id' });
+    return;
+  }
+
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    await focusTab(tab);
+
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: ['content-scripts/page-inspector.js']
+    });
+
+    const result = await chrome.tabs.sendMessage(tab.id, { type: 'INSPECT_PAGE' });
+
+    if (!result || !result.success) {
+      await postResponse({
+        type: 'RESEARCH_SOURCES_DISCOVERED',
+        tabId: tabId,
+        sources: [],
+        error: result?.error || 'Inspection failed'
+      });
+      return;
+    }
+
+    await postResponse({
+      type: 'RESEARCH_SOURCES_DISCOVERED',
+      tabId: tabId,
+      tabUrl: tab.url,
+      tabTitle: tab.title,
+      sources: result.sources
+    });
+  } catch (err) {
+    await postResponse({
+      type: 'RESEARCH_SOURCES_DISCOVERED',
+      tabId: tabId,
+      sources: [],
+      error: err.message || String(err)
+    });
+  }
+}
+
+async function handlePreviewSource(data) {
+  const tabId = typeof data.tab_id === 'number' ? data.tab_id : null;
+  const sourceId = data.source_id;
+  if (!tabId || !sourceId) {
+    await postResponse({ type: 'RESEARCH_SOURCE_PREVIEW', sourceId: sourceId, error: 'Missing tab_id or source_id' });
+    return;
+  }
+
+  try {
+    const result = await chrome.tabs.sendMessage(tabId, { type: 'PREVIEW_SOURCE', sourceId });
+
+    if (!result || !result.success) {
+      await postResponse({
+        type: 'RESEARCH_SOURCE_PREVIEW',
+        sourceId: sourceId,
+        error: result?.error || 'Preview failed'
+      });
+      return;
+    }
+
+    await postResponse({
+      type: 'RESEARCH_SOURCE_PREVIEW',
+      sourceId: sourceId,
+      preview: result.preview
+    });
+  } catch (err) {
+    await postResponse({
+      type: 'RESEARCH_SOURCE_PREVIEW',
+      sourceId: sourceId,
+      error: err.message || String(err)
+    });
+  }
+}
+
+async function handleRefreshXHRSources(data) {
+  const tabId = typeof data.tab_id === 'number' ? data.tab_id : null;
+  if (!tabId) {
+    await postResponse({ type: 'XHR_SOURCES_REFRESHED', tabId: null, sources: [], error: 'Missing tab_id' });
+    return;
+  }
+
+  try {
+    const result = await chrome.tabs.sendMessage(tabId, { type: 'REFRESH_XHR_SOURCES' });
+    if (!result || !result.success) {
+      await postResponse({
+        type: 'XHR_SOURCES_REFRESHED',
+        tabId: tabId,
+        sources: [],
+        error: result?.error || 'Refresh failed'
+      });
+      return;
+    }
+    await postResponse({
+      type: 'XHR_SOURCES_REFRESHED',
+      tabId: tabId,
+      sources: result.sources
+    });
+  } catch (err) {
+    await postResponse({
+      type: 'XHR_SOURCES_REFRESHED',
+      tabId: tabId,
+      sources: [],
+      error: err.message || String(err)
+    });
   }
 }
 
