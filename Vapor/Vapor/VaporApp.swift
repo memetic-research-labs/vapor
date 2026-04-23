@@ -19,6 +19,7 @@ struct VaporApp: App {
     @State private var screenshotShelfStore = ScreenshotShelfStore.shared
     @State private var mainWindowFocusStore = MainWindowFocusStore()
     @State private var appDelegate: VaporAppDelegate?
+    @State private var onboardingObserver: NSObjectProtocol?
     @Environment(\.openWindow) private var openWindow
 
     init() {
@@ -33,19 +34,7 @@ struct VaporApp: App {
             self.sharedModelContainer = try Self.makeSharedModelContainer()
         } catch {
             logger.fault("Failed to open persistent ModelContainer: \(error.localizedDescription)")
-            logger.fault("Attempting to reset the store and retry...")
-            do {
-                self.sharedModelContainer = try Self.makeSharedModelContainer(deleteOldStore: true)
-                logger.info("Successfully recreated the persistent store after reset.")
-            } catch {
-                logger.fault("Store reset also failed, falling back to in-memory store: \(error.localizedDescription)")
-                do {
-                    self.sharedModelContainer = try Self.makeInMemoryModelContainer()
-                } catch {
-                    logger.fault("In-memory fallback also failed: \(error.localizedDescription)")
-                    fatalError("Vapor could not create any ModelContainer: \(error.localizedDescription)")
-                }
-            }
+            fatalError("Vapor could not open its persistent store. No automatic reset or in-memory fallback was performed. Underlying error: \(error.localizedDescription)")
         }
     }
 
@@ -59,19 +48,8 @@ struct VaporApp: App {
         return storeDir.appendingPathComponent("Vapor.store")
     }
 
-    private static func makeSharedModelContainer(deleteOldStore: Bool = false) throws -> ModelContainer {
-        if deleteOldStore {
-            let url = storeURL
-            for suffix in ["", "-wal", "-shm"] {
-                try? FileManager.default.removeItem(at: url.appendingPathExtension(suffix))
-            }
-        }
-
+    private static func makeSharedModelContainer() throws -> ModelContainer {
         return try ModelContainer.forVapor(url: storeURL)
-    }
-
-    private static func makeInMemoryModelContainer() throws -> ModelContainer {
-        return try ModelContainer.forVapor(url: URL(fileURLWithPath: "/dev/null"))
     }
 
     private static var hasSetupBrowserBridge = false
@@ -206,9 +184,17 @@ struct VaporApp: App {
                     if !UserDefaults.standard.bool(forKey: "hasCompletedOnboarding") {
                         openWindow(id: "onboarding")
                     }
-                    NotificationCenter.default.addObserver(forName: .vaporShowOnboarding, object: nil, queue: .main) { _ in
-                        openWindow(id: "onboarding")
-                        NSApp.activate(ignoringOtherApps: true)
+                    if onboardingObserver == nil {
+                        onboardingObserver = NotificationCenter.default.addObserver(forName: .vaporShowOnboarding, object: nil, queue: .main) { _ in
+                            openWindow(id: "onboarding")
+                            NSApp.activate(ignoringOtherApps: true)
+                        }
+                    }
+                }
+                .onDisappear {
+                    if let onboardingObserver {
+                        NotificationCenter.default.removeObserver(onboardingObserver)
+                        self.onboardingObserver = nil
                     }
                 }
         }

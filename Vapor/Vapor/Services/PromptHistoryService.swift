@@ -58,7 +58,9 @@ final class PromptHistoryService {
         descriptor.fetchLimit = 1
 
         if let existing = try modelContext.fetch(descriptor).first {
-            existing.modifiedAt = Date()
+            if snapshot.countsAsUse {
+                existing.modifiedAt = Date()
+            }
             applyUsageMetadata(to: existing, snapshot: snapshot)
             try modelContext.save()
             if existing.embeddingID == nil {

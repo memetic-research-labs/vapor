@@ -16,7 +16,7 @@ struct PromptHistoryShelfView: View {
     @State private var focusedRecordID: UUID?
 
     private var records: [PromptRecord] {
-        Array(allRecords.prefix(16))
+        Array(allRecords.filter { $0.useCount > 0 }.prefix(16))
     }
 
     var body: some View {

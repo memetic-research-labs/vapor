@@ -387,7 +387,7 @@ async function handlePreviewSource(data) {
 async function handleRefreshXHRSources(data) {
   const tabId = typeof data.tab_id === 'number' ? data.tab_id : null;
   if (!tabId) {
-    await postResponse({ type: 'RESEARCH_SOURCES_DISCOVERED', tabId: null, sources: [], error: 'Missing tab_id' });
+    await postResponse({ type: 'XHR_SOURCES_REFRESHED', tabId: null, sources: [], error: 'Missing tab_id' });
     return;
   }
 
