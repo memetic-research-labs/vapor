@@ -27,22 +27,36 @@ actor LocalLLMCompressor: Compressor {
         Task { @MainActor in
             CompressionTelemetry.shared.recordServiceEvent(.modelLoad(
                 backend: "Local LLM",
-                model: "Qwen2.5-7B",
+                model: modelURL.deletingPathExtension().lastPathComponent,
                 duration: elapsed
             ))
         }
     }
 
     func compress(_ text: String) async throws -> CompressedResult {
+        let compressed = try await generate(systemPrompt: compressionSystemPrompt, userText: text)
+
+        let originalTokens = await countTokens(text)
+        let compressedTokens = await countTokens(compressed)
+        let ratio = originalTokens > 0 ? Double(compressedTokens) / Double(originalTokens) : 0.0
+
+        return CompressedResult(
+            text: cleanCompressedOutput(compressed),
+            originalTokens: originalTokens,
+            compressedTokens: compressedTokens,
+            ratio: ratio,
+            compressorUsed: .localLLM
+        )
+    }
+
+    func generate(systemPrompt: String, userText: String) async throws -> String {
         guard let service = llamaService else {
             throw CompressionError.unavailable
         }
 
-        let systemPrompt = compressionSystemPrompt
-
         let messages = [
             LlamaChatMessage(role: .system, content: systemPrompt),
-            LlamaChatMessage(role: .user, content: text)
+            LlamaChatMessage(role: .user, content: userText)
         ]
 
         let samplingConfig = LlamaSamplingConfig(
@@ -57,22 +71,12 @@ actor LocalLLMCompressor: Compressor {
             )
         )
 
-        var compressed = ""
+        var output = ""
         let stream = try await service.streamCompletion(of: messages, samplingConfig: samplingConfig)
         for try await token in stream {
-            compressed += token
+            output += token
         }
 
-        let originalTokens = await countTokens(text)
-        let compressedTokens = await countTokens(compressed)
-        let ratio = originalTokens > 0 ? Double(compressedTokens) / Double(originalTokens) : 0.0
-
-        return CompressedResult(
-            text: cleanCompressedOutput(compressed),
-            originalTokens: originalTokens,
-            compressedTokens: compressedTokens,
-            ratio: ratio,
-            compressorUsed: .localLLM
-        )
+        return output
     }
 }

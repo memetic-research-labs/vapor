@@ -8,7 +8,7 @@ import SwiftData
 private let logger = Logger(subsystem: "lol.mrl.app.Vapor", category: "Settings")
 
 struct SettingsView: View {
-    let compressionService: CompressionService
+    @Bindable var compressionService: CompressionService
     let preferences: UserPreferences
     @Environment(BrowserBridge.self) private var browserBridge
     @Environment(VectorizationService.self) private var vectorizationService
@@ -20,16 +20,11 @@ struct SettingsView: View {
     @State private var compressionOpenRouterModel: String = "glm-5"
     @State private var useCustomCompressionOpenRouterModel: Bool = false
     @State private var customCompressionOpenRouterModel: String = ""
-    @State private var isLocalLLMAvailable: Bool = false
-    @State private var isOllamaAvailable: Bool = false
-    @State private var ollamaError: String = ""
-    @State private var pullModelName: String = ""
-    @State private var showCustomPull: Bool = false
-    @State private var isConnecting: Bool = false
+    private var isLocalLLMAvailable: Bool { compressionService.isSelectedLocalModelDownloaded }
     @State private var selectedTab: SettingsTab = .compression
     @State private var displayedAuthToken: String = ""
     @State private var embeddedServerPortText: String = ""
-    @State private var extractionBackend: EntityExtractionBackend = .ollama
+    @State private var extractionBackend: EntityExtractionBackend = .nlTagger
     @State private var extractionOpenRouterModel: String = NERModel.defaultModel
     @State private var useCustomExtractionOpenRouterModel: Bool = false
     @State private var customExtractionOpenRouterModel: String = ""
@@ -50,7 +45,6 @@ struct SettingsView: View {
         case compression = "Compression"
         case contextProcessing = "Context Processing"
         case cloud = "Cloud"
-        case ollama = "Ollama Models"
         case general = "General"
         case browser = "Browser"
         case telemetry = "Telemetry"
@@ -65,7 +59,6 @@ struct SettingsView: View {
             case .compression: return "arrow.left.arrow.right"
             case .contextProcessing: return "sparkles.rectangle.stack"
             case .browser: return "globe"
-            case .ollama: return "cpu"
             case .cloud: return "cloud"
             case .general: return "gearshape.2"
             case .telemetry: return "chart.bar"
@@ -77,12 +70,12 @@ struct SettingsView: View {
 
         #if DEBUG
         static let allCases: [SettingsTab] = [
-            .compression, .contextProcessing, .cloud, .ollama,
+            .compression, .contextProcessing, .cloud,
             .general, .browser, .telemetry, .dataManagement
         ]
         #else
         static let allCases: [SettingsTab] = [
-            .compression, .contextProcessing, .cloud, .ollama,
+            .compression, .contextProcessing, .cloud,
             .general, .browser, .telemetry
         ]
         #endif
@@ -97,7 +90,7 @@ struct SettingsView: View {
         var tabs: [SettingsTab] {
             switch self {
             case .ai:
-                let aiTabs: [SettingsTab] = [.compression, .contextProcessing, .cloud, .ollama]
+                let aiTabs: [SettingsTab] = [.compression, .contextProcessing, .cloud]
                 return aiTabs
             case .app:
                 var appTabs: [SettingsTab] = [.general, .browser, .telemetry]
@@ -131,8 +124,6 @@ struct SettingsView: View {
                     contextProcessingTab
                 case .browser:
                     browserTab
-                case .ollama:
-                    ollamaTab
                 case .cloud:
                     cloudTab
                 case .general:
@@ -662,7 +653,7 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 20) {
                 GroupBox("Compression Backend") {
                     VStack(alignment: .leading, spacing: 12) {
-                        ForEach(CompressorType.allCases.filter { $0 != .ruleBased }, id: \.self) { type in
+                        ForEach(CompressorType.allCases, id: \.self) { type in
                             HStack {
                                 ZStack {
                                     Circle()
@@ -692,18 +683,6 @@ struct SettingsView: View {
                                                     .font(.system(size: 10))
                                             }
                                         }
-
-                                        if type == .ollamaLLM {
-                                            if isOllamaAvailable {
-                                                Image(systemName: "checkmark.circle.fill")
-                                                    .foregroundColor(.green)
-                                                    .font(.system(size: 10))
-                                            } else {
-                                                Image(systemName: "circle.dashed")
-                                                    .foregroundColor(.secondary)
-                                                    .font(.system(size: 10))
-                                            }
-                                        }
                                     }
                                     Text(type.description)
                                         .font(.system(size: 11))
@@ -729,9 +708,14 @@ struct SettingsView: View {
                                         .foregroundColor(.green)
                                         .font(.system(size: 12))
                                     Spacer()
-                                    Text("Qwen2.5-7B Q4_K_M (~4.7 GB)")
+                                    Text("\(compressionService.selectedLocalModel.displayName) (\(String(format: "%.1f", compressionService.selectedLocalModel.sizeGB)) GB)")
                                         .font(.system(size: 11))
                                         .foregroundColor(.secondary)
+                                } else if compressionService.downloadedModelID != nil {
+                                    Label("Selected model not downloaded", systemImage: "exclamationmark.triangle.fill")
+                                        .foregroundColor(.orange)
+                                        .font(.system(size: 12))
+                                    Spacer()
                                 } else {
                                     Label("Model not downloaded", systemImage: "arrow.down.circle.fill")
                                         .foregroundColor(.orange)
@@ -740,17 +724,30 @@ struct SettingsView: View {
                                 }
                             }
 
+                            Picker("Model", selection: $compressionService.selectedLocalModel) {
+                                ForEach(LocalLLMModel.curatedModels) { model in
+                                    HStack {
+                                        Text(model.displayName)
+                                        Spacer()
+                                        Text(String(format: "%.1f GB", model.sizeGB))
+                                            .foregroundColor(.secondary)
+                                    }
+                                    .tag(model)
+                                }
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.menu)
+                            .frame(maxWidth: 360, alignment: .leading)
+
                             if isLocalLLMAvailable {
                                 Divider()
 
                                 HStack(spacing: 8) {
                                     Button("Re-download Model") {
-                                        compressionService.deleteLocalLLMModel()
-                                        isLocalLLMAvailable = false
+                                        let model = compressionService.selectedLocalModel
                                         Task {
                                             do {
-                                                try await compressionService.downloadLocalLLMModel()
-                                                isLocalLLMAvailable = true
+                                                try await compressionService.downloadLocalLLMModel(model)
                                             } catch {
                                                 logger.error("Failed to download model: \(error)")
                                             }
@@ -761,7 +758,6 @@ struct SettingsView: View {
 
                                     Button("Delete Model") {
                                         compressionService.deleteLocalLLMModel()
-                                        isLocalLLMAvailable = false
                                     }
                                     .buttonStyle(.bordered)
                                     .controlSize(.small)
@@ -773,7 +769,8 @@ struct SettingsView: View {
                                         ProgressView(value: compressionService.modelDownloadProgress, total: 1.0)
                                             .progressViewStyle(.linear)
 
-                                        Text("\(Int(compressionService.modelDownloadProgress * 100))% - \(formatBytes(Int(Double(4_900_000_000) * compressionService.modelDownloadProgress))) / 4.7 GB")
+                                        let model = compressionService.selectedLocalModel
+                                        Text("\(Int(compressionService.modelDownloadProgress * 100))% — \(String(format: "%.1f", compressionService.modelDownloadProgress * model.sizeGB)) / \(String(format: "%.1f", model.sizeGB)) GB")
                                             .font(.system(size: 10))
                                             .foregroundColor(.secondary)
                                     }
@@ -794,16 +791,17 @@ struct SettingsView: View {
                                             ProgressView(value: compressionService.modelDownloadProgress, total: 1.0)
                                                 .progressViewStyle(.linear)
 
-                                            Text("\(Int(compressionService.modelDownloadProgress * 100))% - \(formatBytes(Int(Double(4_900_000_000) * compressionService.modelDownloadProgress))) / 4.7 GB")
+                                            let model = compressionService.selectedLocalModel
+                                            Text("\(Int(compressionService.modelDownloadProgress * 100))% — \(String(format: "%.1f", compressionService.modelDownloadProgress * model.sizeGB)) / \(String(format: "%.1f", model.sizeGB)) GB")
                                                 .font(.system(size: 10))
                                                 .foregroundColor(.secondary)
                                         }
                                     } else {
-                                        Button("Download Qwen2.5-7B (4.7 GB)") {
+                                        Button("Download \(compressionService.selectedLocalModel.displayName) (\(String(format: "%.1f", compressionService.selectedLocalModel.sizeGB)) GB)") {
+                                            let model = compressionService.selectedLocalModel
                                             Task {
                                                 do {
-                                                    try await compressionService.downloadLocalLLMModel()
-                                                    isLocalLLMAvailable = true
+                                                    try await compressionService.downloadLocalLLMModel(model)
                                                 } catch {
                                                     logger.error("Failed to download model: \(error)")
                                                 }
@@ -812,7 +810,7 @@ struct SettingsView: View {
                                         .buttonStyle(.borderedProminent)
                                         .controlSize(.small)
 
-                                        Text("Recommended for best quality. Requires ~5GB storage.")
+                                        Text("Phi-4 Mini recommended for best speed. Larger models give better quality but use more RAM.")
                                             .font(.system(size: 10))
                                             .foregroundColor(.secondary)
                                     }
@@ -820,11 +818,6 @@ struct SettingsView: View {
                             }
                         }
                         .padding(8)
-                    }
-                    .onAppear {
-                        Task {
-                            isLocalLLMAvailable = compressionService.availableCompressors[.localLLM] ?? false
-                        }
                     }
                 }
 
@@ -888,240 +881,6 @@ struct SettingsView: View {
             if hasOpenRouterKey {
                 refreshOpenRouterCatalogIfNeeded()
             }
-        }
-    }
-
-    // MARK: - Ollama Tab
-
-    private var ollamaTab: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                if !ollamaError.isEmpty {
-                    HStack(spacing: 6) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundColor(.orange)
-                            .font(.system(size: 11))
-                        Text(ollamaError)
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
-                        Spacer()
-                        Button("Retry") {
-                            Task { await startOllamaDaemon() }
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                    }
-                }
-
-                if isConnecting {
-                    HStack(spacing: 8) {
-                        ProgressView()
-                            .controlSize(.small)
-                        Text("Starting Ollama daemon...")
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
-                    }
-                } else if compressionService.ollamaModels.isEmpty && ollamaError.isEmpty {
-                    Text("No models installed yet. Choose one below.")
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
-                }
-
-                Text("Available Models")
-                    .font(.system(size: 12, weight: .medium))
-
-                ForEach(Self.recommendedModels) { model in
-                    let isInstalled = compressionService.ollamaModels.contains(where: { $0.name == model.tag || $0.name == "library/\(model.tag)" })
-                    let selectedModelTag = compressionService.ollamaSelectedModel.hasPrefix("library/")
-                        ? String(compressionService.ollamaSelectedModel.dropFirst("library/".count))
-                        : compressionService.ollamaSelectedModel
-                    let isSelected = selectedModelTag == model.tag
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                HStack(spacing: 4) {
-                                    Text(model.name)
-                                        .font(.system(size: 12, weight: .medium))
-                                        .foregroundColor(isSelected ? .accentColor : .primary)
-
-                                    if isInstalled && isSelected {
-                                        Image(systemName: "checkmark.circle.fill")
-                                            .foregroundColor(.green)
-                                            .font(.system(size: 10))
-                                    } else if isInstalled {
-                                        Image(systemName: "checkmark.circle")
-                                            .foregroundColor(.secondary)
-                                            .font(.system(size: 10))
-                                    }
-                                }
-
-                                Text("\(model.size) · \(model.ram) RAM · \(model.modality)")
-                                    .font(.system(size: 10))
-                                    .foregroundColor(.secondary)
-                            }
-                            Spacer()
-
-                            if compressionService.ollamaPullInProgress == model.tag {
-                                ProgressView()
-                                    .controlSize(.small)
-                            } else if isInstalled {
-                                Button("Select") {
-                                    compressionService.setOllamaModel(model.tag)
-                                }
-                                .buttonStyle(.bordered)
-                                .controlSize(.small)
-                                .opacity(isSelected ? 0.3 : 1)
-                                .disabled(isSelected)
-                            } else {
-                                Button("Pull") {
-                                    pullRecommendedModel(model.tag)
-                                }
-                                .buttonStyle(.borderedProminent)
-                                .controlSize(.small)
-                            }
-                        }
-
-                        if compressionService.ollamaPullInProgress == model.tag {
-                            VStack(alignment: .leading, spacing: 4) {
-                                if let pct = pullPercentage(from: compressionService.ollamaPullProgress) {
-                                    ProgressView(value: pct, total: 100)
-                                        .progressViewStyle(.linear)
-                                        .frame(maxWidth: 250)
-                                } else {
-                                    ProgressView()
-                                        .progressViewStyle(.linear)
-                                        .frame(maxWidth: 250)
-                                }
-                                Text(compressionService.ollamaPullProgress)
-                                    .font(.system(size: 10))
-                                    .foregroundColor(.secondary)
-                                    .lineLimit(1)
-                            }
-                        }
-                    }
-                }
-
-                if !compressionService.ollamaModels.isEmpty {
-                    let customModels = compressionService.ollamaModels.filter { model in
-                        let normalized = model.name.hasPrefix("library/")
-                            ? String(model.name.dropFirst("library/".count))
-                            : model.name
-                        return !Self.recommendedModels.contains(where: { $0.tag == normalized })
-                    }
-
-                    if !customModels.isEmpty {
-                        Divider()
-                        Text("Other Installed Models")
-                            .font(.system(size: 12, weight: .medium))
-
-                        ForEach(customModels, id: \.name) { model in
-                            HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(model.name)
-                                        .font(.system(size: 12))
-                                        .foregroundColor(
-                                            model.name == compressionService.ollamaSelectedModel
-                                                ? .accentColor : .primary
-                                        )
-                                    if let size = model.size {
-                                        Text(formatBytes(Int(size)))
-                                            .font(.system(size: 10))
-                                            .foregroundColor(.secondary)
-                                    }
-                                }
-                                Spacer()
-
-                                if model.name == compressionService.ollamaSelectedModel {
-                                    Image(systemName: "checkmark")
-                                        .foregroundColor(.accentColor)
-                                        .font(.system(size: 10))
-                                }
-
-                                Button {
-                                    compressionService.setOllamaModel(model.name)
-                                } label: {
-                                    Text("Select")
-                                        .font(.system(size: 10))
-                                }
-                                .buttonStyle(.bordered)
-                                .controlSize(.small)
-                                .opacity(model.name == compressionService.ollamaSelectedModel ? 0.3 : 1)
-                                .disabled(model.name == compressionService.ollamaSelectedModel)
-
-                                Button {
-                                    Task {
-                                        try? await compressionService.deleteOllamaModel(model.name)
-                                    }
-                                } label: {
-                                    Image(systemName: "trash")
-                                        .font(.system(size: 10))
-                                }
-                                .buttonStyle(.bordered)
-                                .controlSize(.small)
-                                .foregroundColor(.red)
-                            }
-                        }
-                    }
-                }
-
-                Divider()
-
-                Button {
-                    withAnimation { showCustomPull.toggle() }
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: showCustomPull ? "chevron.down" : "chevron.right")
-                            .font(.system(size: 10))
-                        Text("Pull custom model...")
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
-                    }
-                }
-                .buttonStyle(.plain)
-
-                if showCustomPull {
-                    HStack(spacing: 8) {
-                        TextField("e.g. llama3:70b", text: $pullModelName)
-                            .textFieldStyle(.roundedBorder)
-                            .font(.system(size: 12))
-                            .onSubmit { pullModel() }
-
-                        if compressionService.isOllamaPulling {
-                            ProgressView()
-                                .controlSize(.small)
-                        } else {
-                            Button("Pull") {
-                                pullModel()
-                            }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                            .disabled(pullModelName.trimmingCharacters(in: .whitespaces).isEmpty)
-                        }
-                    }
-
-                    if compressionService.isOllamaPulling && compressionService.ollamaPullInProgress == nil {
-                        VStack(alignment: .leading, spacing: 4) {
-                            if let pct = pullPercentage(from: compressionService.ollamaPullProgress) {
-                                ProgressView(value: pct, total: 100)
-                                    .progressViewStyle(.linear)
-                            } else {
-                                ProgressView()
-                                    .progressViewStyle(.linear)
-                            }
-                            Text(compressionService.ollamaPullProgress)
-                                .font(.system(size: 10))
-                                .foregroundColor(.secondary)
-                                .lineLimit(1)
-                        }
-                    }
-                }
-            }
-            .padding(20)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .onAppear {
-            Task { await startOllamaDaemon() }
         }
     }
 
@@ -1193,13 +952,6 @@ struct SettingsView: View {
                                         saveExtractionOpenRouterModel(newValue)
                                     }
                             }
-                        case .ollama:
-                            Divider()
-                            Text("Shared local model: \(currentOllamaModel)")
-                                .font(.system(size: 12, weight: .medium))
-                            Text("Entity extraction uses the same Ollama model managed in the Ollama Models tab.")
-                                .font(.system(size: 10))
-                                .foregroundColor(.secondary)
                         case .nlTagger:
                             Divider()
                             Text("Uses Apple's built-in NLTagger. No external model selection is required.")
@@ -1212,7 +964,7 @@ struct SettingsView: View {
 
                 GroupBox("Summarization") {
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("Summaries can either follow entity extraction, use their own OpenRouter model, or use the shared local Ollama model.")
+                        Text("Summaries can follow entity extraction or use their own OpenRouter model.")
                             .font(.system(size: 11))
                             .foregroundColor(.secondary)
 
@@ -1278,13 +1030,6 @@ struct SettingsView: View {
                                         saveSummarizationOpenRouterModel(newValue)
                                     }
                             }
-                        case .ollama:
-                            Divider()
-                            Text("Shared local model: \(currentOllamaModel)")
-                                .font(.system(size: 12, weight: .medium))
-                            Text("Summarization uses the same Ollama model managed in the Ollama Models tab.")
-                                .font(.system(size: 10))
-                                .foregroundColor(.secondary)
                         }
                     }
                     .padding(8)
@@ -1313,7 +1058,6 @@ struct SettingsView: View {
 
     private func backendDescription(for backend: EntityExtractionBackend) -> String {
         switch backend {
-        case .ollama: "Uses your local Ollama instance. Free but requires GPU."
         case .openRouter: "Uses cheap cloud models. Fast, no local GPU needed."
         case .nlTagger: "Built-in macOS NLP. No setup, but lower accuracy."
         }
@@ -1322,9 +1066,7 @@ struct SettingsView: View {
     private var fallbackDescription: String {
         switch extractionBackend {
         case .openRouter:
-            return "OpenRouter → Ollama (fallback) → NLTagger (last resort). If the cloud model returns no entities, Ollama is tried, then the built-in tagger."
-        case .ollama:
-            return "Ollama → NLTagger (fallback). If Ollama returns no entities or is unavailable, the built-in tagger is used."
+            return "OpenRouter → NLTagger (fallback). If the cloud model returns no entities, the built-in tagger is used."
         case .nlTagger:
             return "NLTagger only. No fallback — uses Apple's built-in NLP for entity extraction."
         }
@@ -1439,12 +1181,16 @@ struct SettingsView: View {
         !openRouterApiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    private var currentOllamaModel: String {
-        let saved = UserDefaults.standard.string(forKey: "ollamaSelectedModel")?.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let saved, !saved.isEmpty {
-            return saved
+    private var effectiveSummarizationDescription: String {
+        switch extractionBackend {
+        case .openRouter:
+            return "Summarization will reuse the entity extraction OpenRouter backend and model: \(selectedExtractionModel)."
+        case .nlTagger:
+            if compressionService.isSelectedLocalModelDownloaded {
+                return "Entity extraction uses NLTagger, which cannot summarize. Vapor will use the downloaded local model for summaries: \(compressionService.selectedLocalModel.displayName)."
+            }
+            return "Entity extraction uses NLTagger, which cannot summarize. Set up OpenRouter or download the selected local model for summarization support."
         }
-        return compressionService.ollamaSelectedModel
     }
 
     private var selectedCompressionOpenRouterModel: String {
@@ -1495,17 +1241,6 @@ struct SettingsView: View {
         return "Showing \(cloudCatalogModels.count) text-capable cloud models from OpenRouter."
     }
 
-    private var effectiveSummarizationDescription: String {
-        switch extractionBackend {
-        case .openRouter:
-            return "Summarization will reuse the entity extraction OpenRouter backend and model: \(selectedExtractionModel)."
-        case .ollama:
-            return "Summarization will reuse the shared Ollama model: \(currentOllamaModel)."
-        case .nlTagger:
-            return "Entity extraction uses NLTagger, which cannot summarize. Vapor will fall back to the shared Ollama model: \(currentOllamaModel)."
-        }
-    }
-
     @ViewBuilder
     private func selectableSettingsRow(title: String, description: String, isSelected: Bool) -> some View {
         HStack(alignment: .top, spacing: 10) {
@@ -1549,7 +1284,7 @@ struct SettingsView: View {
         } else if hasOpenRouterKey {
             extractionBackend = .openRouter
         } else {
-            extractionBackend = .ollama
+            extractionBackend = .nlTagger
         }
 
         let savedExtractionModel = normalizeModelID(UserDefaults.standard.string(forKey: "entityExtractionModel") ?? NERModel.defaultModel)
@@ -1787,95 +1522,12 @@ struct SettingsView: View {
 
     // MARK: - Helpers
 
-    private func startOllamaDaemon() async {
-        ollamaError = ""
-        isConnecting = true
-        defer { isConnecting = false }
-        do {
-            try await OllamaDaemonManager.shared.start()
-        } catch OllamaDaemonError.binaryNotFound {
-            ollamaError = "Ollama binary not found. Rebuild the project to download it."
-            return
-        } catch OllamaDaemonError.startupTimeout {
-            ollamaError = "Ollama failed to start. Check Console.app for details."
-            return
-        } catch {
-            ollamaError = "Failed to start Ollama: \(error.localizedDescription)"
-            return
-        }
-        await compressionService.refreshOllamaModels()
-        isOllamaAvailable = compressionService.availableCompressors[.ollamaLLM] ?? false
-    }
-
-    private func pullRecommendedModel(_ tag: String) {
-        ollamaError = ""
-        Task {
-            do {
-                try await compressionService.pullOllamaModel(tag)
-            } catch {
-                if (error as NSError).code == -1004 {
-                    ollamaError = "Ollama daemon is not running. Tap Retry to restart it."
-                } else {
-                    ollamaError = "Failed to pull model: \(error.localizedDescription)"
-                }
-                logger.error("Failed to pull model: \(error)")
-            }
-        }
-    }
-
-    private func pullModel() {
-        let name = pullModelName.trimmingCharacters(in: .whitespaces)
-        guard !name.isEmpty else { return }
-        pullModelName = ""
-        ollamaError = ""
-        Task {
-            do {
-                try await compressionService.pullOllamaModel(name)
-            } catch {
-                if (error as NSError).code == -1004 {
-                    ollamaError = "Ollama daemon is not running. Tap Retry to restart it."
-                } else {
-                    ollamaError = "Failed to pull model: \(error.localizedDescription)"
-                }
-                logger.error("Failed to pull model: \(error)")
-            }
-        }
-    }
-
-    private func pullPercentage(from status: String) -> Double? {
-        guard let range = status.range(of: #"\d+(?:\.\d+)?%"#, options: .regularExpression) else { return nil }
-        let numStr = status[range].dropLast()
-        return Double(numStr)
-    }
-
     private func formatBytes(_ bytes: Int) -> String {
         let formatter = ByteCountFormatter()
         formatter.allowedUnits = [.useMB, .useGB]
         formatter.countStyle = .file
         return formatter.string(fromByteCount: Int64(bytes))
     }
-}
-
-struct RecommendedModel: Identifiable {
-    let id = UUID()
-    let tag: String
-    let name: String
-    let size: String
-    let ram: String
-    let modality: String
-
-    static let all = [
-        RecommendedModel(tag: "gemma4:e4b", name: "Gemma 4 E4B", size: "3.2 GB", ram: "~5 GB", modality: "Text, Image, Audio"),
-        RecommendedModel(tag: "gemma4:e2b", name: "Gemma 4 E2B", size: "1.8 GB", ram: "~3 GB", modality: "Text, Image, Audio"),
-        RecommendedModel(tag: "gemma4:26b", name: "Gemma 4 26B MoE", size: "9.6 GB", ram: "~12 GB", modality: "Text, Image"),
-        RecommendedModel(tag: "gemma4:31b", name: "Gemma 4 31B", size: "18 GB", ram: "~20 GB", modality: "Text, Image"),
-        RecommendedModel(tag: "qwen3:4b", name: "Qwen 3 4B", size: "2.5 GB", ram: "~4 GB", modality: "Text only"),
-        RecommendedModel(tag: "qwen3:8b", name: "Qwen 3 8B", size: "5.2 GB", ram: "~7 GB", modality: "Text only"),
-        RecommendedModel(tag: "qwen3:30b", name: "Qwen 3 30B MoE", size: "19 GB", ram: "~22 GB", modality: "Text only"),
-        RecommendedModel(tag: "qwen2.5:7b", name: "Qwen 2.5 7B", size: "4.7 GB", ram: "~6 GB", modality: "Text only"),
-        RecommendedModel(tag: "qwen2.5:14b", name: "Qwen 2.5 14B", size: "9.0 GB", ram: "~12 GB", modality: "Text only"),
-        RecommendedModel(tag: "phi4:mini", name: "Phi-4 Mini", size: "1.5 GB", ram: "~2 GB", modality: "Text only")
-    ]
 }
 
 struct OpenRouterPickerOption: Identifiable, Hashable {
@@ -1898,8 +1550,4 @@ struct OpenRouterPickerOption: Identifiable, Hashable {
     var menuLabel: String {
         detail.isEmpty ? title : "\(title) · \(detail)"
     }
-}
-
-extension SettingsView {
-    static let recommendedModels = RecommendedModel.all
 }

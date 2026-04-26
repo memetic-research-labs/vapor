@@ -123,7 +123,7 @@ Update `VaporMigrationPlan.schemas` to include the new version, and add the migr
 
 ## Current Limitations
 
-The macOS 26 SDK does not yet expose a public `ModelContainer` initializer that accepts a `SchemaMigrationPlan`. Currently `ModelContainer(for: Schema, ...)` is used, which performs automatic lightweight migration for additive changes.
+The macOS SDK does not yet expose a public `ModelContainer` initializer that accepts a `SchemaMigrationPlan`. Currently `ModelContainer(for: Schema, ...)` is used, which performs automatic lightweight migration for additive changes.
 
 `VaporSchema.swift` defines `VaporSchemaV1`, `VaporMigrationPlan`, and the `ModelContainer.forVapor(url:)` factory so that when the `SchemaMigrationPlan`-accepting API becomes available, only the factory method needs to change — the rest of the migration infrastructure is already in place.
 

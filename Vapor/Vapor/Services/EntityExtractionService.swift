@@ -5,13 +5,11 @@ import OSLog
 nonisolated private let logger = Logger(subsystem: "lol.mrl.app.Vapor", category: "EntityExtraction")
 
 enum EntityExtractionBackend: String, CaseIterable, Codable {
-    case ollama
     case openRouter
     case nlTagger
 
     var displayName: String {
         switch self {
-        case .ollama: "Ollama (Local)"
         case .openRouter: "OpenRouter (Cloud)"
         case .nlTagger: "NLTagger (Built-in)"
         }
@@ -64,7 +62,6 @@ final class EntityExtractionService {
     private let backendKey = "entityExtractionBackend"
     private let orModelKey = "entityExtractionModel"
     private let orApiKeyKey = "openRouterApiKey"
-    private let ollamaModelKey = "ollamaSelectedModel"
 
     var backend: EntityExtractionBackend {
         get {
@@ -75,7 +72,7 @@ final class EntityExtractionService {
             if let apiKey = UserDefaults.standard.string(forKey: orApiKeyKey), !apiKey.isEmpty {
                 return .openRouter
             }
-            return .ollama
+            return .nlTagger
         }
         set {
             UserDefaults.standard.set(newValue.rawValue, forKey: backendKey)
@@ -90,12 +87,6 @@ final class EntityExtractionService {
         return NERModel.defaultModel
     }
 
-    var ollamaModel: String {
-        UserDefaults.standard.string(forKey: ollamaModelKey) ?? "qwen2.5:7b"
-    }
-
-    var ollamaPort: UInt16 = 11434
-
     struct ExtractionResult {
         let entities: [ExtractedEntity]
         let backend: EntityExtractionBackend
@@ -106,7 +97,7 @@ final class EntityExtractionService {
             return ExtractionResult(entities: [], backend: .nlTagger)
         }
 
-        logger.info("Extraction backend: \(self.backend.displayName), ollamaModel: \(self.ollamaModel), text length: \(text.count)")
+        logger.info("Extraction backend: \(self.backend.displayName), text length: \(text.count)")
 
         switch backend {
         case .openRouter:
@@ -115,25 +106,7 @@ final class EntityExtractionService {
                 logger.info("Extracted \(orEntities.count) entities via OpenRouter")
                 return ExtractionResult(entities: orEntities, backend: .openRouter)
             }
-            logger.warning("OpenRouter extraction returned empty, falling back to Ollama")
-
-            let ollamaEntities = await extractViaOllama(from: text)
-            if !ollamaEntities.isEmpty {
-                logger.info("Extracted \(ollamaEntities.count) entities via Ollama (OpenRouter fallback)")
-                return ExtractionResult(entities: ollamaEntities, backend: .ollama)
-            }
-            logger.warning("Ollama extraction returned empty, falling back to NLTagger")
-            let nlEntities = extractViaNLTagger(from: text)
-            logger.info("Extracted \(nlEntities.count) entities via NLTagger (last resort)")
-            return ExtractionResult(entities: nlEntities, backend: .nlTagger)
-
-        case .ollama:
-            let ollamaEntities = await extractViaOllama(from: text)
-            if !ollamaEntities.isEmpty {
-                logger.info("Extracted \(ollamaEntities.count) entities via Ollama")
-                return ExtractionResult(entities: ollamaEntities, backend: .ollama)
-            }
-            logger.warning("Ollama extraction returned empty, falling back to NLTagger")
+            logger.warning("OpenRouter extraction returned empty, falling back to NLTagger")
             let nlEntities = extractViaNLTagger(from: text)
             logger.info("Extracted \(nlEntities.count) entities via NLTagger (fallback)")
             return ExtractionResult(entities: nlEntities, backend: .nlTagger)
@@ -208,73 +181,6 @@ final class EntityExtractionService {
         } catch {
             let elapsed = CFAbsoluteTimeGetCurrent() - startTime
             logger.error("OpenRouter NER failed: \(error.localizedDescription) after \(String(format: "%.1f", elapsed))s")
-            return []
-        }
-    }
-
-    private func extractViaOllama(from text: String) async -> [ExtractedEntity] {
-        let truncated = String(text.prefix(8000))
-        let model = ollamaModel
-        logger.info("Ollama NER: model=\(model), port=\(self.ollamaPort), truncated text=\(truncated.count) chars")
-
-        let userMessage = "Extract named entities from this text:\n\n\(truncated)"
-
-        let body: [String: Any] = [
-            "model": model,
-            "messages": [
-                ["role": "system", "content": nerSystemPrompt],
-                ["role": "user", "content": userMessage]
-            ],
-            "stream": false,
-            "temperature": 0.0,
-            "top_p": 0.9,
-            "num_predict": 2048
-        ]
-
-        guard let url = URL(string: "http://127.0.0.1:\(self.ollamaPort)/api/chat") else {
-            logger.error("Ollama NER: invalid URL for port \(self.ollamaPort)")
-            return []
-        }
-
-        var request = URLRequest(url: url, timeoutInterval: 120)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
-
-        let startTime = CFAbsoluteTimeGetCurrent()
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            let elapsed = CFAbsoluteTimeGetCurrent() - startTime
-            guard let httpResponse = response as? HTTPURLResponse,
-                  httpResponse.statusCode == 200 else {
-                let status = (response as? HTTPURLResponse)?.statusCode ?? -1
-                logger.error("Ollama NER failed: HTTP \(status) in \(String(format: "%.1f", elapsed))s")
-                return []
-            }
-
-            let ollamaResult = try? JSONDecoder().decode(OllamaChatResponse.self, from: data)
-            let content = ollamaResult?.message.content ?? ""
-
-            logger.info("Ollama NER response: \(data.count) bytes, content=\(content.count) chars in \(String(format: "%.1f", elapsed))s")
-
-            if content.isEmpty {
-                logger.warning("Ollama NER returned empty content")
-                return []
-            }
-
-            let jsonStr = extractJSON(from: content)
-
-            guard !jsonStr.isEmpty,
-                  let jsonData = jsonStr.data(using: .utf8) else {
-                logger.warning("Ollama NER returned non-JSON: \(content.prefix(200))")
-                return []
-            }
-
-            let decoded = try? JSONDecoder().decode([NEREntity].self, from: jsonData)
-            return decoded?.map { $0.toExtractedEntity() } ?? []
-        } catch {
-            let elapsed = CFAbsoluteTimeGetCurrent() - startTime
-            logger.error("Ollama NER failed: \(error.localizedDescription) after \(String(format: "%.1f", elapsed))s")
             return []
         }
     }

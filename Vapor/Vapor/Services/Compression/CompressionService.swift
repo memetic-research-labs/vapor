@@ -3,87 +3,60 @@ import OSLog
 
 private let logger = Logger(subsystem: "lol.mrl.app.Vapor", category: "Compression")
 
-@MainActor
-private class OllamaPullDelegate: NSObject, URLSessionDataDelegate {
-    var onStatus: ((String) -> Void)?
-    var onError: ((Error) -> Void)?
-    var onDone: (() -> Void)?
-    private var buffer = ""
-    private var statusLineCount = 0
-    private var finished = false
+struct LocalLLMModel: Identifiable, Hashable, Codable {
+    let id: String
+    let displayName: String
+    let fileName: String
+    let downloadURL: String
+    let sizeGB: Double
+    let isDefault: Bool
 
-    private func markFinished() {
-        guard !finished else { return }
-        finished = true
-        onStatus = nil
-        onError = nil
-        onDone = nil
+    static let curatedModels: [LocalLLMModel] = [
+        LocalLLMModel(
+            id: "phi-4-mini-q4",
+            displayName: "Phi-4 Mini (3.8B)",
+            fileName: "Phi-4-mini-instruct-Q4_K_M.gguf",
+            downloadURL: "https://huggingface.co/unsloth/Phi-4-mini-instruct-GGUF/resolve/main/Phi-4-mini-instruct-Q4_K_M.gguf",
+            sizeGB: 2.3,
+            isDefault: true
+        ),
+        LocalLLMModel(
+            id: "qwen3-4b-2507-q4",
+            displayName: "Qwen 3 4B (2507)",
+            fileName: "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+            downloadURL: "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+            sizeGB: 2.4,
+            isDefault: false
+        ),
+        LocalLLMModel(
+            id: "qwen2.5-7b-q4",
+            displayName: "Qwen 2.5 7B",
+            fileName: "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+            downloadURL: "https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-GGUF/resolve/main/Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+            sizeGB: 4.7,
+            isDefault: false
+        )
+    ]
+
+    static var defaultModel: LocalLLMModel {
+        curatedModels.first { $0.isDefault } ?? curatedModels[0]
     }
 
-    func urlSession(
-        _ session: URLSession,
-        dataTask: URLSessionDataTask,
-        didReceive response: URLResponse,
-        completionHandler: @escaping (URLSession.ResponseDisposition) -> Void
-    ) {
-        let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
-        logger.info("Ollama pull response: HTTP \(statusCode)")
-        if statusCode != 200 {
-            logger.error("Ollama pull unexpected status: HTTP \(statusCode)")
-            let error = CompressionError.apiError("HTTP \(statusCode)")
-            markFinished()
-            onError?(error)
-        }
-        completionHandler(.allow)
+    static func find(by id: String) -> LocalLLMModel? {
+        curatedModels.first { $0.id == id }
     }
 
-    func urlSession(
-        _ session: URLSession,
-        dataTask: URLSessionDataTask,
-        didReceive data: Data
-    ) {
-        guard !finished else { return }
-        guard let chunk = String(data: data, encoding: .utf8) else { return }
-        buffer += chunk
-
-        while let newlineRange = buffer.range(of: "\n") {
-            let line = String(buffer[buffer.startIndex..<newlineRange.lowerBound])
-            buffer = String(buffer[newlineRange.upperBound...])
-
-            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else { continue }
-            guard let lineData = trimmed.data(using: .utf8) else { continue }
-            if let update = try? JSONDecoder().decode(OllamaPullResponse.self, from: lineData),
-               let status = update.status {
-                self.statusLineCount += 1
-                if self.statusLineCount % 20 == 1 {
-                    logger.info("Ollama pull status: \(status)")
-                }
-                onStatus?(status)
-            }
-        }
+    static func find(byFileName fileName: String) -> LocalLLMModel? {
+        curatedModels.first { $0.fileName == fileName }
     }
 
-    func urlSession(
-        _ session: URLSession,
-        task: URLSessionTask,
-        didCompleteWithError error: Error?
-    ) {
-        guard !finished else { return }
-        if let error = error {
-            logger.error("Ollama pull completed with error: \(error.localizedDescription)")
-            markFinished()
-            onError?(error)
-        } else {
-            logger.info("Ollama pull completed successfully (\(self.statusLineCount) status lines)")
-            markFinished()
-            onDone?()
-        }
+    static func infer(from modelURL: URL) -> LocalLLMModel? {
+        find(byFileName: modelURL.lastPathComponent)
     }
 }
 
 @MainActor
-private class DownloadDelegate: NSObject, URLSessionDownloadDelegate {
+private class DownloadDelegate: NSObject, @preconcurrency URLSessionDownloadDelegate {
     var destinationURL: URL?
     var didCopySuccessfully = false
     var error: Error?
@@ -124,52 +97,49 @@ private class DownloadDelegate: NSObject, URLSessionDownloadDelegate {
 @MainActor
 @Observable
 final class CompressionService {
-    var selectedCompressor: CompressorType = .foundationModels
+    var selectedCompressor: CompressorType = .localLLM
     var availableCompressors: [CompressorType: Bool] = [:]
     var openRouterModel: String = "glm-5"
     var modelDownloadProgress: Double = 0
     var isDownloading: Bool = false
     var isModelLoading: Bool = false
-    var ollamaModels: [OllamaTagsResponse.OllamaModel] = []
-    var ollamaSelectedModel: String = "gemma4:e4b"
-    var isOllamaPulling: Bool = false
-    var ollamaPullProgress: String = ""
-    var ollamaPullInProgress: String?
     var statusMessage: String = "Ready"
+    var selectedLocalModel: LocalLLMModel = .defaultModel {
+        didSet {
+            guard oldValue.id != selectedLocalModel.id else { return }
+            UserDefaults.standard.set(selectedLocalModel.id, forKey: localLLMModelIDKey)
+            selectedModelAvailabilityTask?.cancel()
+            selectedModelAvailabilityTask = Task {
+                await checkAvailability()
+            }
+        }
+    }
+    var downloadedModelID: String?
 
-    private let defaultOllamaPort: UInt16 = 11434
     private let telemetry = CompressionTelemetry.shared
     private var resetTask: Task<Void, Never>?
+    private var selectedModelAvailabilityTask: Task<Void, Never>?
+    private let minimumValidModelSizeBytes: Int64 = 100_000_000
 
-    /// Whether the currently selected compressor is ready to compress.
     var isSelectedCompressorReady: Bool {
         switch selectedCompressor {
-        case .ruleBased:
-            return true
-        case .foundationModels:
-            return availableCompressors[.foundationModels] ?? false
         case .openRouter:
             return availableCompressors[.openRouter] ?? false
         case .localLLM:
             return availableCompressors[.localLLM] ?? false
-        case .ollamaLLM:
-            return availableCompressors[.ollamaLLM] ?? false
         }
     }
 
-    private let ruleBasedCompressor = RuleBasedCompressor()
-    #if canImport(FoundationModels)
-    private var foundationModelsCompressor: FoundationModelsCompressor?
-    #endif
     private var openRouterCompressor: OpenRouterCompressor?
     private var localLLMCompressor: LocalLLMCompressor?
-    private var ollamaCompressor: OllamaCompressor?
 
     private let openRouterApiKeyKey = "openRouterApiKey"
+    private let localLLMModelIDKey = "localLLMModelID"
     private let localLLMModelURLKey = "localLLMModelURL"
-    private let ollamaSelectedModelKey = "ollamaSelectedModel"
 
-    private let defaultModelURL = "https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-GGUF/resolve/main/Qwen2.5-7B-Instruct-Q4_K_M.gguf"
+    var isSelectedLocalModelDownloaded: Bool {
+        downloadedModelID == selectedLocalModel.id
+    }
 
     init() {
         loadSavedSettings()
@@ -196,39 +166,36 @@ final class CompressionService {
 
         if let savedModelPath = UserDefaults.standard.url(forKey: localLLMModelURLKey),
            FileManager.default.fileExists(atPath: savedModelPath.path) {
+            let resolvedModel = resolveSavedLocalModel(for: savedModelPath)
+            selectedLocalModel = resolvedModel
+            downloadedModelID = resolvedModel.id
             localLLMCompressor = LocalLLMCompressor(modelURL: savedModelPath)
             Task {
                 isModelLoading = true
                 try? await localLLMCompressor?.loadModel()
                 isModelLoading = false
             }
-        }
-
-        if let savedOllamaModel = UserDefaults.standard.string(forKey: ollamaSelectedModelKey),
-           !savedOllamaModel.isEmpty {
-            ollamaSelectedModel = savedOllamaModel
-            ollamaCompressor = OllamaCompressor(model: savedOllamaModel, port: defaultOllamaPort)
+        } else if let savedModelID = UserDefaults.standard.string(forKey: localLLMModelIDKey),
+                  let model = LocalLLMModel.find(by: savedModelID) {
+            selectedLocalModel = model
         }
     }
 
-    func checkAvailability() async {
-        #if canImport(FoundationModels)
-        if #available(macOS 26, *) {
-            let fm = FoundationModelsCompressor()
-            let fmAvailable = await fm.isAvailable
-            availableCompressors[.foundationModels] = fmAvailable
-            if fmAvailable {
-                foundationModelsCompressor = fm
-            }
-        } else {
-            availableCompressors[.foundationModels] = false
+    private func resolveSavedLocalModel(for savedModelPath: URL) -> LocalLLMModel {
+        if let inferredModel = LocalLLMModel.infer(from: savedModelPath) {
+            UserDefaults.standard.set(inferredModel.id, forKey: localLLMModelIDKey)
+            return inferredModel
         }
-        #else
-        availableCompressors[.foundationModels] = false
-        #endif
 
-        availableCompressors[.ruleBased] = ruleBasedCompressor.isAvailable
+        if let savedModelID = UserDefaults.standard.string(forKey: localLLMModelIDKey),
+           let savedModel = LocalLLMModel.find(by: savedModelID) {
+            return savedModel
+        }
 
+        return .defaultModel
+    }
+
+    func checkAvailability() async {
         if let openRouter = openRouterCompressor {
             availableCompressors[.openRouter] = await openRouter.isAvailable
         } else {
@@ -236,15 +203,10 @@ final class CompressionService {
         }
 
         if let localLLM = localLLMCompressor {
-            availableCompressors[.localLLM] = await localLLM.isAvailable
+            let localLLMAvailable = await localLLM.isAvailable
+            availableCompressors[.localLLM] = isSelectedLocalModelDownloaded && localLLMAvailable
         } else {
             availableCompressors[.localLLM] = false
-        }
-
-        if let ollama = ollamaCompressor {
-            availableCompressors[.ollamaLLM] = await ollama.isAvailable
-        } else {
-            availableCompressors[.ollamaLLM] = false
         }
     }
 
@@ -265,8 +227,16 @@ final class CompressionService {
         UserDefaults.standard.set(type.rawValue, forKey: "selectedCompressor")
     }
 
-    func downloadLocalLLMModel() async throws {
-        logger.info("Starting model download...")
+    /// Sets `selectedLocalModel`, which triggers the `didSet` observer to persist the
+    /// selection to UserDefaults and re-evaluate availability. Public so that
+    /// `OnboardingStore` can delegate model selection through this service.
+    func selectLocalModel(_ model: LocalLLMModel) {
+        selectedLocalModel = model
+    }
+
+    func downloadLocalLLMModel(_ model: LocalLLMModel? = nil) async throws {
+        let model = model ?? selectedLocalModel
+        logger.info("Starting model download: \(model.displayName)...")
         isDownloading = true
         modelDownloadProgress = 0
 
@@ -281,26 +251,30 @@ final class CompressionService {
         let appContainer = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let modelsDir = appContainer.appendingPathComponent("Vapor/Models", isDirectory: true)
 
-        logger.debug("Models directory: \(modelsDir.path)")
-
         try FileManager.default.createDirectory(at: modelsDir, withIntermediateDirectories: true)
 
-        let modelURL = modelsDir.appendingPathComponent("Qwen2.5-7B-Instruct-Q4_K_M.gguf")
+        let modelURL = modelsDir.appendingPathComponent(model.fileName)
+        let temporaryModelURL = modelURL.appendingPathExtension("download")
 
-        logger.debug("Model will be saved to: \(modelURL.path)")
-
-        guard let url = URL(string: defaultModelURL) else {
-            logger.error("Invalid download URL: \(self.defaultModelURL)")
+        guard let url = URL(string: model.downloadURL) else {
+            logger.error("Invalid download URL: \(model.downloadURL)")
             throw CompressionError.unavailable
         }
 
         logger.info("Downloading from: \(url.absoluteString)")
 
+        if FileManager.default.fileExists(atPath: temporaryModelURL.path) {
+            try? FileManager.default.removeItem(at: temporaryModelURL)
+        }
+
+        var request = URLRequest(url: url)
+        request.setValue("Vapor/1.0", forHTTPHeaderField: "User-Agent")
+
         let delegate = DownloadDelegate()
-        delegate.destinationURL = modelURL
+        delegate.destinationURL = temporaryModelURL
         let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: OperationQueue.main)
 
-        let task = session.downloadTask(with: url)
+        let task = session.downloadTask(with: request)
         task.resume()
 
         while !delegate.isFinished {
@@ -311,17 +285,40 @@ final class CompressionService {
         }
 
         if let error = delegate.error {
+            try? FileManager.default.removeItem(at: temporaryModelURL)
             throw error
         }
 
         guard delegate.didCopySuccessfully else {
             logger.error("Download completed but file was not copied to destination")
+            try? FileManager.default.removeItem(at: temporaryModelURL)
             throw CompressionError.unavailable
+        }
+
+        if let response = task.response as? HTTPURLResponse {
+            logger.info("Model download completed with HTTP status: \(response.statusCode)")
+        }
+
+        do {
+            let fileSize = try validateDownloadedModel(at: temporaryModelURL)
+            logger.info("Validated GGUF download at \(temporaryModelURL.path) (\(fileSize) bytes)")
+        } catch {
+            try? FileManager.default.removeItem(at: temporaryModelURL)
+            throw error
+        }
+
+        if FileManager.default.fileExists(atPath: modelURL.path) {
+            _ = try FileManager.default.replaceItemAt(modelURL, withItemAt: temporaryModelURL)
+        } else {
+            try FileManager.default.moveItem(at: temporaryModelURL, to: modelURL)
         }
 
         logger.info("Model saved to: \(modelURL.path)")
 
         UserDefaults.standard.set(modelURL, forKey: localLLMModelURLKey)
+        UserDefaults.standard.set(model.id, forKey: localLLMModelIDKey)
+        selectedLocalModel = model
+        downloadedModelID = model.id
 
         localLLMCompressor = LocalLLMCompressor(modelURL: modelURL)
         logger.info("Loading model...")
@@ -334,10 +331,36 @@ final class CompressionService {
         await checkAvailability()
     }
 
-    /// Reload the local LLM compressor from UserDefaults (e.g., after an external download).
+    private func validateDownloadedModel(at modelURL: URL) throws -> Int64 {
+        let attributes = try FileManager.default.attributesOfItem(atPath: modelURL.path)
+        let fileSize = (attributes[.size] as? NSNumber)?.int64Value ?? 0
+        guard fileSize >= minimumValidModelSizeBytes else {
+            logger.error("Downloaded file too small to be a GGUF model: \(fileSize) bytes at \(modelURL.path)")
+            throw CompressionError.apiError("Downloaded file was too small to be a valid GGUF model.")
+        }
+
+        let fileHandle = try FileHandle(forReadingFrom: modelURL)
+        defer { try? fileHandle.close() }
+
+        let magicData = try fileHandle.read(upToCount: 4) ?? Data()
+        let magic = String(data: magicData, encoding: .ascii) ?? magicData.map { String(format: "%02X", $0) }.joined()
+
+        logger.info("Downloaded model magic bytes: \(magic)")
+
+        guard magic == "GGUF" else {
+            logger.error("Invalid GGUF magic bytes: \(magic) at \(modelURL.path)")
+            throw CompressionError.apiError("Downloaded file is not a valid GGUF model.")
+        }
+
+        return fileSize
+    }
+
     func reloadLocalLLMIfNeeded() async {
         guard let savedModelPath = UserDefaults.standard.url(forKey: localLLMModelURLKey),
               FileManager.default.fileExists(atPath: savedModelPath.path) else { return }
+        let resolvedModel = resolveSavedLocalModel(for: savedModelPath)
+        selectedLocalModel = resolvedModel
+        downloadedModelID = resolvedModel.id
         localLLMCompressor = LocalLLMCompressor(modelURL: savedModelPath)
         isModelLoading = true
         defer { isModelLoading = false }
@@ -350,7 +373,6 @@ final class CompressionService {
 
         await checkAvailability()
 
-        // Also sync the selected compressor in case onboarding changed it
         if let saved = UserDefaults.standard.string(forKey: "selectedCompressor"),
            let type = CompressorType(rawValue: saved) {
             selectedCompressor = type
@@ -366,25 +388,20 @@ final class CompressionService {
         localLLMCompressor = nil
         availableCompressors[.localLLM] = false
         modelDownloadProgress = 0
+        downloadedModelID = nil
     }
 
     private func activeModelName() -> String {
         switch selectedCompressor {
-        case .ollamaLLM: return ollamaSelectedModel
         case .openRouter: return openRouterModel
-        case .localLLM: return "Qwen2.5-7B"
-        case .foundationModels: return "System Default"
-        case .ruleBased: return "Rule-Based"
+        case .localLLM: return selectedLocalModel.displayName
         }
     }
 
     private func modelName(for backend: CompressorType) -> String {
         switch backend {
-        case .ollamaLLM: return ollamaSelectedModel
         case .openRouter: return openRouterModel
-        case .localLLM: return "Qwen2.5-7B"
-        case .foundationModels: return "System Default"
-        case .ruleBased: return "Rule-Based"
+        case .localLLM: return selectedLocalModel.displayName
         }
     }
 
@@ -394,49 +411,23 @@ final class CompressionService {
 
         func runCompression() async throws -> (result: CompressedResult, backend: CompressorType, isFirstInference: Bool) {
             switch selectedCompressor {
-            case .foundationModels:
-                #if canImport(FoundationModels)
-                if #available(macOS 26, *) {
-                    if let fm = foundationModelsCompressor, await fm.isAvailable {
-                        let key = "Apple Foundation Models:System Default"
-                        let isFirst = telemetry.isFirstInference(for: key)
-                        statusMessage = isFirst ? "Cold loading Foundation Models..." : "Compressing with Foundation Models..."
-                        return (try await fm.compress(text), .foundationModels, isFirst)
-                    }
-                }
-                #endif
-                statusMessage = "Foundation Models unavailable — using Rule-Based"
-                return (try await ruleBasedCompressor.compress(text), .ruleBased, false)
             case .localLLM:
-                if let localLLM = localLLMCompressor, await localLLM.isAvailable {
-                    let key = "Local LLM (On-Device):Qwen2.5-7B"
-                    let isFirst = telemetry.isFirstInference(for: key)
-                    statusMessage = isFirst ? "Cold loading Local LLM..." : "Compressing with Local LLM..."
-                    return (try await localLLM.compress(text), .localLLM, isFirst)
+                guard isSelectedLocalModelDownloaded,
+                      let localLLM = localLLMCompressor, await localLLM.isAvailable else {
+                    throw CompressionError.unavailable
                 }
-                statusMessage = "Local LLM unavailable — using Rule-Based"
-                return (try await ruleBasedCompressor.compress(text), .ruleBased, false)
-            case .ollamaLLM:
-                if let ollama = ollamaCompressor, await ollama.isAvailable {
-                    let key = "Ollama (Local):\(ollamaSelectedModel)"
-                    let isFirst = telemetry.isFirstInference(for: key)
-                    statusMessage = isFirst ? "Cold loading \(ollamaSelectedModel)..." : "Compressing with Ollama (\(ollamaSelectedModel))..."
-                    return (try await ollama.compress(text), .ollamaLLM, isFirst)
-                }
-                statusMessage = "Ollama unavailable — using Rule-Based"
-                return (try await ruleBasedCompressor.compress(text), .ruleBased, false)
+                let key = "Local LLM (On-Device):\(selectedLocalModel.displayName)"
+                let isFirst = telemetry.isFirstInference(for: key)
+                statusMessage = isFirst ? "Cold loading \(selectedLocalModel.displayName)..." : "Compressing with \(selectedLocalModel.displayName)..."
+                return (try await localLLM.compress(text), .localLLM, isFirst)
             case .openRouter:
-                if let openRouter = openRouterCompressor, await openRouter.isAvailable {
-                    let key = "OpenRouter:\(openRouterModel)"
-                    let isFirst = telemetry.isFirstInference(for: key)
-                    statusMessage = "Compressing with OpenRouter (\(openRouterModel))..."
-                    return (try await openRouter.compress(text), .openRouter, isFirst)
+                guard let openRouter = openRouterCompressor, await openRouter.isAvailable else {
+                    throw CompressionError.unavailable
                 }
-                statusMessage = "OpenRouter unavailable — using Rule-Based"
-                return (try await ruleBasedCompressor.compress(text), .ruleBased, false)
-            case .ruleBased:
-                statusMessage = "Compressing with Rule-Based..."
-                return (try await ruleBasedCompressor.compress(text), .ruleBased, false)
+                let key = "OpenRouter:\(openRouterModel)"
+                let isFirst = telemetry.isFirstInference(for: key)
+                statusMessage = "Compressing with OpenRouter (\(openRouterModel))..."
+                return (try await openRouter.compress(text), .openRouter, isFirst)
             }
         }
 
@@ -494,109 +485,4 @@ final class CompressionService {
             }
         }
     }
-
-    // MARK: - Ollama Model Management
-
-    func refreshOllamaModels() async {
-        guard let url = URL(string: "http://127.0.0.1:\(defaultOllamaPort)/api/tags") else { return }
-        var request = URLRequest(url: url, timeoutInterval: 5)
-        request.httpMethod = "GET"
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard (response as? HTTPURLResponse)?.statusCode == 200 else { return }
-            let tags = try JSONDecoder().decode(OllamaTagsResponse.self, from: data)
-            ollamaModels = tags.models
-        } catch {
-            ollamaModels = []
-        }
-        await checkAvailability()
-    }
-
-    func setOllamaModel(_ model: String) {
-        ollamaSelectedModel = model
-        UserDefaults.standard.set(model, forKey: ollamaSelectedModelKey)
-        ollamaCompressor = OllamaCompressor(model: model, port: defaultOllamaPort)
-        Task { await checkAvailability() }
-    }
-
-    private var activePullSession: URLSession?
-
-    func pullOllamaModel(_ modelName: String) async throws {
-        guard let url = URL(string: "http://127.0.0.1:\(defaultOllamaPort)/api/pull") else {
-            throw CompressionError.unavailable
-        }
-
-        isOllamaPulling = true
-        ollamaPullInProgress = modelName
-        ollamaPullProgress = "Requesting..."
-        logger.info("Starting Ollama model pull: \(modelName)")
-
-        let body: [String: Any] = ["name": modelName, "stream": true]
-        var request = URLRequest(url: url, timeoutInterval: 600)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-
-        return try await withCheckedThrowingContinuation { [weak self] continuation in
-            guard let self else {
-                continuation.resume(throwing: CompressionError.unavailable)
-                return
-            }
-            let delegate = OllamaPullDelegate()
-            let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: OperationQueue.main)
-            self.activePullSession = session
-
-            delegate.onStatus = { [weak self] status in
-                Task { @MainActor [weak self] in
-                    self?.ollamaPullProgress = status
-                }
-            }
-            delegate.onDone = { [weak self] in
-                Task { @MainActor [weak self] in
-                    self?.isOllamaPulling = false
-                    self?.ollamaPullInProgress = nil
-                    self?.ollamaPullProgress = ""
-                    self?.activePullSession = nil
-                    await self?.refreshOllamaModels()
-                    continuation.resume()
-                }
-            }
-            delegate.onError = { [weak self] error in
-                Task { @MainActor [weak self] in
-                    self?.isOllamaPulling = false
-                    self?.ollamaPullInProgress = nil
-                    self?.ollamaPullProgress = ""
-                    self?.activePullSession = nil
-                    continuation.resume(throwing: error)
-                }
-            }
-
-            logger.info("Ollama pull dataTask resumed")
-            session.dataTask(with: request).resume()
-        }
-    }
-
-    func deleteOllamaModel(_ modelName: String) async throws {
-        guard let url = URL(string: "http://127.0.0.1:\(defaultOllamaPort)/api/delete") else {
-            throw CompressionError.unavailable
-        }
-
-        let body: [String: Any] = ["name": modelName]
-        var request = URLRequest(url: url, timeoutInterval: 30)
-        request.httpMethod = "DELETE"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-
-        let (_, response) = try await URLSession.shared.data(for: request)
-        guard (response as? HTTPURLResponse)?.statusCode == 200 else {
-            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
-            throw CompressionError.apiError("Failed to delete model (HTTP \(statusCode))")
-        }
-
-        await refreshOllamaModels()
-    }
-}
-
-struct OllamaPullResponse: Codable {
-    let status: String?
 }

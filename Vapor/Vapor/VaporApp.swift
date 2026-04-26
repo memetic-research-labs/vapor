@@ -68,13 +68,8 @@ struct VaporApp: App {
         }
 
         Task {
-            do {
-                try await OllamaDaemonManager.shared.start()
-                if prefs.browserIntegrationEnabled {
-                    await bridge.start()
-                }
-            } catch {
-                logger.warning("Ollama daemon did not start: \(error.localizedDescription)")
+            if prefs.browserIntegrationEnabled {
+                await bridge.start()
             }
         }
         NSWorkspace.shared.notificationCenter.addObserver(
@@ -82,7 +77,6 @@ struct VaporApp: App {
             object: nil,
             queue: .main
         ) { _ in
-            Task { await OllamaDaemonManager.shared.stop() }
             Task { await bridge.stop() }
         }
     }
@@ -375,7 +369,6 @@ final class VaporAppDelegate: NSObject, NSApplicationDelegate {
                 return
             }
             await self.bridge.stop()
-            await OllamaDaemonManager.shared.stop()
             NSApp.reply(toApplicationShouldTerminate: true)
         }
         return .terminateLater

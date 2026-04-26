@@ -38,44 +38,38 @@ final class OnboardingStore {
 
     private(set) var compressionService: CompressionService = CompressionService()
 
+    var selectedLocalModel: LocalLLMModel {
+        get { compressionService.selectedLocalModel }
+        set { compressionService.selectLocalModel(newValue) }
+    }
+
     var isDownloading: Bool { compressionService.isDownloading }
     var downloadProgress: Double { compressionService.modelDownloadProgress }
     var localLLMReady: Bool {
         compressionService.availableCompressors[.localLLM] ?? false
     }
 
-    // MARK: - Ollama state
-
-    var isOllamaRunning = false
-    var ollamaModels: [String] = []
-    var selectedOllamaModel: String? = nil
-    private var isCheckingOllama = false
-
     // MARK: - LLM path selection
 
-    var selectedLLMPath: LLMPath = .ollama
+    var selectedLLMPath: LLMPath = .localGGUF
 
     enum LLMPath: String, CaseIterable {
-        case ollama = "ollama"
-        case localGGUF = "localGGUF"
+        case localGGUF
 
         var displayName: String {
             switch self {
-            case .ollama: "Ollama (Recommended)"
-            case .localGGUF: "Local GGUF (Offline)"
+            case .localGGUF: "Download Local Model"
             }
         }
 
         var subtitle: String {
             switch self {
-            case .ollama: "Free, fast, uses your Mac's GPU"
-            case .localGGUF: "No daemon needed, but slower startup"
+            case .localGGUF: "Free, runs entirely on your Mac"
             }
         }
 
         var icon: String {
             switch self {
-            case .ollama: "desktopcomputer"
             case .localGGUF: "cube.box"
             }
         }
@@ -127,47 +121,10 @@ final class OnboardingStore {
 
     // MARK: - LLM download
 
-    func downloadLocalLLM() async throws {
-        try await compressionService.downloadLocalLLMModel()
+    func downloadLocalLLM(_ model: LocalLLMModel? = nil) async throws {
+        try await compressionService.downloadLocalLLMModel(model)
         compressionService.saveSelectedCompressor(.localLLM)
         NotificationCenter.default.post(name: .vaporLLMDownloadCompleted, object: nil)
-    }
-
-    // MARK: - Ollama detection
-
-    func checkOllama() {
-        guard !isCheckingOllama else { return }
-        isCheckingOllama = true
-        Task {
-            defer { isCheckingOllama = false }
-            do {
-                let (data, response) = try await URLSession.shared.data(from: URL(string: "http://127.0.0.1:11434/api/tags")!)
-                guard let httpResponse = response as? HTTPURLResponse,
-                      httpResponse.statusCode == 200 else {
-                    await MainActor.run { isOllamaRunning = false }
-                    return
-                }
-                let result = try? JSONDecoder().decode(OllamaTagsResponse.self, from: data)
-                await MainActor.run {
-                    isOllamaRunning = true
-                    ollamaModels = result?.models.map(\.name) ?? []
-                    if let qwen = ollamaModels.first(where: { $0.contains("qwen2.5") || $0.contains("qwen3") }) {
-                        selectedOllamaModel = qwen
-                    } else if let first = ollamaModels.first {
-                        selectedOllamaModel = first
-                    }
-                }
-            } catch {
-                await MainActor.run { isOllamaRunning = false }
-            }
-        }
-    }
-
-    func saveOllamaSelection() {
-        if let model = selectedOllamaModel {
-            compressionService.saveSelectedCompressor(.ollamaLLM)
-            UserDefaults.standard.set(model, forKey: "ollamaSelectedModel")
-        }
     }
 
     // MARK: - OpenRouter
@@ -176,14 +133,11 @@ final class OnboardingStore {
         UserDefaults.standard.set(openRouterApiKey, forKey: "openRouterApiKey")
         let compressionModel = useCustomCompressionModel ? openRouterCompressionModel : selectedCompressionModel.id
         compressionService.setOpenRouterApiKey(openRouterApiKey, model: compressionModel)
+        compressionService.saveSelectedCompressor(.openRouter)
 
         let nerModel = useCustomNERModel ? customNERModel : selectedNERModel.id
         UserDefaults.standard.set(nerModel, forKey: "entityExtractionModel")
         UserDefaults.standard.set(EntityExtractionBackend.openRouter.rawValue, forKey: "entityExtractionBackend")
-    }
-
-    func saveExtractionBackendAsOllama() {
-        UserDefaults.standard.set(EntityExtractionBackend.ollama.rawValue, forKey: "entityExtractionBackend")
     }
 
     func testOpenRouterAPIKey() {
@@ -220,11 +174,7 @@ final class OnboardingStore {
         }
     }
 
-    func skipOpenRouter() {
-        if selectedLLMPath == .ollama && isOllamaRunning {
-            saveExtractionBackendAsOllama()
-        }
-    }
+    func skipOpenRouter() {}
 
     // MARK: - System Settings
 

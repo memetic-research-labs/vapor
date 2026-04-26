@@ -103,21 +103,11 @@ struct OnboardingView: View {
                         currentStep += 1
                     }
                 } label: {
-                    Text("Skip →")
+                    Text("Set Up Later →")
                         .font(.system(size: 13))
                 }
                 .buttonStyle(.bordered)
-            } else if store.selectedLLMPath == .ollama && !store.isOllamaRunning {
-                Button {
-                    withAnimation {
-                        slideDirection = .forward
-                        currentStep += 1
-                    }
-                } label: {
-                    Text("Skip →")
-                        .font(.system(size: 13))
-                }
-                .buttonStyle(.bordered)
+                .help("Compression won't work until you configure an LLM in Settings.")
             } else {
                 Button {
                     withAnimation {
@@ -555,7 +545,7 @@ private struct CompressAndCopyStepView: View {
             icon: "bolt.fill",
             iconColor: .yellow,
             title: "Compress & Copy",
-            description: "Press ⌘ ↩ to compress your prompt and copy it to the clipboard. Vapor removes filler words and fuses related concepts — saving tokens when it matters."
+            description: "Press ⌘ ↩ to compress your prompt and copy it to the clipboard. Vapor uses an LLM to remove filler words and fuse related concepts — saving tokens when it matters. You'll set up an LLM on the next step."
         ) {
             ShortcutRow(key: "⌘ ↩", label: "Compress & copy")
             ShortcutRow(key: "⌘ ⇧ C", label: "Copy original (no compression)")
@@ -608,83 +598,32 @@ private struct LLMSetupStepView: View {
             icon: "cpu.fill",
             iconColor: .purple,
             title: "Choose an LLM",
-            description: "Vapor uses an LLM for compression and entity extraction. Pick one — or both."
+            description: "Vapor needs at least one LLM backend to compress prompts. Download a local model here, or set up OpenRouter (cloud) in the next step."
         ) {
             VStack(spacing: 12) {
                 SelectionCard(
-                    selected: store.selectedLLMPath == .ollama,
-                    icon: "desktopcomputer",
-                    title: "Ollama (Recommended)",
-                    subtitle: "Free, fast, uses your Mac's GPU"
-                ) {
-                    if store.isOllamaRunning {
-                        HStack(spacing: 6) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(.green)
-                                .font(.system(size: 12))
-                            Text("Ollama running")
-                                .font(.system(size: 11))
-                                .foregroundStyle(.green)
-                        }
-
-                        if !store.ollamaModels.isEmpty {
-                            Picker("Model", selection: $store.selectedOllamaModel) {
-                                Text("Choose a model…").tag(String?.none)
-                                ForEach(store.ollamaModels, id: \.self) { model in
-                                    Text(model).tag(Optional(model))
-                                }
-                            }
-                            .labelsHidden()
-                            .pickerStyle(.menu)
-                            .frame(maxWidth: 200, alignment: .leading)
-                        }
-                    } else {
-                        VStack(spacing: 8) {
-                            Text("Ollama not detected")
-                                .font(.system(size: 11))
-                                .foregroundStyle(.secondary)
-                            HStack(spacing: 8) {
-                                Button {
-                                    if let url = URL(string: "https://ollama.com") {
-                                        NSWorkspace.shared.open(url)
-                                    }
-                                } label: {
-                                    Text("Install Ollama")
-                                        .font(.system(size: 11))
-                                }
-                                .buttonStyle(.bordered)
-                                .controlSize(.small)
-
-                                Button {
-                                    store.checkOllama()
-                                } label: {
-                                    Text("Retry")
-                                        .font(.system(size: 11))
-                                }
-                                .buttonStyle(.bordered)
-                                .controlSize(.small)
-                            }
-                        }
-                    }
-                }
-                .onTapGesture {
-                    store.selectedLLMPath = .ollama
-                }
-
-                SelectionCard(
                     selected: store.selectedLLMPath == .localGGUF,
                     icon: "cube.box",
-                    title: "Local GGUF (Offline)",
-                    subtitle: "No daemon needed, but slower startup"
+                    title: "Download a Local Model",
+                    subtitle: "Free, runs entirely on your Mac"
                 ) {
                     if store.localLLMReady {
                         HStack(spacing: 6) {
                             Image(systemName: "checkmark.circle.fill")
                                 .foregroundStyle(.green)
                                 .font(.system(size: 12))
-                            Text("Qwen2.5-7B ready")
+                            Text("\(store.compressionService.selectedLocalModel.displayName) ready")
                                 .font(.system(size: 11))
                                 .foregroundStyle(.green)
+                        }
+                    } else if store.compressionService.downloadedModelID != nil {
+                        HStack(spacing: 6) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.orange)
+                                .font(.system(size: 12))
+                            Text("Selected model is not downloaded yet")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.orange)
                         }
                     } else if store.isDownloading {
                         VStack(spacing: 6) {
@@ -692,17 +631,30 @@ private struct LLMSetupStepView: View {
                                 .progressViewStyle(.linear)
                                 .frame(maxWidth: 280)
 
+                            let model = store.selectedLocalModel
                             let pct = Int(store.downloadProgress * 100)
-                            let downloaded = String(format: "%.1f", store.downloadProgress * 4.7)
-                            Text("\(pct)% — \(downloaded) / 4.7 GB")
+                            let downloaded = String(format: "%.1f", store.downloadProgress * model.sizeGB)
+                            Text("\(pct)% — \(downloaded) / \(String(format: "%.1f", model.sizeGB)) GB")
                                 .font(.system(size: 11))
                                 .foregroundStyle(.secondary)
                         }
                     } else {
                         VStack(spacing: 8) {
-                            Text("Qwen2.5-7B-Instruct · 4.7 GB download")
-                                .font(.system(size: 11))
-                                .foregroundStyle(.secondary)
+                            Picker("Model", selection: $store.selectedLocalModel) {
+                                ForEach(LocalLLMModel.curatedModels) { model in
+                                    HStack {
+                                        Text(model.displayName)
+                                        Spacer()
+                                        Text(String(format: "%.1f GB", model.sizeGB))
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    .tag(model)
+                                }
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.menu)
+                            .frame(maxWidth: 280, alignment: .leading)
+
                             Button {
                                 startDownload()
                             } label: {
@@ -711,6 +663,10 @@ private struct LLMSetupStepView: View {
                             }
                             .buttonStyle(.bordered)
                             .controlSize(.small)
+
+                            Text("Requires ~\(String(format: "%.0f", store.selectedLocalModel.sizeGB + 0.5))GB storage")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
                         }
                     }
 
@@ -724,9 +680,6 @@ private struct LLMSetupStepView: View {
                     store.selectedLLMPath = .localGGUF
                 }
             }
-        }
-        .onAppear {
-            store.checkOllama()
         }
     }
 
@@ -751,8 +704,8 @@ private struct OpenRouterSetupStepView: View {
         StepCard(
             icon: "cloud.fill",
             iconColor: .indigo,
-            title: "Cloud AI (Optional)",
-            description: "OpenRouter adds cloud-based AI for compression and entity extraction. It's fast and works even without a local GPU. We recommend using both a local LLM and OpenRouter together."
+            title: "OpenRouter (Cloud)",
+            description: "Use a cloud LLM for compression and entity extraction. Works on any Mac — no GPU or local model needed. This is a fully standalone option."
         ) {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 6) {

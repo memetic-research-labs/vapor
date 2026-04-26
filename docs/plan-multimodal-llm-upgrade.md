@@ -2,7 +2,9 @@
 
 ## Overview
 
-Vapor currently uses **llama.cpp** (via the `swift-llama-cpp` Swift package) for on-device LLM inference and **Ollama** (bundled binary) for model management. This plan covers what must change to add support for **Gemma 4** and other state-of-the-art models — particularly those with **vision/image input** capabilities that are needed for the Screenshot Awareness feature.
+Vapor uses **llama.cpp** (via the `swift-llama-cpp` Swift package) for on-device LLM inference. This plan covers what must change to add support for **Gemma 4** and other state-of-the-art models — particularly those with **vision/image input** capabilities that are needed for the Screenshot Awareness feature.
+
+> **Status (PR #69):** The bundled `ollama-darwin` binary was removed. Ollama is no longer included in the app bundle or started/stopped by Vapor. The app detects a user-installed Ollama (`brew install ollama` / official installer) at runtime, but it is not yet surfaced as a selectable compression backend. The current compression defaults to on-device swift-llama-cpp (`.localLLM`).
 
 ---
 
@@ -11,14 +13,14 @@ Vapor currently uses **llama.cpp** (via the `swift-llama-cpp` Swift package) for
 | | llama.cpp | Ollama |
 |---|---|---|
 | **What it is** | Low-level C/C++ inference engine (runs GGUF models) | Higher-level model runner built on llama.cpp |
-| **Bindings used by Vapor** | `swift-llama-cpp` Swift package | `ollama-darwin` binary shipped in app bundle |
+| **Bindings used by Vapor** | `swift-llama-cpp` Swift package | User-installed binary (detected via PATH) |
 | **API surface** | C API wrapped in Swift | HTTP REST API (`/api/chat`, `/api/generate`) |
 | **Model management** | Manual (GGUF file download) | `ollama pull <model>` CLI command |
 | **Multimodal support** | Requires llava.cpp / clip model side-car | Native: `ollama run gemma4` handles vision automatically |
 
-Vapor currently uses both paths:
-- `LocalLLMCompressor.swift` calls `swift-llama-cpp` directly for text compression.
-- The bundled `ollama-darwin` binary provides a local API server (started/stopped by the app) that other features can call via HTTP.
+Vapor currently uses only the llama.cpp path:
+- `LocalLLMCompressor.swift` calls `swift-llama-cpp` directly for text compression (`.localLLM` backend).
+- A user-installed Ollama daemon can be detected but is not yet wired as a compression or vision backend.
 
 **For multimodal (vision) input the Ollama path is strongly preferred** because Ollama handles the CLIP vision encoder and token interleaving internally. Calling llama.cpp directly for vision requires embedding two separate models and handling image patch tokenisation manually — far more work with no practical benefit.
 
@@ -212,18 +214,26 @@ No other entitlement changes are needed for the Ollama integration given the dis
 
 ## Implementation Phases
 
-### Phase A — Ollama Upgrade & Daemon (1–2 days)
+> **Note (PR #69):** Phases A and B below were superseded. Ollama is no longer bundled with the app; the bundled binary, `download-ollama.sh`, and the "Download Ollama Binary" Xcode build phase were all removed. The `.ollamaLLM` compressor type was **not** added to `CompressorType`. The current compression backends are:
+> - `.localLLM` — swift-llama-cpp running a downloaded GGUF file (default)
+> - `.openRouter` — cloud API
+>
+> Ollama (user-installed via `brew install ollama` or the official installer) is detected at runtime by `OllamaDaemonManager.isInstalled()` but is not exposed as a selectable compression backend in the current release.
 
-- [ ] Bump `OLLAMA_VERSION` in `download-ollama.sh` to 0.6.5+
-- [ ] **Add `com.apple.security.network.server` to `Vapor.entitlements`** (required for `ollama serve` to bind port 11434)
-- [ ] Implement `OllamaDaemonManager` (start/stop/health-check/PID file)
-- [ ] Wire daemon start into `VaporApp.init()` or main window `.onAppear`; register `atexit` handler and scene-phase observer for shutdown
-- [ ] Manual test: `gemma4:4b` model chat via `curl` inside sandbox
+### Phase A — Ollama Upgrade & Daemon ~~(1–2 days)~~ — Superseded by PR #69
 
-### Phase B — OllamaCompressor (2–3 days)
+- ~~Bump `OLLAMA_VERSION` in `download-ollama.sh` to 0.6.5+~~ (script removed)
+- ~~**Add `com.apple.security.network.server` to `Vapor.entitlements`**~~ (no longer needed; Ollama is user-managed)
+- ~~Implement `OllamaDaemonManager` (start/stop/health-check/PID file)~~ (`OllamaDaemonManager` updated to detect user-installed Ollama instead)
+- ~~Wire daemon start into `VaporApp.init()` or main window `.onAppear`~~ (graceful skip if Ollama is not installed)
+- [ ] Manual test: `gemma4:4b` model chat via `curl` against user-installed `ollama serve`
+
+### Phase B — OllamaCompressor ~~(2–3 days)~~ — Deferred
+
+> These items are on hold pending a decision on whether to add Ollama back as a user-selectable compression backend.
 
 - [ ] Create `OllamaCompressor.swift`
-- [ ] Update `CompressionService` fallback chain
+- [ ] Update `CompressionService` to add Ollama path
 - [ ] Add compressor type `.ollamaLLM` to `CompressorType` enum
 - [ ] Update `SettingsView` to show Ollama model selector (text models only)
 - [ ] Unit tests: mock HTTP responses for `/api/chat` and `/api/tags`

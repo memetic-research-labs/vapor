@@ -12,6 +12,32 @@ struct CompressedResult {
     let compressorUsed: CompressorType
 }
 
+enum CompressionError: LocalizedError {
+    case unavailable
+    case apiError(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .unavailable:
+            return "The selected compression backend is unavailable."
+        case .apiError(let message):
+            let trimmedMessage = message.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmedMessage.isEmpty
+                ? "The compression request failed due to an API error."
+                : "The compression request failed: \(trimmedMessage)"
+        }
+    }
+
+    var recoverySuggestion: String? {
+        switch self {
+        case .unavailable:
+            return "Install or configure the selected compression backend, then try again."
+        case .apiError:
+            return "Check the backend configuration, network connectivity, and API credentials, then try again."
+        }
+    }
+}
+
 protocol Compressor {
     var name: String { get }
     var isAvailable: Bool { get async }

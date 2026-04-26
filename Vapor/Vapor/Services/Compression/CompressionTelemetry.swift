@@ -28,7 +28,7 @@ enum ServiceEvent: Identifiable {
     var label: String {
         switch self {
         case .daemonStart:
-            return "Ollama daemon start"
+            return "Daemon start"
         case .modelLoad(let backend, let model, _, _):
             return "\(backend) model load (\(model))"
         }

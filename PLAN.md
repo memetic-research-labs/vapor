@@ -8,7 +8,7 @@ Vapor is a lightweight macOS app designed for developers who frequently send pro
 
 **Key Features:**
 - Speech-to-text input (hold Fn key to dictate)
-- Multiple compression backends (Apple Foundation Models, OpenRouter, rule-based)
+- Multiple compression backends (Local LLM, OpenRouter)
 - One-click "Compress & Copy" workflow
 - Floating window for easy access alongside terminal/IDE
 - Full prompt history with compression stats
@@ -38,12 +38,11 @@ Vapor is a lightweight macOS app designed for developers who frequently send pro
 │  ┌─────────────────┐  ┌─────────────────────────────────┐  │
 │  │ SpeechDictation │  │     CompressionService          │  │
 │  │    Service      │  │  ┌─────────────────────────────┐│  │
-│  └─────────────────┘  │  │ FoundationModelsCompressor ││  │
-│  ┌─────────────────┐  │  │ OpenRouterCompressor       ││  │
-│  │ FnDictation     │  │  │ RuleBasedCompressor        ││  │
-│  │    Monitor      │  │  └─────────────────────────────┘│  │
-│  └─────────────────┘  └─────────────────────────────────┘  │
-│  ┌─────────────────┐  ┌─────────────────────────────────┐  │
+│  └─────────────────┘  │  │ LocalLLMCompressor          ││  │
+│  ┌─────────────────┐  │  │ OpenRouterCompressor        ││  │
+│  │ FnDictation     │  │  └─────────────────────────────┘│  │
+│  │    Monitor      │  └─────────────────────────────────┘  │
+│  └─────────────────┘  ┌─────────────────────────────────┐  │
 │  │ ClipboardService│  │      PromptHistoryService       │  │
 │  └─────────────────┘  └─────────────────────────────────┘  │
 ├─────────────────────────────────────────────────────────────┤
@@ -60,27 +59,21 @@ Vapor is a lightweight macOS app designed for developers who frequently send pro
 
 ## Compression Backends
 
-### 1. Apple Foundation Models (Primary)
+### 1. Local LLM (Primary)
 - **Cost:** Free
-- **Requirements:** macOS 26+ (Tahoe), Apple Intelligence enabled
+- **Requirements:** Model download (1.5–4.7 GB), Metal GPU (Apple Silicon)
 - **Privacy:** All inference on-device, no data leaves device
-- **Quality:** ~3B parameter model, good for compression tasks
-- **Latency:** Sub-second
+- **Quality:** Best compression quality
+- **Models:** Phi-4 Mini (2.3 GB), Qwen 3 4B (2.4 GB), Qwen 2.5 7B (4.7 GB)
 
-### 2. OpenRouter API (Secondary)
+### 2. OpenRouter API (Cloud)
 - **Cost:** ~$0.01/1M tokens (GLM-5)
 - **Default Model:** `glm-5`
 - **Requirements:** API key (stored in Keychain)
 - **Quality:** Better semantic understanding
 - **Latency:** Network-dependent (~1-2s)
 
-### 3. Rule-Based (Fallback)
-- **Cost:** Free
-- **Requirements:** None (always available)
-- **Quality:** ~60-70% of LLM quality
-- **Latency:** Instant
-
-**Fallback Chain:** Foundation Models → OpenRouter → Rule-Based
+**Minimum:** At least one backend must be configured. No fallback to heuristic compression.
 
 ---
 
@@ -169,7 +162,7 @@ final class PromptRecord {
     var originalTokenCount: Int
     var compressedTokenCount: Int
     var compressionRatio: Double
-    var compressorUsed: String  // "foundationModels" | "openRouter" | "ruleBased"
+    var compressorUsed: String  // "localLLM" | "openRouter"
     var createdAt: Date
     var modifiedAt: Date
     var isFavorite: Bool
@@ -182,7 +175,7 @@ final class PromptRecord {
 ```swift
 @Model
 final class CompressionSettings {
-    var selectedCompressor: String  // "foundationModels" | "openRouter" | "ruleBased"
+    var selectedCompressor: String  // "localLLM" | "openRouter"
     var openRouterApiKey: String?   // Stored in Keychain, this is reference
     var openRouterModel: String     // Default: "glm-5"
     var autoSavePrompts: Bool       // Default: true
@@ -226,9 +219,8 @@ Vapor/
 │   └── Compression/
 │       ├── CompressorProtocol.swift
 │       ├── CompressionService.swift
-│       ├── FoundationModelsCompressor.swift
-│       ├── OpenRouterCompressor.swift
-│       └── RuleBasedCompressor.swift
+│       ├── LocalLLMCompressor.swift
+│       └── OpenRouterCompressor.swift
 │
 └── Utils/
     ├── TokenEstimator.swift
@@ -257,14 +249,13 @@ Vapor/
 
 ### Phase 2: Compression Engine (Week 2)
 
-**Goal:** All three compression backends working
+**Goal:** Compression backends working
 
 **Tasks:**
 - [ ] Define CompressorProtocol
-- [ ] Implement RuleBasedCompressor (quick win, always available)
-- [ ] Implement FoundationModelsCompressor (macOS 26+)
+- [ ] Implement LocalLLMCompressor (on-device GGUF models)
 - [ ] Implement OpenRouterCompressor with GLM-5 default
-- [ ] Create CompressionService coordinator with fallback logic
+- [ ] Create CompressionService coordinator
 - [ ] Add TokenEstimator utility
 - [ ] Add KeychainService for API key storage
 
@@ -301,7 +292,7 @@ Vapor/
 - [ ] Add keyboard shortcuts
 - [ ] Polish animations and transitions
 - [ ] Error handling and edge cases
-- [ ] Testing on macOS 26+ and fallback testing
+- [ ] Testing on macOS 14+
 
 **Deliverable:** Production-ready app
 
@@ -329,21 +320,14 @@ Vapor/
 
 ## Technical Notes
 
-### Apple Foundation Models Availability
+### Local LLM Availability
 
 ```swift
 // Check availability before use
-switch SystemLanguageModel.default.availability {
-case .available:
+if let compressor = localLLMCompressor, await compressor.isAvailable {
     // Ready to use
-case .unavailable(.deviceNotEligible):
-    // Hardware doesn't support - permanent
-case .unavailable(.appleIntelligenceNotEnabled):
-    // User needs to enable in Settings
-case .unavailable(.modelNotReady):
-    // Model downloading - transient
-@unknown default:
-    break
+} else {
+    // Model not downloaded or not ready
 }
 ```
 
@@ -384,7 +368,8 @@ Approximate token count using word count:
 - SwiftData (macOS 14+)
 - Speech (for STT)
 - AVFoundation (for audio capture)
-- FoundationModels (macOS 26+, optional)
+- LocalLLM (on-device, optional)
+- OpenRouter API (optional, requires API key)
 
 **External:**
 - OpenRouter API (optional, requires API key)
@@ -396,7 +381,7 @@ Approximate token count using word count:
 ## Testing Strategy
 
 ### Unit Tests
-- RuleBasedCompressor logic
+- LocalLLMCompressor logic
 - TokenEstimator accuracy
 - Compression ratio calculations
 - SwiftData CRUD operations
@@ -410,7 +395,7 @@ Approximate token count using word count:
 ### Manual Testing
 - Fn key dictation on various macOS versions
 - Floating window behavior across spaces
-- Apple Intelligence availability handling
+- Local LLM availability handling
 - OpenRouter API error handling
 
 ---
@@ -418,7 +403,7 @@ Approximate token count using word count:
 ## Success Metrics
 
 - **Compression quality:** 40%+ token reduction on behavioral prompts
-- **Latency:** <1s for Foundation Models, <2s for OpenRouter
+- **Latency:** <1s for Local LLM, <2s for OpenRouter
 - **Reliability:** 99%+ success rate with fallback chain
 - **UX:** One-click workflow from text to compressed clipboard
 
@@ -427,7 +412,6 @@ Approximate token count using word count:
 ## References
 
 - [Prompt-Cloud Compression](https://github.com/swbratcher/prompt-cloud)
-- [Apple Foundation Models](https://developer.apple.com/documentation/FoundationModels)
 - [OpenRouter API](https://openrouter.ai/docs)
 
 ---

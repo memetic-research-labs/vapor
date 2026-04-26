@@ -2,69 +2,45 @@
 
 ## Quick Start
 
-Vapor works out of the box on macOS 26+ with Apple Intelligence. No downloads or API keys required.
+Vapor requires macOS 14 (Sonoma) or later. You need at least one compression backend configured to compress prompts.
 
-1. Launch Vapor
-2. Grant microphone and speech recognition permissions when prompted
-3. Hold the **Fn** key and speak your prompt
-4. Release Fn — press **Cmd+Return** to compress & copy
-5. Paste into any AI chat interface
-
-That's it. Apple's on-device Foundation Models handle compression automatically.
+1. Download a local model or set up an OpenRouter API key
+2. Launch Vapor
+3. Grant microphone and speech recognition permissions when prompted
+4. Hold the **Fn** key and speak your prompt
+5. Release Fn — press **Cmd+Return** to compress & copy
+6. Paste into any AI chat interface
 
 ## Compression Backends
 
-Vapor supports five compression backends. Pick one in **Settings > Compression**.
+Vapor supports two compression backends. Pick one in **Settings > Compression**.
 
 | Backend | Setup | Cost | Quality | Speed |
 |---------|-------|------|----------|-------|
-| **Apple Foundation Models** | None — built into macOS 26+ | Free | Good | Fast |
-| **Local LLM (Qwen 2.5-7B)** | One-click download (~4.7 GB) | Free | Best | Medium |
-| **Ollama** | Pull models from UI | Free | Varies by model | Varies |
+| **Local LLM** | One-click download (1.5–4.7 GB) | Free | Best | Medium |
 | **OpenRouter** | Paste API key from openrouter.ai | ~$0.01/1M tokens | Excellent | Fast |
-| **Rule-Based** | None | Free | Lower | Instant |
 
-### Apple Foundation Models (Default)
-
-Zero configuration. Uses Apple's on-device LLM via the `FoundationModels` framework. Available on any Mac with Apple Intelligence (macOS 26+).
-
-### Local LLM — Qwen 2.5-7B
+### Local LLM
 
 The best on-device compression quality. Uses [swift-llama-cpp](https://github.com/pgorzelany/swift-llama-cpp) to run a 4-bit quantized GGUF model entirely in-process.
 
 **Setup:**
 1. Go to **Settings > Compression**
 2. Select **Local LLM (On-Device)**
-3. Click **Download Qwen 2.5-7B (4.7 GB)**
-4. Wait for the download to complete
-5. The model auto-loads on next launch
+3. Choose a model from the picker (Phi-4 Mini recommended)
+4. Click **Download**
+5. Wait for the download to complete
+6. The model auto-loads on next launch
 
-**Requirements:** Metal GPU, ~5 GB disk space. Works on any Apple Silicon Mac. The model file is stored at `~/Library/Application Support/Vapor/Models/Qwen2.5-7B-Instruct-Q4_K_M.gguf`.
-
-### Ollama
-
-Vapor bundles the Ollama binary and manages it automatically. You can also use a system-installed Ollama if you prefer.
-
-**Using the bundled Ollama:**
-1. Go to **Settings > Ollama Models**
-2. Click **Pull** on any recommended model
-3. Wait for the download to complete
-4. Click **Select** to make it active
-
-**Using system-installed Ollama:**
-1. Install Ollama from [ollama.com](https://ollama.com) or `brew install ollama`
-2. Pull models: `ollama pull gemma4:e4b`
-3. Vapor auto-detects Ollama running on `localhost:11434`
-
-**Recommended models:**
+**Available models:**
 
 | Model | Size | RAM | Best For |
 |-------|------|-----|----------|
-| `gemma4:e4b` | 3.2 GB | ~5 GB | Best balance of speed and quality |
-| `gemma4:e2b` | 1.8 GB | ~3 GB | Fastest, good for low-RAM Macs |
-| `qwen3:8b` | 5.2 GB | ~7 GB | High quality text compression |
-| `phi4:mini` | 1.5 GB | ~2 GB | Lightweight, minimal resource usage |
-| `qwen2.5:7b` | 4.7 GB | ~6 GB | Proven quality, same as Local LLM |
+| Phi-4 Mini (3.8B) | 2.3 GB | ~3 GB | Best balance of speed and quality |
+| Qwen 3 4B | 2.4 GB | ~4 GB | Good quality, compact |
+| Qwen 2.5 7B | 4.7 GB | ~6 GB | Highest quality on-device |
+
+**Requirements:** Metal GPU, disk space for the model. Works on any Apple Silicon Mac. Models are stored at `~/Library/Application Support/Vapor/Models/`.
 
 ### OpenRouter (Cloud)
 
@@ -79,10 +55,6 @@ Access to hundreds of cloud models including the latest from OpenAI, Anthropic, 
 6. Pick a model from the dropdown
 
 The default model is `glm-5` (cheap and fast). You can choose any model with 8,000+ token context.
-
-### Rule-Based (Fallback)
-
-Always available. No ML — uses linguistic heuristics to strip articles, prepositions, and auxiliary verbs. Lower quality but instant and never fails. Vapor automatically falls back to this if the selected backend is unavailable.
 
 ## Keyboard Shortcuts
 
@@ -164,7 +136,7 @@ A searchable index of everything Vapor has captured — web pages, screenshots, 
 Vapor can automatically extract named entities (people, organizations, products, locations) from captured text.
 
 - Configure in **Settings > Context Processing**
-- Choose between Ollama, OpenRouter, or macOS NLTagger as the backend
+- Choose between OpenRouter or macOS NLTagger as the backend
 - Entities are linked to source context items and searchable in Context Explorer
 
 ### Summarization
@@ -172,17 +144,17 @@ Vapor can automatically extract named entities (people, organizations, products,
 Captured web pages and documents can be automatically summarized.
 
 - Configure in **Settings > Context Processing**
-- Choose between Ollama, OpenRouter, or Foundation Models as the backend
+- Requires either an **OpenRouter API key** or a **downloaded Local LLM model**
 - Summaries appear in the Context Explorer detail view
 
 ## Choosing a Backend by Mac Specs
 
 | Mac | RAM | Recommended Backend |
 |-----|-----|-------------------|
-| MacBook Air M1/M2/M3 | 8 GB | Foundation Models or `phi4:mini` |
-| MacBook Pro M1/M2/M3 | 16 GB | Local LLM (Qwen 2.5-7B) or `gemma4:e4b` |
-| MacBook Pro M3/M4 Max | 32+ GB | Local LLM or `gemma4:26b` |
-| Mac mini M4 | 16 GB | Local LLM or `gemma4:e4b` |
+| MacBook Air M1/M2/M3 | 8 GB | Local LLM (Phi-4 Mini) |
+| MacBook Pro M1/M2/M3 | 16 GB | Local LLM (Qwen 2.5 7B) |
+| MacBook Pro M3/M4 Max | 32+ GB | Local LLM (Qwen 2.5 7B) |
+| Mac mini M4 | 16 GB | Local LLM (Qwen 2.5 7B) |
 | Intel Mac | 16+ GB | OpenRouter (GPU required for local models) |
 
 ## Support

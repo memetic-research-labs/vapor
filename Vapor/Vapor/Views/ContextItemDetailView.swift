@@ -502,7 +502,6 @@ struct ContextItemDetailView: View {
         let (color, label): (Color, String) = {
             switch backend {
             case .openRouter: (.green, "OpenRouter")
-            case .ollama: (.blue, "Ollama")
             case .nlTagger: (.orange, "NLTagger")
             }
         }()

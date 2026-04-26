@@ -9,24 +9,20 @@ private let chunkSize = 80_000
 enum SummarizationBackendPreference: String, CaseIterable, Codable {
     case sameAsEntityExtraction
     case openRouter
-    case ollama
 
     var displayName: String {
         switch self {
         case .sameAsEntityExtraction: "Same as Entity Extraction"
         case .openRouter: "OpenRouter (Cloud)"
-        case .ollama: "Ollama (Local)"
         }
     }
 
     var description: String {
         switch self {
         case .sameAsEntityExtraction:
-            "Reuse the entity extraction backend when possible. If extraction is using NLTagger, summarization falls back to Ollama."
+            "Reuse the entity extraction backend when possible."
         case .openRouter:
             "Use a dedicated OpenRouter model for summaries."
-        case .ollama:
-            "Use your shared Ollama model for summaries."
         }
     }
 }
@@ -36,7 +32,18 @@ final class SummarizationService {
     private let backendKey = "summarizationBackend"
     private let orModelKey = "summarizationModel"
     private let orApiKeyKey = "openRouterApiKey"
-    private let ollamaModelKey = "ollamaSelectedModel"
+    private let localLLMModelIDKey = "localLLMModelID"
+    private let localLLMModelURLKey = "localLLMModelURL"
+
+    private var cachedLocalLLMCompressor: LocalLLMCompressor?
+    private var cachedLocalLLMURL: URL?
+    private var isLoadingLocalLLM = false
+
+    private enum RuntimeBackend {
+        case openRouter
+        case localLLM
+        case unavailable
+    }
 
     var backendPreference: SummarizationBackendPreference {
         if let raw = UserDefaults.standard.string(forKey: backendKey),
@@ -60,28 +67,52 @@ final class SummarizationService {
         return NERModel.defaultModel
     }
 
-    var ollamaModel: String {
-        UserDefaults.standard.string(forKey: ollamaModelKey) ?? "qwen2.5:7b"
+    private var hasOpenRouterKey: Bool {
+        if let apiKey = UserDefaults.standard.string(forKey: orApiKeyKey) {
+            return !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        return false
     }
 
-    var backend: EntityExtractionBackend {
+    private var localModelURL: URL? {
+        guard let savedModelPath = UserDefaults.standard.url(forKey: localLLMModelURLKey),
+              FileManager.default.fileExists(atPath: savedModelPath.path) else {
+            return nil
+        }
+
+        if let savedModelID = UserDefaults.standard.string(forKey: localLLMModelIDKey),
+           let selectedModel = LocalLLMModel.find(by: savedModelID),
+           selectedModel.fileName != savedModelPath.lastPathComponent {
+            return nil
+        }
+
+        return savedModelPath
+    }
+
+    private var backend: RuntimeBackend {
         switch backendPreference {
         case .sameAsEntityExtraction:
             break
         case .openRouter:
-            return .openRouter
-        case .ollama:
-            return .ollama
+            return hasOpenRouterKey ? .openRouter : .unavailable
         }
 
         if let raw = UserDefaults.standard.string(forKey: "entityExtractionBackend"),
-           let val = EntityExtractionBackend(rawValue: raw) {
-            return val == .nlTagger ? .ollama : val
-        }
-        if let apiKey = UserDefaults.standard.string(forKey: orApiKeyKey), !apiKey.isEmpty {
+           let val = EntityExtractionBackend(rawValue: raw),
+           val == .openRouter,
+           hasOpenRouterKey {
             return .openRouter
         }
-        return .ollama
+
+        if localModelURL != nil {
+            return .localLLM
+        }
+
+        if hasOpenRouterKey {
+            return .openRouter
+        }
+
+        return .unavailable
     }
 
     func summarize(text: String) async -> DocumentSummary? {
@@ -99,10 +130,13 @@ final class SummarizationService {
         let truncated = String(text.prefix(100_000))
         let prompt = buildPrompt()
 
-        if backend == .openRouter {
+        switch backend {
+        case .openRouter:
             return await summarizeViaOpenRouter(text: truncated, prompt: prompt)
-        } else {
-            return await summarizeViaOllama(text: truncated, prompt: prompt)
+        case .localLLM:
+            return await summarizeViaLocalLLM(text: truncated, prompt: prompt)
+        case .unavailable:
+            return nil
         }
     }
 
@@ -125,10 +159,13 @@ final class SummarizationService {
             let prompt = buildPrompt()
             let result: DocumentSummary?
 
-            if backend == .openRouter {
+            switch backend {
+            case .openRouter:
                 result = await summarizeViaOpenRouter(text: userMessage, prompt: prompt)
-            } else {
-                result = await summarizeViaOllama(text: userMessage, prompt: prompt)
+            case .localLLM:
+                result = await summarizeViaLocalLLM(text: userMessage, prompt: prompt)
+            case .unavailable:
+                result = nil
             }
 
             if let summary = result {
@@ -266,51 +303,38 @@ final class SummarizationService {
         }
     }
 
-    private func summarizeViaOllama(text: String, prompt: String) async -> DocumentSummary? {
-        let model = ollamaModel
-        logger.info("Ollama Summary: model=\(model), text=\(text.count) chars")
+    private func summarizeViaLocalLLM(text: String, prompt: String) async -> DocumentSummary? {
+        guard let modelURL = localModelURL else {
+            logger.warning("Local summary skipped: no downloaded local model matches the current selection")
+            return nil
+        }
 
-        let body: [String: Any] = [
-            "model": model,
-            "messages": [
-                ["role": "system", "content": prompt],
-                ["role": "user", "content": text]
-            ],
-            "stream": false,
-            "temperature": 0.0,
-            "top_p": 0.9,
-            "num_predict": 2048
-        ]
+        if cachedLocalLLMURL != modelURL || cachedLocalLLMCompressor == nil {
+            guard !isLoadingLocalLLM else {
+                logger.warning("Local summary skipped: model is still loading")
+                return nil
+            }
+            isLoadingLocalLLM = true
+            let compressor = LocalLLMCompressor(modelURL: modelURL)
+            do {
+                try await compressor.loadModel()
+                cachedLocalLLMCompressor = compressor
+                cachedLocalLLMURL = modelURL
+            } catch {
+                logger.error("Local summary model load failed: \(error.localizedDescription)")
+                isLoadingLocalLLM = false
+                return nil
+            }
+            isLoadingLocalLLM = false
+        }
 
-        guard let url = URL(string: "http://127.0.0.1:11434/api/chat") else { return nil }
+        guard let compressor = cachedLocalLLMCompressor else { return nil }
 
-        var request = URLRequest(url: url, timeoutInterval: 120)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
-
-        let startTime = CFAbsoluteTimeGetCurrent()
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            let elapsed = CFAbsoluteTimeGetCurrent() - startTime
-            guard let httpResponse = response as? HTTPURLResponse,
-                  httpResponse.statusCode == 200 else {
-                let status = (response as? HTTPURLResponse)?.statusCode ?? -1
-                logger.error("Ollama Summary failed: HTTP \(status) in \(String(format: "%.1f", elapsed))s")
-                return nil
-            }
-
-            let ollamaResult = try? JSONDecoder().decode(OllamaChatResponse.self, from: data)
-            let content = ollamaResult?.message.content ?? ""
-            if content.isEmpty {
-                logger.warning("Ollama Summary returned empty content")
-                return nil
-            }
-            logger.info("Ollama Summary response: \(data.count) bytes, content=\(content.count) chars in \(String(format: "%.1f", elapsed))s")
-            return parseSummaryJSON(content)
+            let raw = try await compressor.generate(systemPrompt: prompt, userText: text)
+            return parseSummaryJSON(raw)
         } catch {
-            let elapsed = CFAbsoluteTimeGetCurrent() - startTime
-            logger.error("Ollama Summary failed: \(error.localizedDescription) after \(String(format: "%.1f", elapsed))s")
+            logger.error("Local summary failed: \(error.localizedDescription)")
             return nil
         }
     }
