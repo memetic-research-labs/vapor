@@ -110,8 +110,16 @@ Vapor includes a Chrome extension that lets you inject compressed prompts direct
 3. Enable **Developer mode** (top-right toggle)
 4. Click **Load unpacked** and select the `Browser Extension` folder
 5. In Vapor's **Settings > Browser**, enable browser integration
+6. Copy the **auth token** from Settings > Browser > Authentication
+7. Click the Vapor extension icon in Chrome → **Settings** → paste the token → **Save**
 
-**How it works:** The extension communicates with Vapor on `localhost:8766`. When you compress a prompt, you can send it directly to a browser tab with **Cmd+Shift+P**.
+> **Important:** The auth token is required. Without it, the extension cannot connect to Vapor. If you see a "Token mismatch" warning, the token was reset in Vapor — copy the new one from Settings.
+
+**How it works:** The extension communicates with Vapor on `localhost:8766` via SSE. When you compress a prompt, you can send it directly to a browser tab with **Cmd+Shift+P**.
+
+**Troubleshooting:**
+- If the extension badge shows "!", the connection is lost — verify Vapor is running and the token matches
+- Use the **Test Connection** button in the extension popup to verify your setup
 
 ## Advanced Features
 

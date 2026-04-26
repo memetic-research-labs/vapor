@@ -20,8 +20,7 @@ let reconnectAttempts = 0;
 let isConnected = false;
 let authToken = null;
 let capturedThisSession = 0;
-
-let authTokenLoadPromise = null;
+let authFailed = false;
 
 function normalizeHost(urlString) {
   try {
@@ -87,9 +86,7 @@ async function resolvePromptTab(tabIdRaw) {
 }
 
 function ensureAuthTokenLoaded() {
-  if (authTokenLoadPromise) return authTokenLoadPromise;
-
-  authTokenLoadPromise = new Promise((resolve) => {
+  return new Promise((resolve) => {
     chrome.storage.local.get(['vaporAuthToken'], (items) => {
       if (chrome.runtime.lastError) {
         console.error('[Vapor] Failed to load token:', chrome.runtime.lastError);
@@ -101,8 +98,6 @@ function ensureAuthTokenLoaded() {
       resolve(authToken);
     });
   });
-
-  return authTokenLoadPromise;
 }
 
 async function connect() {
@@ -112,18 +107,27 @@ async function connect() {
 
   await ensureAuthTokenLoaded();
 
-  try {
-    const url = authToken
-      ? `${SERVER_URL}/api/stream?token=${encodeURIComponent(authToken)}`
-      : `${SERVER_URL}/api/stream`;
+  if (!authToken) {
+    if (DEBUG) console.log('[Vapor] No auth token — skipping connection');
+    isConnected = false;
+    authFailed = false;
+    updateBadge('disconnected');
+    return;
+  }
 
-    if (DEBUG) console.log('[Vapor] Connecting to', url);
+  authFailed = false;
+
+  try {
+    const url = `${SERVER_URL}/api/stream?token=${encodeURIComponent(authToken)}`;
+
+    if (DEBUG) console.log('[Vapor] Connecting to', SERVER_URL);
 
     eventSource = new EventSource(url);
 
     eventSource.onopen = () => {
       isConnected = true;
       reconnectAttempts = 0;
+      authFailed = false;
       updateBadge('connected');
       if (DEBUG) console.log('[Vapor] SSE connected');
     };
@@ -192,6 +196,10 @@ function updateBadge(status) {
       api.setBadgeText({ text: '' });
       api.setBadgeBackgroundColor({ color: '#22c55e' });
       api.setTitle({ title: 'Vapor – Connected' });
+    } else if (status === 'auth-error') {
+      api.setBadgeText({ text: '!' });
+      api.setBadgeBackgroundColor({ color: '#ef4444' });
+      api.setTitle({ title: 'Vapor – Token mismatch. Copy token from Vapor Settings.' });
     } else {
       api.setBadgeText({ text: '!' });
       api.setBadgeBackgroundColor({ color: '#ef4444' });
@@ -499,13 +507,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'SET_TOKEN') {
     authToken = message.token || null;
     chrome.storage.local.set({ vaporAuthToken: authToken });
+    authFailed = false;
     connect();
     sendResponse({ success: true });
     return true;
   }
 
   if (message.type === 'GET_STATUS') {
-    sendResponse({ connected: isConnected, hasToken: !!authToken, capturedThisSession });
+    const actuallyConnected = isConnected && eventSource && eventSource.readyState === EventSource.OPEN;
+    sendResponse({ connected: actuallyConnected, hasToken: !!authToken, authFailed, capturedThisSession });
     return true;
   }
 
@@ -513,6 +523,27 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     handleCaptureRequest('page')
       .then(sendResponse)
       .catch(err => sendResponse({ success: false, error: err?.message ?? String(err) }));
+    return true;
+  }
+
+  if (message.type === 'TEST_CONNECTION') {
+    (async () => {
+      try {
+        const headers = { 'Content-Type': 'application/json' };
+        if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+        const resp = await fetch(`${SERVER_URL}/api/status`, { headers });
+        if (resp.ok) {
+          const body = await resp.json();
+          sendResponse({ success: true, status: body.status, clients: body.connectedClients });
+        } else if (resp.status === 401 || resp.status === 403) {
+          sendResponse({ success: false, error: 'Token mismatch — copy the current token from Vapor Settings' });
+        } else {
+          sendResponse({ success: false, error: `HTTP ${resp.status}` });
+        }
+      } catch (err) {
+        sendResponse({ success: false, error: 'Vapor is not running' });
+      }
+    })();
     return true;
   }
 
@@ -556,10 +587,55 @@ chrome.commands.onCommand.addListener((command) => {
   });
 });
 
+const KEEPALIVE_ALARM = 'vapor-keepalive';
+const KEEPALIVE_INTERVAL_MINUTES = 0.5;
+
+function startKeepalive() {
+  chrome.alarms.create(KEEPALIVE_ALARM, { periodInMinutes: KEEPALIVE_INTERVAL_MINUTES });
+  if (DEBUG) console.log('[Vapor] Keepalive alarm registered (every 30s)');
+}
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name !== KEEPALIVE_ALARM) return;
+  if (!authToken) return;
+
+  const alive = eventSource && eventSource.readyState === EventSource.OPEN;
+
+  fetch(`${SERVER_URL}/api/status`, { headers: { 'Authorization': `Bearer ${authToken}` } })
+    .then(r => {
+      if (r.status === 401 || r.status === 403) {
+        if (DEBUG) console.log('[Vapor] Keepalive: auth rejected, marking token mismatch');
+        authFailed = true;
+        isConnected = false;
+        updateBadge('auth-error');
+        if (eventSource) eventSource.close();
+        return;
+      }
+      if (!r.ok) return;
+      return r.json();
+    })
+    .then(body => {
+      if (!body) return;
+      if (!alive || body.connectedClients === 0) {
+        if (DEBUG) console.log('[Vapor] Keepalive: SSE not alive or 0 clients, reconnecting');
+        connect();
+      }
+    })
+    .catch(() => {
+      if (isConnected) {
+        if (DEBUG) console.log('[Vapor] Keepalive: server unreachable');
+        isConnected = false;
+        updateBadge('disconnected');
+      }
+    });
+});
+
 // Start
 connect();
+startKeepalive();
 
 chrome.runtime.onInstalled.addListener(() => {
   updateBadge('disconnected');
   if (DEBUG) console.log('[Vapor] Extension installed');
+  startKeepalive();
 });

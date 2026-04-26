@@ -279,9 +279,22 @@ struct SettingsView: View {
                             .controlSize(.small)
                         }
 
-                        Text("Copy this token to the Chrome extension's settings to authenticate the connection.")
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
+                        if !browserBridge.isExtensionConnected && preferences.browserIntegrationEnabled {
+                            HStack(spacing: 6) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundColor(.orange)
+                                Text("Extension not connected. Copy the token above and paste it into the Chrome extension's Settings.")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(8)
+                            .background(Color.orange.opacity(0.08))
+                            .cornerRadius(6)
+                        } else {
+                            Text("Copy this token to the Chrome extension's settings to authenticate the connection.")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                        }
                     }
                     .padding(8)
                 }

@@ -12,8 +12,10 @@ class VaporPopupApp extends HTMLElement {
     this.state = {
       connected: false,
       hasToken: false,
+      authFailed: false,
       isSettingsOpen: false,
       isSavingToken: false,
+      isTestingConnection: false,
       isCapturing: null,
       capturedThisSession: 0,
       message: null,
@@ -61,6 +63,11 @@ class VaporPopupApp extends HTMLElement {
         return;
       }
 
+      if (action === 'test-connection') {
+        await this.testConnection();
+        return;
+      }
+
       if (action === 'save-token') {
         await this.saveToken();
         return;
@@ -89,6 +96,7 @@ class VaporPopupApp extends HTMLElement {
       this.setState({
         connected: response?.connected ?? false,
         hasToken: response?.hasToken ?? false,
+        authFailed: response?.authFailed ?? false,
         capturedThisSession: response?.capturedThisSession ?? 0
       });
     } catch (error) {
@@ -147,9 +155,25 @@ class VaporPopupApp extends HTMLElement {
     }, 3000);
   }
 
+  async testConnection() {
+    this.setState({ isTestingConnection: true });
+    try {
+      const result = await chrome.runtime.sendMessage({ type: 'TEST_CONNECTION' });
+      if (result?.success) {
+        this.showMessage('success', `Connected — ${result.clients ?? 0} client(s)`);
+      } else {
+        this.showMessage('error', result?.error || 'Connection failed');
+      }
+    } catch (error) {
+      this.showMessage('error', error.message || 'Test failed');
+    }
+    this.setState({ isTestingConnection: false });
+  }
+
   statusLabel() {
-    if (this.state.connected && this.state.hasToken) return 'Connected';
-    if (this.state.connected) return 'Connected, token needed';
+    if (this.state.authFailed) return 'Token mismatch — update token';
+    if (!this.state.hasToken) return 'No token configured';
+    if (this.state.connected) return 'Connected';
     if (this.state.hasToken) return 'Waiting for Vapor';
     return 'Not connected';
   }
@@ -158,13 +182,17 @@ class VaporPopupApp extends HTMLElement {
     const {
       connected,
       hasToken,
+      authFailed,
       isSettingsOpen,
       isSavingToken,
+      isTestingConnection,
       isCapturing,
       capturedThisSession,
       message,
       tokenInputValue
     } = this.state;
+
+    const needsToken = !hasToken || authFailed;
 
     const captureCountText = capturedThisSession === 1
       ? '1 captured this session'
@@ -404,6 +432,51 @@ class VaporPopupApp extends HTMLElement {
           gap: 8px;
         }
 
+        .warning-box {
+          background: #fef2f2;
+          border: 1px solid #fecaca;
+          border-radius: 10px;
+          padding: 10px 12px;
+          font-size: 11px;
+          color: #991b1b;
+          line-height: 1.4;
+        }
+
+        .warning-box strong {
+          display: block;
+          margin-bottom: 3px;
+          font-size: 12px;
+        }
+
+        .warning-box a,
+        .warning-box .link-button {
+          color: #b91c1c;
+          font-weight: 600;
+          cursor: pointer;
+          text-decoration: underline;
+          background: none;
+          border: none;
+          padding: 0;
+          font-size: inherit;
+          font-family: inherit;
+        }
+
+        .test-button {
+          border: 1px solid #dbe4ee;
+          background: #ffffff;
+          color: #334155;
+          border-radius: 10px;
+          padding: 8px 12px;
+          font-size: 11px;
+          font-weight: 600;
+          cursor: pointer;
+          width: 100%;
+        }
+
+        .test-button:hover {
+          filter: brightness(0.98);
+        }
+
         .primary-button,
         .secondary-button {
           border-radius: 10px;
@@ -454,9 +527,11 @@ class VaporPopupApp extends HTMLElement {
                   type="password"
                   autocomplete="off"
                   value="${tokenInputValue.replace(/"/g, '&quot;')}"
-                  placeholder="${hasToken ? 'Token saved' : 'Paste token from Vapor Settings'}"
+                  placeholder="${hasToken ? 'Token saved — paste new token to replace' : 'Paste token from Vapor Settings → Browser'}"
                 />
-                <div class="token-note">Capture works once Vapor is running and the browser token matches Settings.</div>
+                <div class="token-note">${authFailed
+                  ? '⚠ Token mismatch! Copy the current token from Vapor Settings → Browser and paste it here.'
+                  : 'Copy the token from Vapor Settings → Browser and paste it here to authenticate.'}</div>
               </div>
 
               <div class="button-row">
@@ -465,6 +540,10 @@ class VaporPopupApp extends HTMLElement {
                 </button>
                 <button class="secondary-button" data-action="clear-token" ${!hasToken ? 'disabled' : ''}>Clear</button>
               </div>
+
+              <button class="test-button" data-action="test-connection" ${isTestingConnection ? 'disabled' : ''} style="margin-top: 4px;">
+                ${isTestingConnection ? 'Testing…' : 'Test Connection'}
+              </button>
 
               ${message ? `<div class="message ${escapeHtml(message.kind)}">${escapeHtml(message.text)}</div>` : ''}
             </div>
@@ -481,8 +560,17 @@ class VaporPopupApp extends HTMLElement {
                 <button class="icon-button" data-action="open-settings" aria-label="Settings">⚙</button>
               </div>
 
+              ${needsToken ? `
+                <div class="warning-box">
+                  <strong>${authFailed ? 'Token mismatch' : 'No auth token'}</strong>
+                  ${authFailed
+                    ? 'The token in the extension does not match Vapor. <button type="button" class="link-button" data-action="open-settings">Open Settings</button> to paste the current token from Vapor.'
+                    : 'Copy the auth token from Vapor Settings → Browser, then <button type="button" class="link-button" data-action="open-settings">open Settings</button> to paste it.'}
+                </div>
+              ` : ''}
+
               <div class="capture-stack">
-                <button class="capture-button page" data-action="capture-page" ${isCapturing ? 'disabled' : ''}>
+                <button class="capture-button page" data-action="capture-page" ${isCapturing || needsToken ? 'disabled' : ''}>
                   <span class="button-copy">
                     <span class="button-title">Capture Page</span>
                     <span class="button-hint">${navigator.platform.includes('Mac') ? '⌘⇧C' : 'Alt+Shift+C'} · Readability first</span>
@@ -490,7 +578,7 @@ class VaporPopupApp extends HTMLElement {
                   <span class="button-icon">${isCapturing === 'page' ? '…' : '▣'}</span>
                 </button>
 
-                <button class="capture-button selection" data-action="capture-selection" ${isCapturing ? 'disabled' : ''}>
+                <button class="capture-button selection" data-action="capture-selection" ${isCapturing || needsToken ? 'disabled' : ''}>
                   <span class="button-copy">
                     <span class="button-title">Capture Selection</span>
                     <span class="button-hint">Only the highlighted text</span>
@@ -498,6 +586,10 @@ class VaporPopupApp extends HTMLElement {
                   <span class="button-icon">${isCapturing === 'selection' ? '…' : '✂'}</span>
                 </button>
               </div>
+
+              <button class="test-button" data-action="test-connection" ${isTestingConnection ? 'disabled' : ''}>
+                ${isTestingConnection ? 'Testing…' : 'Test Connection'}
+              </button>
 
               <div class="session-row">${captureCountText}</div>
 

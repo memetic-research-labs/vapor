@@ -67,6 +67,8 @@ struct VaporApp: App {
             NSApp.delegate = delegate
         }
 
+        ProcessInfo.processInfo.disableAutomaticTermination("Browser bridge requires persistent process")
+
         Task {
             if prefs.browserIntegrationEnabled {
                 await bridge.start()
@@ -78,6 +80,18 @@ struct VaporApp: App {
             queue: .main
         ) { _ in
             Task { await bridge.stop() }
+        }
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            Task {
+                guard prefs.browserIntegrationEnabled else { return }
+                await bridge.stop()
+                try? await Task.sleep(for: .seconds(1))
+                await bridge.start()
+            }
         }
     }
 

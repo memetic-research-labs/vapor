@@ -891,14 +891,20 @@ private struct BrowserBridgeStepView: View {
                     Text("4. Enable browser integration in Settings → Browser")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
+                    Text("5. Copy the auth token from Settings → Browser → Authentication")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                    Text("6. Open the extension popup → Settings → Paste the token → Save")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
                 }
                 .padding(10)
                 .background(Color.secondary.opacity(0.07))
                 .cornerRadius(8)
 
-                Text("You can set this up later — Vapor works great without it.")
+                Text("The token is required — without it the extension cannot connect to Vapor.")
                     .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.orange)
             }
             .padding(.horizontal, 8)
         }

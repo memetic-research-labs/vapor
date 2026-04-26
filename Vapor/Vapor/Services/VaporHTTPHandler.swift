@@ -49,17 +49,17 @@ nonisolated final class VaporHTTPHandler: ChannelInboundHandler, @unchecked Send
                 return
             }
 
+            guard checkAuth(head: head) else {
+                sendJSON(context: context, status: .unauthorized, body: ["error": "Unauthorized"])
+                return
+            }
+
             if head.method == .GET && requestPath == "/api/status" {
                 sendJSON(context: context, status: .ok, body: [
                     "status": "ok",
                     "version": "1.0",
                     "connectedClients": sseHub.clientCount
                 ])
-                return
-            }
-
-            guard checkAuth(head: head) else {
-                sendJSON(context: context, status: .unauthorized, body: ["error": "Unauthorized"])
                 return
             }
 
@@ -227,7 +227,14 @@ nonisolated final class VaporHTTPHandler: ChannelInboundHandler, @unchecked Send
         context.writeAndFlush(wrapOutboundOut(.end(nil)), promise: nil)
     }
 
-    func channelInactive(context: ChannelHandlerContext) {}
+    func channelInactive(context: ChannelHandlerContext) {
+        if isSSE {
+            let key = ObjectIdentifier(context.channel)
+            sseHub.remove(key)
+            logger.info("SSE client disconnected (total: \(self.sseHub.clientCount))")
+        }
+        context.fireChannelInactive()
+    }
 
     private func handleContextCapture(context: ChannelHandlerContext) {
         let bytes = bodyBuffer?.readableBytes ?? 0

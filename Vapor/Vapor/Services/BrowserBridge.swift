@@ -131,6 +131,11 @@ final class BrowserBridge {
                             }
                         } else {
                             StatusBarService.shared.updateBrowserIndicator(connected: false)
+                            self?.availableTabs = []
+                            if var target = self?.selectedTarget {
+                                target.isConnected = false
+                                self?.selectedTarget = target
+                            }
                         }
                     }
                 }
