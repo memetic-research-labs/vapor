@@ -6,53 +6,53 @@
   <br>
 </p>
 
-Vapor is a macOS floating app that turns your voice, screenshots, and browser research into context-rich prompts — and sends them directly into any AI chat. Capture context, compose, and inject without leaving your workflow.
+Vapor is a macOS floating app that turns your voice, screenshots, and browser research into context-rich prompts, and sends them directly into any AI chat. Capture context, compose, and inject without leaving your workflow.
 
 ## Screenshots
 
 <p align="center">
-  <em>The floating prompt window — dictate, type, and manage context without switching apps</em><br>
+  <em>The floating prompt window - dictate, type, and manage context without switching apps</em><br>
   <img src="docs/images/vapor-app-floating.png" alt="Vapor floating window with editor and context tray" width="680">
 </p>
 
 <p align="center">
-  <em>Screenshot shelf — auto-detects screenshots, add to context with one keypress</em><br>
+  <em>Screenshot shelf - auto-detects screenshots, add to context with one keypress</em><br>
   <img src="docs/images/vapor-app-screenshot-shelf.png" alt="Screenshot shelf with detected screenshots" width="680">
 </p>
 
 <p align="center">
-  <em>Context tray — captured pages, articles, and research in a searchable sidebar</em><br>
+  <em>Context tray - captured pages, articles, and research in a searchable sidebar</em><br>
   <img src="docs/images/vapor-app-captured-pages-sidebar.png" alt="Context tray sidebar with captured pages" width="680">
 </p>
 
 <p align="center">
-  <em>Browser injection — send prompts directly into any AI chat tab</em><br>
+  <em>Browser injection - send prompts directly into any AI chat tab</em><br>
   <img src="docs/images/vapor-app-browser-injection.png" alt="Compressed prompt injected into AI chat" width="680">
 </p>
 
 <p align="center">
-  <em>Prompt compression — 40–60% token reduction, meaning preserved</em><br>
+  <em>Prompt compression - 40–60% token reduction, meaning preserved</em><br>
   <img src="docs/images/vapor-app-compression.png" alt="Prompt compression with original and compressed output" width="680">
 </p>
 
 ## Keyboard-First Interface
 
-Vapor is designed to be driven entirely from the keyboard. Every core action is a single keypress or key combo — summon the window, dictate, capture, compress, and send without ever touching the mouse.
+Vapor is designed to be driven entirely from the keyboard. Every core action is a single keypress or key combo: summon the window, dictate, capture, compress, and send without ever touching the mouse.
 
-- **⌃⌥Space** — summon Vapor from anywhere on your Mac
-- **Fn (hold)** — start voice dictation, release to stop
-- **⌘↩** — compress the current prompt and copy to clipboard
-- **⌘⇧P** — send the prompt directly into your active AI chat tab
-- **⌘⇧S** — jump to the Screenshot Shelf
-- **⌘⌥C** — open the Context Tray
+- **⌃⌥Space** - summon Vapor from anywhere on your Mac
+- **Fn (hold)** - start voice dictation, release to stop
+- **⌘↩** - compress the current prompt and copy to clipboard
+- **⌘⇧P** - send the prompt directly into your active AI chat tab
+- **⌘⇧S** - jump to the Screenshot Shelf
+- **⌘⌥C** - open the Context Tray
 
-The goal: stay in your flow. Dictate a thought, capture a screenshot, grab context from a browser tab, compress it all together, and inject it into your AI — without switching windows.
+The goal: stay in your flow. Dictate a thought, capture a screenshot, grab context from a browser tab, compress it all together, and inject it into your AI, without switching windows.
 
 ## Features
 
 ### Voice Dictation
 
-Hold Fn to speak. Vapor uses Apple's on-device speech recognition — no cloud, no latency, no API key, no privacy tradeoff. Your words appear in the editor as you speak. Release Fn when done.
+Hold Fn to speak. Vapor uses Apple's on-device speech recognition. No cloud, no latency, no API key, no privacy tradeoff. Your words appear in the editor as you speak. Release Fn when done.
 
 ### Screenshot Shelf
 
@@ -60,15 +60,15 @@ Vapor auto-detects new screenshots on your Desktop. Open the shelf with ⌘⇧S,
 
 ### Context Tray
 
-Captured pages, articles, browser research — all in one searchable sidebar. Open with ⌘⌥C, search by keyword, and insert context directly into your prompts. Everything you capture is processed through a pipeline that extracts entities, generates summaries, and builds citations.
+Captured pages, articles, browser research in one searchable sidebar. Open with ⌘⌥C, search by keyword, and insert context directly into your prompts. Everything you capture is processed through a pipeline that extracts entities, generates summaries, and builds citations.
 
 ### Research Interrogation
 
-Scan live browser tabs for structured data — tables, JSON, XHR feeds, articles. Vapor discovers data sources on the pages you have open and captures them into context automatically.
+Scan live browser tabs for structured data: tables, JSON, XHR feeds, articles. Vapor discovers data sources on the pages you have open and captures them into context automatically.
 
 ### Browser Injection
 
-Send prompts directly into ChatGPT, Claude, Gemini, Grok, Perplexity, and any site via the DOM picker. The Chrome extension (included in the DMG) connects Vapor to your AI chat tabs — no copy-paste needed.
+Send prompts directly into ChatGPT, Claude, Gemini, Grok, Perplexity, and any site via the DOM picker. The Chrome extension (included in the DMG) connects Vapor to your AI chat tabs. No copy-paste needed.
 
 ### Prompt Compression
 
@@ -121,7 +121,7 @@ Chrome extension connects Vapor directly to AI chat tabs:
 
 - macOS 14.0+ (Sonoma)
 - Apple Silicon or Intel
-- ~2–5 GB for local LLM model (optional — OpenRouter works without it)
+- ~2–5 GB for local LLM model (optional - OpenRouter works without it)
 - Chrome (for browser integration)
 
 ## Building
@@ -145,12 +145,12 @@ The Vapor name, logo, and app icon are trademarks of Memetic Research Labs LLC a
 
 ## Feedback & Contributing
 
-Vapor is an early proof of concept — we're just getting started and every bit of feedback helps shape where it goes next. If something breaks, feels slow, or doesn't work the way you'd expect, please let us know.
+Vapor is an early proof of concept - we're just getting started and every bit of feedback helps shape where it goes next. If something breaks, feels slow, or doesn't work the way you'd expect, please let us know.
 
-- **Bug reports & feature requests** — [open an issue on GitHub](https://github.com/memetic-research-labs/vapor/issues)
-- **Ideas & discussion** — we'd love to hear how you're using Vapor and what you'd want to see next
-- **Pull requests** — see [CONTRIBUTING.md](CONTRIBUTING.md) for build instructions
+- **Bug reports & feature requests** - [open an issue on GitHub](https://github.com/memetic-research-labs/vapor/issues)
+- **Ideas & discussion** - we'd love to hear how you're using Vapor and what you'd want to see next
+- **Pull requests** - see [CONTRIBUTING.md](CONTRIBUTING.md) for build instructions
 
 ## License
 
-MIT — see [LICENSE](LICENSE)
+MIT - see [LICENSE](LICENSE)
