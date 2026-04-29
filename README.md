@@ -1,6 +1,8 @@
-# Vapor
-
-**The Prompting & Context OS for AI power users.**
+<p align="center">
+  <img src="docs/images/vapor-icon.png" width="80" valign="middle">
+  &nbsp;<strong>Vapor</strong><br>
+  <em>The Prompting & Context OS for AI power users.</em>
+</p>
 
 Vapor is a macOS floating app that turns your voice, screenshots, and browser research into context-rich prompts — and sends them directly into any AI chat. Capture context, compose, and inject without leaving your workflow.
 
