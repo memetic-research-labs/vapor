@@ -12,8 +12,35 @@ Vapor is a macOS floating app that turns your voice, screenshots, and browser re
 | **Prompt Compression** | 40-60% token reduction via Local LLM or OpenRouter |
 | **Browser Injection** | Send prompts straight into ChatGPT, Claude, Gemini tabs |
 | **Research Interrogation** | Scan browser tabs for data — tables, JSON, XHR feeds, articles |
-| **Context Explorer** | Searchable index of everything you've captured |
+| **Context Tray** | Searchable sidebar of everything you've captured |
 | **Screenshot Shelf** | Auto-detect screenshots, add to context with one keypress |
+
+## Screenshots
+
+<p align="center">
+  <em>The floating prompt window — dictate, type, and manage context without switching apps</em><br>
+  <img src="docs/images/vapor-app-floating.png" alt="Vapor floating window with editor and context tray" width="680">
+</p>
+
+<p align="center">
+  <em>Screenshot shelf — auto-detects screenshots, add to context with one keypress</em><br>
+  <img src="docs/images/vapor-app-screenshot-shelf.png" alt="Screenshot shelf with detected screenshots" width="680">
+</p>
+
+<p align="center">
+  <em>Context tray — captured pages, articles, and research in a searchable sidebar</em><br>
+  <img src="docs/images/vapor-app-captured-pages-sidebar.png" alt="Context tray sidebar with captured pages" width="680">
+</p>
+
+<p align="center">
+  <em>Browser injection — send prompts directly into any AI chat tab</em><br>
+  <img src="docs/images/vapor-app-browser-injection.png" alt="Compressed prompt injected into AI chat" width="680">
+</p>
+
+<p align="center">
+  <em>Prompt compression — 40–60% token reduction, meaning preserved</em><br>
+  <img src="docs/images/vapor-app-compression.png" alt="Prompt compression with original and compressed output" width="680">
+</p>
 
 ## How It Works
 
@@ -80,7 +107,7 @@ Capture sources: browser pages, selected text, screenshots, pasted images, dropp
 | Focus Screenshots | ⌘⇧S |
 | Focus Context Tray | ⌘⌥C |
 | Prompt History | ⌘Y |
-| Context Explorer | ⌘⇧E |
+| Context Tray | ⌘⇧E |
 | Toggle Compact/Full | ⌘\\ |
 | Keyboard Shortcuts | ⌘/ |
 
@@ -101,6 +128,14 @@ open Vapor.xcodeproj
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed build instructions.
+
+## Code of Conduct
+
+This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md). By participating, you agree to uphold it.
+
+## Trademarks
+
+The Vapor name, logo, and app icon are trademarks of Memetic Research Labs LLC and are **not** licensed under the MIT License. See [TRADEMARKS.md](TRADEMARKS.md) for details.
 
 ## License
 
