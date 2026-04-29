@@ -11,8 +11,8 @@ Vapor is a macOS floating app that turns your voice, screenshots, and browser re
 ## Screenshots
 
 <p align="center">
-  <em>The floating prompt window - dictate, type, and manage context without switching apps</em><br>
-  <img src="docs/images/vapor-app-floating.png" alt="Vapor floating window with editor and context tray" width="680">
+  <em>The floating prompt window - hold Fn to dictate, Vapor listens and transcribes on-device</em><br>
+  <img src="docs/images/vapor-app-dictation.png" alt="Vapor showing live voice dictation with microphone indicator" width="680">
 </p>
 
 <p align="center">
