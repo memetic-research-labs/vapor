@@ -157,10 +157,25 @@ final class SpeechDictationService {
                 return
             }
 
+            // Force on-device processing — never send audio to Apple servers.
+            // On Intel Macs or unsupported locales this will be false; we fail
+            // with a clear message rather than silently routing to the cloud.
+            guard #available(macOS 10.15, *), recognizer.supportsOnDeviceRecognition else {
+                logger.warning("On-device recognition not available for locale=\(recognizer.locale.identifier)")
+                self.state = .error("""
+                    On-device speech recognition is not available for your system or language.
+                    Supported: Apple Silicon with English, Spanish, French, German, Japanese, \
+                    or Chinese. Change your macOS language in System Settings, or wait for the \
+                    upcoming Whisper-based engine (see GitHub Issue #12).
+                    """)
+                return
+            }
+
             self.teardownAudioSession(preserveErrorState: true)
 
             let request = SFSpeechAudioBufferRecognitionRequest()
             request.shouldReportPartialResults = true
+            request.requiresOnDeviceRecognition = true
             self.recognitionRequest = request
 
             let inputNode = self.audioEngine.inputNode
