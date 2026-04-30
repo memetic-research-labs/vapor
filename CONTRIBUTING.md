@@ -91,6 +91,10 @@ make build
 - Include macOS version, Vapor version, and steps to reproduce
 - Check existing issues before opening a new one
 
+## Code of Conduct
+
+This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md). By participating in this project, you agree to abide by its terms.
+
 ## License
 
 By contributing, you agree that your contributions will be licensed under the MIT License.

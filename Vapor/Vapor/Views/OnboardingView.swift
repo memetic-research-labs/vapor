@@ -455,6 +455,12 @@ private final class DictationDemoController {
                 let isFnDown = event.modifierFlags.contains(.function)
                 if isFnDown, !self.isListening {
                     self.isListening = true
+                    self.dictationService.onError = { msg in
+                        Task { @MainActor in
+                            self.isListening = false
+                            self.demoText = "Error: \(msg)"
+                        }
+                    }
                     self.dictationService.startDictation { text, _ in
                         Task { @MainActor in self.demoText = text }
                     }

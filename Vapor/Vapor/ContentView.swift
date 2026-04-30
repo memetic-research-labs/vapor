@@ -646,6 +646,10 @@ struct ContentView: View {
                 if isFnDown {
                     if dictationService.isDictating { return }
                     viewModel.isDictating = true
+                    dictationService.onError = { msg in
+                        viewModel.isDictating = false
+                        toastService.showError(msg)
+                    }
                     dictationService.startDictation(onTextUpdate: { text, isFinal in
                         Task { @MainActor in
                             viewModel.applyDictationTranscript(text, isFinal: isFinal)

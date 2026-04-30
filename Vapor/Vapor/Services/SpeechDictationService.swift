@@ -31,13 +31,14 @@ final class SpeechDictationService {
     private var isCancellationRequested: Bool = false
 
     var onTextUpdate: ((String, Bool) -> Void)?
+    var onError: ((String) -> Void)?
 
     init(locale: Locale = .current) {
         recognizer = SFSpeechRecognizer(locale: locale)
         if recognizer?.isAvailable == true {
             state = .ready
         }
-        logger.debug("Initialized for locale: \(self.recognizer?.locale.identifier ?? "default")")
+        logger.debug("Initialized for locale: \(self.recognizer?.locale.identifier ?? "default"), available: \(self.recognizer?.isAvailable ?? false)")
     }
 
     // MARK: - Public API
@@ -147,27 +148,17 @@ final class SpeechDictationService {
         Task { @MainActor in
             await requestPermissionsIfNeeded()
             guard case .ready = state else {
-                logger.warning("Permissions not ready; state=\(String(describing: self.state))")
+                let msg = "Permissions not ready; state=\(String(describing: self.state))"
+                logger.error("Dictation blocked: \(msg)")
+                self.onError?(msg)
                 return
             }
 
             guard let recognizer = self.recognizer, recognizer.isAvailable else {
-                logger.error("Recognizer not available")
-                self.state = .error("Speech recognizer is not available on this Mac.")
-                return
-            }
-
-            // Force on-device processing — never send audio to Apple servers.
-            // On Intel Macs or unsupported locales this will be false; we fail
-            // with a clear message rather than silently routing to the cloud.
-            guard #available(macOS 10.15, *), recognizer.supportsOnDeviceRecognition else {
-                logger.warning("On-device recognition not available for locale=\(recognizer.locale.identifier)")
-                self.state = .error("""
-                    On-device speech recognition is not available for your system or language.
-                    Supported: Apple Silicon with English, Spanish, French, German, Japanese, \
-                    or Chinese. Change your macOS language in System Settings, or wait for the \
-                    upcoming Whisper-based engine (see GitHub Issue #12).
-                    """)
+                let msg = "Speech recognizer is not available on this Mac."
+                logger.error("Dictation blocked: \(msg)")
+                self.state = .error(msg)
+                self.onError?(msg)
                 return
             }
 
@@ -175,7 +166,6 @@ final class SpeechDictationService {
 
             let request = SFSpeechAudioBufferRecognitionRequest()
             request.shouldReportPartialResults = true
-            request.requiresOnDeviceRecognition = true
             self.recognitionRequest = request
 
             let inputNode = self.audioEngine.inputNode
@@ -215,8 +205,10 @@ final class SpeechDictationService {
                 try self.audioEngine.start()
                 logger.info("Audio engine started")
             } catch {
-                logger.error("Failed to start audio engine: \(error)")
-                self.state = .error("Failed to start audio engine: \(error.localizedDescription)")
+                let msg = "Failed to start audio engine: \(error.localizedDescription)"
+                logger.error("Dictation blocked: \(msg)")
+                self.state = .error(msg)
+                self.onError?(msg)
                 self.teardownAudioSession(preserveErrorState: true)
                 return
             }
@@ -242,13 +234,17 @@ final class SpeechDictationService {
                 }
 
                 if let error = error {
-                    logger.error("Recognizer error: \(error.localizedDescription)")
+                    let errorMsg = error.localizedDescription
+                    logger.error("Recognizer error: \(errorMsg)")
                     Task { @MainActor in
                         if self.isCancellationRequested || self.hasDeliveredFinalResult {
                             logger.debug("Ignoring error after normal termination")
                         } else {
-                            self.state = .error("Speech recognition failed: \(error.localizedDescription)")
+                            let msg = "Speech recognition failed: \(errorMsg)"
+                            logger.error("Dictation runtime error: \(msg)")
+                            self.state = .error(msg)
                             self.teardownAudioSession(preserveErrorState: true)
+                            self.onError?(msg)
                         }
                         self.onTextUpdate = nil
                     }
