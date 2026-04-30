@@ -356,12 +356,19 @@ private struct WelcomeStepView: View {
 private struct PermissionsStepView: View {
     var store: OnboardingStore
 
+    private var usesWhisperKit: Bool {
+        let savedEngine = UserDefaults.standard.string(forKey: UserPreferences.Keys.sttEngine) ?? ""
+        return (STTEngineChoice(rawValue: savedEngine) ?? .whisperKit) == .whisperKit
+    }
+
     var body: some View {
         StepCard(
             icon: "lock.shield.fill",
             iconColor: .blue,
             title: "Grant Permissions",
-            description: "Vapor needs microphone access to hear you and speech recognition to transcribe your words. Both are processed on-device — no audio leaves your Mac."
+            description: usesWhisperKit
+                ? "Vapor needs microphone access to capture your voice. Transcription runs 100% on-device using Whisper — no audio ever leaves your Mac."
+                : "Vapor needs microphone access to hear you and speech recognition to transcribe your words. Both are processed on-device — no audio leaves your Mac."
         ) {
             VStack(spacing: 12) {
                 permissionRow(
@@ -370,12 +377,14 @@ private struct PermissionsStepView: View {
                     granted: store.micGranted,
                     status: store.micStatus == .notDetermined ? "Not requested" : (store.micGranted ? "Granted" : "Denied")
                 )
-                permissionRow(
-                    icon: "waveform",
-                    label: "Speech Recognition",
-                    granted: store.speechGranted,
-                    status: store.speechStatus == .notDetermined ? "Not requested" : (store.speechGranted ? "Granted" : "Denied")
-                )
+                if !usesWhisperKit {
+                    permissionRow(
+                        icon: "waveform",
+                        label: "Speech Recognition",
+                        granted: store.speechGranted,
+                        status: store.speechStatus == .notDetermined ? "Not requested" : (store.speechGranted ? "Granted" : "Denied")
+                    )
+                }
             }
             .padding(.horizontal, 8)
 
@@ -390,7 +399,9 @@ private struct PermissionsStepView: View {
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
 
-                    if store.micStatus == .denied || store.speechStatus == .denied {
+                    let permissionDenied = store.micStatus == .denied
+                        || (!usesWhisperKit && store.speechStatus == .denied)
+                    if permissionDenied {
                         Button {
                             store.openSystemSettings()
                         } label: {
@@ -408,7 +419,9 @@ private struct PermissionsStepView: View {
             }
 
             if !store.bothPermissionsGranted {
-                Text("The \"Next\" button will unlock once both permissions are granted.")
+                Text(usesWhisperKit
+                    ? "The \"Next\" button will unlock once microphone access is granted."
+                    : "The \"Next\" button will unlock once both permissions are granted.")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -449,6 +462,16 @@ private final class DictationDemoController {
     private var localMonitor: Any?
 
     func start() {
+        // If the user has their preferred engine's model ready, honour that choice.
+        // Otherwise fall back to Apple Speech so the demo always works on first-run.
+        let demoPreferences = UserPreferences()
+        let whisperReady = demoPreferences.sttEngine == .whisperKit
+            && WhisperModelManager.shared.isModelAvailable
+        if !whisperReady {
+            demoPreferences.sttEngine = .appleSpeech
+        }
+        dictationService.configure(preferences: demoPreferences)
+
         localMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
             Task { @MainActor [weak self] in
                 guard let self else { return }

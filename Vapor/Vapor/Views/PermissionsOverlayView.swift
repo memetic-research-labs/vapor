@@ -6,10 +6,12 @@ import Speech
 struct PermissionsOverlayView: View {
     let speechStatus: SFSpeechRecognizerAuthorizationStatus
     let micStatus: AVAuthorizationStatus
+    /// When `false` (e.g. WhisperKit backend), the speech recognition row is suppressed.
+    var requiresSpeechRecognition: Bool = true
     let onRetry: () -> Void
 
     private var speechDenied: Bool {
-        speechStatus == .denied || speechStatus == .restricted
+        requiresSpeechRecognition && (speechStatus == .denied || speechStatus == .restricted)
     }
 
     private var micDenied: Bool {
@@ -87,15 +89,21 @@ struct PermissionsOverlayView: View {
     }
 
     private func openSystemSettings() {
-        let urls: [String] = [
-            "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone",
-            "x-apple.systempreferences:com.apple.preference.security?Privacy_SpeechRecognition"
-        ]
+        var urlStrings: [String] = []
 
-        for urlString in urls {
-            if let url = URL(string: urlString) {
-                NSWorkspace.shared.open(url)
-                break
+        if micDenied {
+            urlStrings.append("x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")
+        }
+        if speechDenied {
+            urlStrings.append("x-apple.systempreferences:com.apple.preference.security?Privacy_SpeechRecognition")
+        }
+        if urlStrings.isEmpty {
+            urlStrings = ["x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"]
+        }
+
+        for urlString in urlStrings {
+            if let url = URL(string: urlString), NSWorkspace.shared.open(url) {
+                return
             }
         }
     }

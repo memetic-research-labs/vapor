@@ -33,6 +33,7 @@ struct SettingsView: View {
     @State private var useCustomSummarizationOpenRouterModel: Bool = false
     @State private var customSummarizationOpenRouterModel: String = ""
     @State private var cloudModelSearchText: String = ""
+    @State private var whisperModelManager = WhisperModelManager.shared
     #if DEBUG
     @State private var swiftDataClearStatus: String = ""
     @State private var vectorStoreClearStatus: String = ""
@@ -46,6 +47,7 @@ struct SettingsView: View {
         case contextProcessing = "Context Processing"
         case cloud = "Cloud"
         case general = "General"
+        case speech = "Speech"
         case browser = "Browser"
         case telemetry = "Telemetry"
         #if DEBUG
@@ -61,6 +63,7 @@ struct SettingsView: View {
             case .browser: return "globe"
             case .cloud: return "cloud"
             case .general: return "gearshape.2"
+            case .speech: return "waveform.circle"
             case .telemetry: return "chart.bar"
             #if DEBUG
             case .dataManagement: return "trash"
@@ -71,12 +74,12 @@ struct SettingsView: View {
         #if DEBUG
         static let allCases: [SettingsTab] = [
             .compression, .contextProcessing, .cloud,
-            .general, .browser, .telemetry, .dataManagement
+            .general, .speech, .browser, .telemetry, .dataManagement
         ]
         #else
         static let allCases: [SettingsTab] = [
             .compression, .contextProcessing, .cloud,
-            .general, .browser, .telemetry
+            .general, .speech, .browser, .telemetry
         ]
         #endif
     }
@@ -93,7 +96,7 @@ struct SettingsView: View {
                 let aiTabs: [SettingsTab] = [.compression, .contextProcessing, .cloud]
                 return aiTabs
             case .app:
-                var appTabs: [SettingsTab] = [.general, .browser, .telemetry]
+                var appTabs: [SettingsTab] = [.general, .speech, .browser, .telemetry]
                 #if DEBUG
                 appTabs.append(.dataManagement)
                 #endif
@@ -128,6 +131,8 @@ struct SettingsView: View {
                     cloudTab
                 case .general:
                     generalTab
+                case .speech:
+                    speechTab
                 case .telemetry:
                     telemetryTab
                 #if DEBUG
@@ -139,6 +144,196 @@ struct SettingsView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(minWidth: 650, minHeight: 400)
+    }
+
+    // MARK: - Speech Tab
+
+    private var speechTab: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+
+                GroupBox("Speech Recognition Engine") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Choose how Vapor transcribes your voice when you hold the Fn key.")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+
+                        ForEach(STTEngineChoice.allCases) { engine in
+                            selectableSettingsRow(
+                                title: engine.displayName,
+                                description: engine.description,
+                                isSelected: preferences.sttEngine == engine
+                            )
+                            .onTapGesture {
+                                preferences.sttEngine = engine
+                            }
+                        }
+                    }
+                    .padding(8)
+                }
+
+                if preferences.sttEngine == .whisperKit {
+                    whisperModelBox
+                }
+
+                if preferences.sttEngine == .appleSpeech {
+                    GroupBox("Apple Speech") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundColor(.orange)
+                                    .font(.system(size: 11))
+                                    .accessibilityHidden(true)
+                                Text("On Intel Macs, Apple Speech may send audio to Apple servers. Use WhisperKit for guaranteed on-device processing.")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(6)
+                            .background(Color.orange.opacity(0.08))
+                            .cornerRadius(6)
+                            .accessibilityLabel("Warning: On Intel Macs, Apple Speech may send audio to Apple servers. Use WhisperKit for guaranteed on-device processing.")
+
+                            Text("Apple Speech is supported on Apple Silicon with on-device recognition for English, Spanish, French, German, Japanese, and Simplified/Traditional Chinese.")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(8)
+                    }
+                }
+            }
+            .padding(20)
+        }
+    }
+
+    private var whisperModelBox: some View {
+        GroupBox("Whisper Model") {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Whisper models run entirely on your Mac (Apple Silicon). A one-time download is required.")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+
+                // Model status indicator.
+                HStack(spacing: 8) {
+                    if whisperModelManager.isDownloading {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text(whisperModelManager.modelStatusText)
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+                    } else if whisperModelManager.isModelAvailable {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.green)
+                        Text(whisperModelManager.modelStatusText)
+                            .font(.system(size: 12))
+                    } else {
+                        Image(systemName: "arrow.down.circle.fill")
+                            .foregroundColor(.orange)
+                        Text(whisperModelManager.modelStatusText)
+                            .font(.system(size: 12))
+                            .foregroundColor(.orange)
+                    }
+                }
+
+                Divider()
+
+                // Model size picker.
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Model size")
+                        .font(.system(size: 12, weight: .medium))
+
+                    Picker("Model size", selection: Binding(
+                        get: { preferences.whisperModelSize },
+                        set: { newSize in
+                            preferences.whisperModelSize = newSize
+                            whisperModelManager.selectedSize = newSize
+                        }
+                    )) {
+                        ForEach(WhisperModelSize.allCases) { size in
+                            VStack(alignment: .leading, spacing: 1) {
+                                HStack(spacing: 4) {
+                                    Text(size.displayName)
+                                    if let note = size.annotation {
+                                        Text("· \(note)")
+                                            .font(.system(size: 9))
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+                                Text(size.sizeDescription)
+                                    .font(.system(size: 9))
+                                    .foregroundColor(.secondary)
+                            }
+                            .tag(size)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .frame(maxWidth: 340, alignment: .leading)
+                    .disabled(whisperModelManager.isDownloading)
+                }
+
+                // Download progress bar (visible while downloading).
+                if whisperModelManager.isDownloading {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ProgressView(value: whisperModelManager.downloadProgress, total: 1.0)
+                            .progressViewStyle(.linear)
+                        Text("\(Int(whisperModelManager.downloadProgress * 100))% downloaded")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                // Action buttons.
+                HStack(spacing: 8) {
+                    if whisperModelManager.isDownloading {
+                        Button("Cancel") {
+                            whisperModelManager.cancelDownload()
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .foregroundColor(.red)
+                    } else if whisperModelManager.isModelAvailable {
+                        Button("Re-download") {
+                            Task {
+                                do {
+                                    try await whisperModelManager.downloadModel()
+                                } catch {
+                                    logger.error("Model re-download failed: \(error)")
+                                }
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+
+                        Button("Delete Model") {
+                            whisperModelManager.deleteModel()
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .foregroundColor(.red)
+                    } else {
+                        Button("Download \(preferences.whisperModelSize.displayName)") {
+                            Task {
+                                do {
+                                    try await whisperModelManager.downloadModel()
+                                } catch {
+                                    logger.error("Model download failed: \(error)")
+                                }
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                    }
+                }
+
+                Text("Models are cached on disk and survive app updates. Larger models give better accuracy but use more RAM and take longer to process.")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+            }
+            .padding(8)
+        }
+        .onAppear {
+            Task { await whisperModelManager.checkModelAvailability() }
+        }
     }
 
     // MARK: - Browser Tab

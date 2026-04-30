@@ -24,9 +24,18 @@ struct ContentView: View {
     @State private var micAuthStatus: AVAuthorizationStatus = .notDetermined
     @State private var permissionsGranted = false
 
+    /// Whether the current STT engine requires speech recognition permission.
+    private var requiresSpeechRecognition: Bool {
+        preferences.sttEngine == .appleSpeech
+    }
+
     private var hasPermissionIssue: Bool {
-        micAuthStatus == .denied || micAuthStatus == .restricted ||
-        speechAuthStatus == .denied || speechAuthStatus == .restricted
+        if micAuthStatus == .denied || micAuthStatus == .restricted { return true }
+        // Speech recognition is only required when Apple Speech backend is active.
+        if requiresSpeechRecognition {
+            return speechAuthStatus == .denied || speechAuthStatus == .restricted
+        }
+        return false
     }
 
     private var activeWorkspace: AppWorkspace {
@@ -264,6 +273,7 @@ struct ContentView: View {
             PermissionsOverlayView(
                 speechStatus: speechAuthStatus,
                 micStatus: micAuthStatus,
+                requiresSpeechRecognition: requiresSpeechRecognition,
                 onRetry: checkPermissions
             )
         } else {
@@ -532,8 +542,13 @@ struct ContentView: View {
     }
 
     private func checkPermissions() {
-        speechAuthStatus = SFSpeechRecognizer.authorizationStatus()
         micAuthStatus = AVCaptureDevice.authorizationStatus(for: .audio)
+        // Only check speech recognition status when using Apple Speech backend.
+        if requiresSpeechRecognition {
+            speechAuthStatus = SFSpeechRecognizer.authorizationStatus()
+        } else {
+            speechAuthStatus = .authorized
+        }
         permissionsGranted = !hasPermissionIssue
 
         if permissionsGranted {
@@ -627,14 +642,23 @@ struct ContentView: View {
     }
 
     private func setupDictation() {
+        dictationService.configure(preferences: preferences)
+
         FnDictationMonitor.shared.start { [weak viewModel, weak dictationService] isFnDown in
             Task { @MainActor in
                 guard let viewModel, let dictationService else { return }
 
                 let micDenied = AVCaptureDevice.authorizationStatus(for: .audio) == .denied
                     || AVCaptureDevice.authorizationStatus(for: .audio) == .restricted
-                let speechDenied = SFSpeechRecognizer.authorizationStatus() == .denied
-                    || SFSpeechRecognizer.authorizationStatus() == .restricted
+
+                // Speech recognition is only required for the Apple Speech backend.
+                let speechDenied: Bool
+                if dictationService.preferences?.sttEngine == .appleSpeech {
+                    speechDenied = SFSpeechRecognizer.authorizationStatus() == .denied
+                        || SFSpeechRecognizer.authorizationStatus() == .restricted
+                } else {
+                    speechDenied = false
+                }
 
                 if micDenied || speechDenied {
                     if isFnDown {
