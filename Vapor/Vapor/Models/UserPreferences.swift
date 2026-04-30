@@ -41,6 +41,23 @@ final class UserPreferences {
         }
     }
 
+    // MARK: - Speech-to-text preferences
+
+    /// Which STT engine to use for Fn-key dictation.
+    var sttEngine: STTEngineChoice {
+        didSet { UserDefaults.standard.set(sttEngine.rawValue, forKey: Keys.sttEngine) }
+    }
+
+    /// The Whisper model size to use when `sttEngine == .whisperKit`.
+    var whisperModelSize: WhisperModelSize {
+        didSet {
+            UserDefaults.standard.set(whisperModelSize.rawValue, forKey: Keys.whisperModelSize)
+            WhisperModelManager.shared.selectedSize = whisperModelSize
+        }
+    }
+
+    // MARK: - Keys
+
     struct Keys {
         static let windowExpanded = "windowExpanded"
         static let autoCompress = "autoCompressEnabled"
@@ -54,6 +71,8 @@ final class UserPreferences {
         static let autoSendToBrowser = "autoSendToBrowser"
         static let autoSubmitToAI = "autoSubmitToAI"
         static let embeddedServerPort = "embeddedServerPort"
+        static let sttEngine = "sttEngine"
+        static let whisperModelSize = "whisperModelSize"
     }
 
     init() {
@@ -68,6 +87,12 @@ final class UserPreferences {
         self.autoSendToBrowser = UserDefaults.standard.object(forKey: Keys.autoSendToBrowser) as? Bool ?? false
         self.autoSubmitToAI = UserDefaults.standard.object(forKey: Keys.autoSubmitToAI) as? Bool ?? false
         self.embeddedServerPort = UserDefaults.standard.object(forKey: Keys.embeddedServerPort) as? Int ?? 8766
+
+        let savedEngine = UserDefaults.standard.string(forKey: Keys.sttEngine) ?? ""
+        self.sttEngine = STTEngineChoice(rawValue: savedEngine) ?? .whisperKit
+
+        let savedModel = UserDefaults.standard.string(forKey: Keys.whisperModelSize) ?? ""
+        self.whisperModelSize = WhisperModelSize(rawValue: savedModel) ?? .tiny
     }
 
     func saveWindowPosition(_ point: CGPoint) {

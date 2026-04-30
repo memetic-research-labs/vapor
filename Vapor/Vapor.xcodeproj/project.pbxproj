@@ -14,6 +14,7 @@
 		50A10B022F9C0001008E324C /* NIOHTTP1 in Frameworks */ = {isa = PBXBuildFile; productRef = 50A10B012F9C0001008E324C /* NIOHTTP1 */; };
 		50A10B042F9C0002008E324C /* NIOPosix in Frameworks */ = {isa = PBXBuildFile; productRef = 50A10B032F9C0002008E324C /* NIOPosix */; };
 		50B200012FAA1000008E324C /* SQLiteVec in Frameworks */ = {isa = PBXBuildFile; productRef = 50B200032FAA1000008E324C /* SQLiteVec */; };
+		50C300032FAB1002008E324E /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = 50C300022FAB1002008E324D /* WhisperKit */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -69,6 +70,7 @@
 				50849C8E2F874B8B008E324C /* SwiftLlama in Frameworks */,
 				50849C902F874B8B008E324D /* KeyboardShortcuts in Frameworks */,
 				50849C942F874B8B008E324F /* Tiktoken in Frameworks */,
+				50C300032FAB1002008E324E /* WhisperKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -136,6 +138,7 @@
 				50849C912F874B8B008E324D /* KeyboardShortcuts */,
 				50B200032FAA1000008E324C /* SQLiteVec */,
 				50849C952F874B8B008E324F /* Tiktoken */,
+				50C300022FAB1002008E324D /* WhisperKit */,
 			);
 			productName = Vapor;
 			productReference = 508498392F86F964008E324C /* Vapor.app */;
@@ -225,6 +228,7 @@
 				50849C962F874B8B008E3250 /* XCRemoteSwiftPackageReference "Tiktoken" */,
 				50B200022FAA1000008E324C /* XCRemoteSwiftPackageReference "SQLiteVec" */,
 				50A10AEF2F9C0000008E324C /* XCRemoteSwiftPackageReference "swift-nio" */,
+				50C300012FAB1002008E324C /* XCRemoteSwiftPackageReference "WhisperKit" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 5084983A2F86F964008E324C /* Products */;
@@ -660,6 +664,14 @@
 				minimumVersion = 0.0.9;
 			};
 		};
+		50C300012FAB1002008E324C /* XCRemoteSwiftPackageReference "WhisperKit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/argmaxinc/argmax-oss-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.9.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -697,6 +709,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 50B200022FAA1000008E324C /* XCRemoteSwiftPackageReference "SQLiteVec" */;
 			productName = SQLiteVec;
+		};
+		50C300022FAB1002008E324D /* WhisperKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 50C300012FAB1002008E324C /* XCRemoteSwiftPackageReference "WhisperKit" */;
+			productName = WhisperKit;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

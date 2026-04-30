@@ -32,7 +32,15 @@ final class OnboardingStore {
 
     var micGranted: Bool { micStatus == .authorized }
     var speechGranted: Bool { speechStatus == .authorized }
-    var bothPermissionsGranted: Bool { micGranted && speechGranted }
+    /// Whether both permissions needed for the active STT backend are granted.
+    /// When WhisperKit is selected, only microphone is required.
+    var bothPermissionsGranted: Bool {
+        guard micGranted else { return false }
+        let savedEngine = UserDefaults.standard.string(forKey: UserPreferences.Keys.sttEngine) ?? ""
+        let engine = STTEngineChoice(rawValue: savedEngine) ?? .whisperKit
+        if engine == .whisperKit { return true }
+        return speechGranted
+    }
 
     // MARK: - LLM download state (delegated to CompressionService)
 
@@ -111,7 +119,12 @@ final class OnboardingStore {
 
     func requestAllPermissions() {
         requestMicrophoneAccess()
-        requestSpeechRecognitionAccess()
+        // Speech recognition is only needed for the Apple Speech backend.
+        let savedEngine = UserDefaults.standard.string(forKey: UserPreferences.Keys.sttEngine) ?? ""
+        let engine = STTEngineChoice(rawValue: savedEngine) ?? .whisperKit
+        if engine == .appleSpeech {
+            requestSpeechRecognitionAccess()
+        }
     }
 
     func refreshPermissions() {
@@ -181,9 +194,17 @@ final class OnboardingStore {
     func openSystemSettings() {
         refreshPermissions()
 
+        let savedEngine = UserDefaults.standard.string(forKey: UserPreferences.Keys.sttEngine) ?? ""
+        let engine = STTEngineChoice(rawValue: savedEngine) ?? .whisperKit
+
         let urlStrings: [String]
 
-        if !speechGranted && micGranted {
+        if engine == .whisperKit {
+            // WhisperKit only needs microphone.
+            urlStrings = [
+                "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
+            ]
+        } else if !speechGranted && micGranted {
             urlStrings = [
                 "x-apple.systempreferences:com.apple.preference.security?Privacy_SpeechRecognition",
                 "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
