@@ -183,6 +183,7 @@ struct SettingsView: View {
                                 Image(systemName: "exclamationmark.triangle.fill")
                                     .foregroundColor(.orange)
                                     .font(.system(size: 11))
+                                    .accessibilityHidden(true)
                                 Text("On Intel Macs, Apple Speech may send audio to Apple servers. Use Whisper for guaranteed on-device processing.")
                                     .font(.system(size: 11))
                                     .foregroundColor(.secondary)
@@ -190,6 +191,7 @@ struct SettingsView: View {
                             .padding(6)
                             .background(Color.orange.opacity(0.08))
                             .cornerRadius(6)
+                            .accessibilityLabel("Warning: On Intel Macs, Apple Speech may send audio to Apple servers. Use Whisper for guaranteed on-device processing.")
 
                             Text("Apple Speech is supported on Apple Silicon with on-device recognition for English, Spanish, French, German, Japanese, and Simplified/Traditional Chinese.")
                                 .font(.system(size: 11))
@@ -248,7 +250,14 @@ struct SettingsView: View {
                     )) {
                         ForEach(WhisperModelSize.allCases) { size in
                             VStack(alignment: .leading, spacing: 1) {
-                                Text(size.displayName)
+                                HStack(spacing: 4) {
+                                    Text(size.displayName)
+                                    if let note = size.annotation {
+                                        Text("· \(note)")
+                                            .font(.system(size: 9))
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
                                 Text(size.sizeDescription)
                                     .font(.system(size: 9))
                                     .foregroundColor(.secondary)

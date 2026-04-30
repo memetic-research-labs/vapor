@@ -92,7 +92,7 @@ final class UserPreferences {
         self.sttEngine = STTEngineChoice(rawValue: savedEngine) ?? .whisperKit
 
         let savedModel = UserDefaults.standard.string(forKey: Keys.whisperModelSize) ?? ""
-        self.whisperModelSize = WhisperModelSize(rawValue: savedModel) ?? .tiny
+        self.whisperModelSize = WhisperModelSize(rawValue: savedModel) ?? .small
     }
 
     func saveWindowPosition(_ point: CGPoint) {

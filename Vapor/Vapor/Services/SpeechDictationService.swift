@@ -71,8 +71,10 @@ final class SpeechDictationService {
             onTextUpdate?(currentTranscript, true)
         }
         isCancellationRequested = true
-        Task { await teardownBackend(commit: false) }
+        // Remove the audio tap first (synchronous) so no more buffers are fed to
+        // the backend. The backend teardown runs after on the main actor.
         teardownAudioEngine(preserveErrorState: false)
+        Task { await teardownBackend(commit: false) }
         currentTranscript = ""
         onTextUpdate = nil
     }
@@ -82,8 +84,9 @@ final class SpeechDictationService {
             onTextUpdate?(currentTranscript, true)
         }
         isCancellationRequested = true
-        Task { await teardownBackend(commit: false) }
+        // Remove the audio tap first so the backend receives no further buffers.
         teardownAudioEngine(preserveErrorState: false)
+        Task { await teardownBackend(commit: false) }
         onTextUpdate = nil
         currentTranscript = ""
     }

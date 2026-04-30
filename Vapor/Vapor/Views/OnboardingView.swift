@@ -462,10 +462,14 @@ private final class DictationDemoController {
     private var localMonitor: Any?
 
     func start() {
-        // Use Apple Speech for the onboarding demo since no Whisper model is
-        // available yet (the user downloads it from Settings after first-run).
+        // If the user has their preferred engine's model ready, honour that choice.
+        // Otherwise fall back to Apple Speech so the demo always works on first-run.
         let demoPreferences = UserPreferences()
-        demoPreferences.sttEngine = .appleSpeech
+        let whisperReady = demoPreferences.sttEngine == .whisperKit
+            && WhisperModelManager.shared.isModelAvailable
+        if !whisperReady {
+            demoPreferences.sttEngine = .appleSpeech
+        }
         dictationService.configure(preferences: demoPreferences)
 
         localMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in

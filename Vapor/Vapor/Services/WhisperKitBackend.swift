@@ -153,10 +153,10 @@ final class WhisperKitBackend: STTBackend {
         let samples = convertToWhisperFormat(buffer)
         audioBuffer.append(contentsOf: samples)
 
-        // Trim old audio to stay within maxBufferDuration.
+        // Trim old audio to stay within maxBufferDuration using replaceSubrange (O(n) copy avoided).
         let maxSamples = Int(Self.targetSampleRate * maxBufferDuration)
         if audioBuffer.count > maxSamples {
-            audioBuffer.removeFirst(audioBuffer.count - maxSamples)
+            audioBuffer.replaceSubrange(0..<(audioBuffer.count - maxSamples), with: [])
         }
     }
 

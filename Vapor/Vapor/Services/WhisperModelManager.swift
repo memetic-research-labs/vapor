@@ -18,9 +18,17 @@ enum WhisperModelSize: String, CaseIterable, Identifiable, Codable {
         switch self {
         case .tiny:    return "Tiny"
         case .base:    return "Base"
-        case .small:   return "Small (Recommended)"
+        case .small:   return "Small"
         case .medium:  return "Medium"
         case .largeV3: return "Large v3"
+        }
+    }
+
+    /// Short annotation shown alongside the model name (e.g. in picker descriptions).
+    var annotation: String? {
+        switch self {
+        case .small: return "Recommended"
+        default: return nil
         }
     }
 
@@ -96,7 +104,7 @@ final class WhisperModelManager {
 
     private init() {
         let savedRaw = UserDefaults.standard.string(forKey: Keys.whisperModelSize) ?? ""
-        let size = WhisperModelSize(rawValue: savedRaw) ?? .tiny
+        let size = WhisperModelSize(rawValue: savedRaw) ?? .small
         selectedSize = size
         isModelAvailable = modelDownloadedFlag(for: size)
     }
