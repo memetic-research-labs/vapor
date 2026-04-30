@@ -205,7 +205,7 @@ final class WhisperModelManager {
         // Animate progress while the download is in flight.
         let progressTask = Task { @MainActor in
             while !Task.isCancelled {
-                try await Task.sleep(for: .milliseconds(400))
+                try await Task.sleep(for: .milliseconds(600))
                 let current = self.downloadProgress
                 if current < 0.9 {
                     self.downloadProgress = min(current + 0.015, 0.9)

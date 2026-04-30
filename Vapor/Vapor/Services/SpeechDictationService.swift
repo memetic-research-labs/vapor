@@ -158,7 +158,10 @@ final class SpeechDictationService {
                     let ptr = channelData[0]
                     let frameLength = Int(buffer.frameLength)
                     var sum: Float = 0
-                    for i in 0..<frameLength { let s = ptr[i]; sum += s * s }
+                    for i in 0..<frameLength {
+                        let s = ptr[i]
+                        sum += s * s
+                    }
                     let rms = sqrtf(sum / Float(frameLength))
                     let minDb: Float = -60.0
                     let db = 20.0 * log10f(max(rms, 1e-5))

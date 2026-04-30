@@ -83,6 +83,8 @@ final class WhisperKitBackend: STTBackend {
     // MARK: - Audio conversion
 
     private var audioConverter: AVAudioConverter?
+
+    // WhisperKit requires 16 kHz mono float32 audio input.
     private static let targetSampleRate: Double = 16_000
     private static let targetFormat = AVAudioFormat(
         commonFormat: .pcmFormatFloat32,
@@ -153,10 +155,10 @@ final class WhisperKitBackend: STTBackend {
         let samples = convertToWhisperFormat(buffer)
         audioBuffer.append(contentsOf: samples)
 
-        // Trim old audio to stay within maxBufferDuration using replaceSubrange (O(n) copy avoided).
+        // Trim old audio to stay within maxBufferDuration.
         let maxSamples = Int(Self.targetSampleRate * maxBufferDuration)
         if audioBuffer.count > maxSamples {
-            audioBuffer.replaceSubrange(0..<(audioBuffer.count - maxSamples), with: [])
+            audioBuffer = Array(audioBuffer.suffix(maxSamples))
         }
     }
 
