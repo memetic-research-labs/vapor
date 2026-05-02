@@ -1,0 +1,7 @@
+app: <app-id>
+bundle_id: lol.mrl.app.Vapor
+channel: beta
+xcode_project: Vapor/Vapor.xcodeproj
+scheme: Vapor
+archive_path: build/Vapor.xcarchive
+architecture: arm64

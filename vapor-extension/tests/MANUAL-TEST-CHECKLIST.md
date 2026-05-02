@@ -13,9 +13,8 @@ Run after reloading the extension in `chrome://extensions` (Developer mode).
 
 ## 1. Popup & Sidebar Basics
 
-- [ ] Click toolbar icon → popup opens with status dot, capture buttons, green "Screenshots" button
-- [ ] Click "Screenshots" button → side panel opens
-- [ ] `Cmd+Shift+P` → side panel opens
+- [ ] Click toolbar icon → sidebar opens with status dot, settings gear, screenshot grid
+- [ ] `Cmd+Shift+P` → sidebar opens
 - [ ] Side panel empty state shows "Attach screenshots in Vapor, then drag them here"
 - [ ] Connection dot is green (connected) or red (disconnected)
 - [ ] Click "Clear" with no images → no error, empty state stays
@@ -35,40 +34,23 @@ Run after reloading the extension in `chrome://extensions` (Developer mode).
 
 ---
 
-## 3. Image Injection (new — automated flow)
+## 3. Screenshot Sidebar (screenshot attachment flow)
 
-For each target platform below:
+Screenshots are synced independently of prompt flow. They appear in the sidebar for drag-and-drop.
 
-1. Open the AI chat tab
-2. Attach a screenshot in Vapor (Screenshot Shelf → "Attach for Injection")
-3. Send to browser targeting that tab
-4. Observe side panel + DevTools console
-
-### ChatGPT (`chatgpt.com`)
-
-- [ ] Side panel auto-opens on first image injection
-- [ ] Thumbnail appears in sidebar with size label (e.g., "42K")
-- [ ] Prompt text section shows the injected text
-- [ ] DevTools console shows: `SET_PROMPT received`, `Target resolved`, `Found drop target`, `File input set`, `Text injected successfully`
-- [ ] ChatGPT input shows image attachment (check for thumbnail preview in input area)
-
-### Claude (`claude.ai`)
-
-- [ ] Side panel shows thumbnail
-- [ ] DevTools console shows drag-drop + file input logs
-- [ ] Claude input shows image attachment
-
-### Gemini (`gemini.google.com`)
-
-- [ ] Side panel shows thumbnail
-- [ ] DevTools console shows drag-drop + file input logs
-- [ ] Gemini shows image upload indicator
+- [ ] Import a screenshot in Vapor (Screenshot Shelf)
+- [ ] Side panel shows thumbnail with hash label (e.g., `015899c2`) and size label
+- [ ] `vapor_img_<hash>` key exists in `chrome.storage.local`
+- [ ] `vaporScreenshotOrder` array in storage matches sidebar order
+- [ ] Dismiss screenshot in Vapor → thumbnail removed from sidebar, storage key deleted
+- [ ] Import 5+ screenshots → sidebar shows all, newest first
+- [ ] Import 65+ screenshots → oldest pruned, max 64 retained
+- [ ] Close sidebar, reopen → screenshots persist from storage
+- [ ] Click "Clear" → all `vapor_img_*` keys removed, empty state restored
 
 ---
 
-## 4. Sidebar Drag-and-Drop (manual fallback — the reliable path)
-
-This is the primary user-facing way to attach images when automated injection fails.
+## 4. Sidebar Drag-and-Drop (primary image attachment path)
 
 - [ ] Side panel has images loaded (from previous injection or re-send)
 - [ ] Drag a thumbnail from sidebar onto ChatGPT's input area
@@ -107,10 +89,10 @@ This is the primary user-facing way to attach images when automated injection fa
 
 ## 7. Multi-Image Scenarios
 
-- [ ] Attach 2+ screenshots, send to browser
-- [ ] Side panel shows all thumbnails
-- [ ] DevTools logs show sequential injection with delays
-- [ ] Each image processed with correct filename (`screenshot_1.webp`, `screenshot_2.webp`)
+- [ ] Import 2+ screenshots in Vapor
+- [ ] Sidebar shows all thumbnails, newest first
+- [ ] Each thumbnail individually draggable
+- [ ] Each has correct hash label and size label
 
 ---
 

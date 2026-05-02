@@ -111,7 +111,6 @@ final class ImageAssetService {
             while true {
                 let item: (source: URL, destination: URL)? = await MainActor.run { [weak self] in
                     guard let self, !self.archiveQueue.isEmpty else { return nil }
-                    self.isArchiving = false
                     return self.archiveQueue.removeFirst()
                 }
                 guard let item else { break }
@@ -130,6 +129,9 @@ final class ImageAssetService {
                 }
 
                 try? await Task.sleep(for: .milliseconds(100))
+            }
+            await MainActor.run { [weak self] in
+                self?.isArchiving = false
             }
         }
     }

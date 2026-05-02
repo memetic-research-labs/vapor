@@ -297,6 +297,11 @@ chrome.storage.local.get(['vaporSettingsExpanded', 'vaporVerboseLogging'], (item
 });
 
 async function loadImagesFromStorage() {
+  for (const img of images) {
+    URL.revokeObjectURL(img.dataUrl);
+  }
+  images.length = 0;
+
   const data = await chrome.storage.local.get(['vaporScreenshotOrder']);
   const order = data.vaporScreenshotOrder || [];
 
@@ -312,20 +317,13 @@ async function loadImagesFromStorage() {
     const blob = new Blob([bytes], { type: entry.mimeType });
     const url = URL.createObjectURL(blob);
 
-    const existing = images.findIndex(img => img.shaPrefix === shaPrefix);
-    const item = {
+    images.push({
       mimeType: entry.mimeType,
       size: blob.size,
+      blob: blob,
       dataUrl: url,
       shaPrefix: shaPrefix
-    };
-
-    if (existing >= 0) {
-      URL.revokeObjectURL(images[existing].dataUrl);
-      images[existing] = item;
-    } else {
-      images.push(item);
-    }
+    });
   }
 
   render();
@@ -372,7 +370,7 @@ function render() {
 
       const filename = img.shaPrefix ? `screenshot_${img.shaPrefix}.webp` : `screenshot_${idx + 1}.webp`;
       const file = new File(
-        [img.dataUrl],
+        [img.blob],
         filename,
         { type: img.mimeType }
       );
@@ -418,6 +416,12 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       ? `Text injected on ${message.platform || 'unknown'}${message.autoSubmitted ? ' (auto-submitted)' : ''}`
       : `Injection failed on ${message.platform || 'unknown'}: ${message.error || 'unknown'}`;
     log(level, msg);
+    return true;
+  }
+
+  if (message.type === 'INJECTION_LOG') {
+    const level = message.level || 'ok';
+    log(level, message.message || '');
     return true;
   }
 

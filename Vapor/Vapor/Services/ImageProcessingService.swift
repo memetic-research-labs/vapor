@@ -105,7 +105,6 @@ final class ImageProcessingService {
             }
 
             let base64 = webpData.base64EncodedString()
-            let timestamp = DateFormatter.localizedString(from: asset.createdAt, dateStyle: .medium, timeStyle: .medium)
             let markdownReference = "![screenshot_\(shaPrefix)](\(outputURL.path))"
 
             processingLogger.info("Processed screenshot \(shaPrefix, privacy: .public): \(rawData.count) bytes → \(webpData.count) bytes WebP (\(width)x\(height))")

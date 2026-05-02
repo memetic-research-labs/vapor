@@ -15,7 +15,6 @@
 		50A10B042F9C0002008E324C /* NIOPosix in Frameworks */ = {isa = PBXBuildFile; productRef = 50A10B032F9C0002008E324C /* NIOPosix */; };
 		50A6E72A2FA502EC006F51F3 /* WebP in Frameworks */ = {isa = PBXBuildFile; productRef = 50A6E7292FA502EC006F51F3 /* WebP */; };
 		50B200012FAA1000008E324C /* SQLiteVec in Frameworks */ = {isa = PBXBuildFile; productRef = 50B200032FAA1000008E324C /* SQLiteVec */; };
-		5E82E66E696C8E40DD1B8C15 /* WebP in Frameworks */ = {isa = PBXBuildFile; productRef = 5E82E66F696C8E40DD1B8C15 /* WebP */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -68,7 +67,6 @@
 				50A10B022F9C0001008E324C /* NIOHTTP1 in Frameworks */,
 				50A10B042F9C0002008E324C /* NIOPosix in Frameworks */,
 				50B200012FAA1000008E324C /* SQLiteVec in Frameworks */,
-				5E82E66E696C8E40DD1B8C15 /* WebP in Frameworks */,
 				50849C8E2F874B8B008E324C /* SwiftLlama in Frameworks */,
 				50849C902F874B8B008E324D /* KeyboardShortcuts in Frameworks */,
 				50A6E72A2FA502EC006F51F3 /* WebP in Frameworks */,
@@ -230,7 +228,6 @@
 				50849C962F874B8B008E3250 /* XCRemoteSwiftPackageReference "Tiktoken" */,
 				50B200022FAA1000008E324C /* XCRemoteSwiftPackageReference "SQLiteVec" */,
 				50A10AEF2F9C0000008E324C /* XCRemoteSwiftPackageReference "swift-nio" */,
-				5E82E66C696C8E40DD1B8C15 /* XCRemoteSwiftPackageReference "Swift-WebP" */,
 				50A6E7282FA502EC006F51F3 /* XCRemoteSwiftPackageReference "Swift-WebP" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -436,7 +433,7 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = YRQLJYMX5S;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -475,7 +472,7 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = YRQLJYMX5S;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -675,10 +672,6 @@
 				minimumVersion = 0.0.9;
 			};
 		};
-		5E82E66C696C8E40DD1B8C15 /* XCRemoteSwiftPackageReference "Swift-WebP" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/ainame/Swift-WebP.git";
-		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -721,11 +714,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 50B200022FAA1000008E324C /* XCRemoteSwiftPackageReference "SQLiteVec" */;
 			productName = SQLiteVec;
-		};
-		5E82E66F696C8E40DD1B8C15 /* WebP */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 5E82E66C696C8E40DD1B8C15 /* XCRemoteSwiftPackageReference "Swift-WebP" */;
-			productName = WebP;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

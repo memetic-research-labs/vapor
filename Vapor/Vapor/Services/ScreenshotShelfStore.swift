@@ -95,9 +95,13 @@ final class ScreenshotShelfStore {
 
     func insertScreenshot(_ asset: ImageAsset) {
         let shaPrefix = String(asset.contentHash.prefix(8))
-        let path = webpURL(for: asset).path
-        let markdown = "![screenshot_\(shaPrefix)](\(path))"
-        NotificationCenter.default.post(name: .vaporInsertContextItem, object: markdown)
+        Task { [weak self] in
+            guard let self else { return }
+            let result = await self.imageProcessingService.processForInjection(asset: asset, maxDimension: self.maxImageDimension)
+            let path = result?.webpPath ?? self.webpURL(for: asset).path
+            let markdown = "![screenshot_\(shaPrefix)](\(path))"
+            NotificationCenter.default.post(name: .vaporInsertContextItem, object: markdown)
+        }
         processForSidebar(asset: asset)
     }
 
