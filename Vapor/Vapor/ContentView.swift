@@ -207,6 +207,16 @@ struct ContentView: View {
                         viewModel.content += (viewModel.content.isEmpty ? "" : "\n\n") + text
                     }
                 }
+                .onReceive(NotificationCenter.default.publisher(for: .vaporScreenshotReadyForSidebar)) { notification in
+                    if let item = notification.object as? SidebarScreenshotItem {
+                        browserBridge.sendSidebarScreenshot(item)
+                    }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .vaporScreenshotDismissedFromSidebar)) { notification in
+                    if let item = notification.object as? SidebarScreenshotItem {
+                        browserBridge.removeSidebarScreenshot(item.shaPrefix)
+                    }
+                }
                 .onReceive(NotificationCenter.default.publisher(for: .vaporFocusEditor)) { _ in
                     workspace = .compose
                     focusStore.focus(.editor)

@@ -1,5 +1,29 @@
 import Foundation
 
+enum ScreenshotTargetMode: String, Codable, CaseIterable, Sendable {
+    case web
+    case terminal
+
+    var displayName: String {
+        switch self {
+        case .web: "Web AI (ChatGPT, Claude, etc.)"
+        case .terminal: "Terminal (Cline, Aider, etc.)"
+        }
+    }
+}
+
+enum MaxImageDimension: Int, Codable, CaseIterable, Sendable {
+    case d768 = 768
+    case d1024 = 1024
+
+    var displayName: String {
+        switch self {
+        case .d768: "768px (balanced)"
+        case .d1024: "1024px (high detail)"
+        }
+    }
+}
+
 @MainActor
 @Observable
 final class UserPreferences {
@@ -40,6 +64,12 @@ final class UserPreferences {
             UserDefaults.standard.set(embeddedServerPort, forKey: Keys.embeddedServerPort)
         }
     }
+    var screenshotTargetMode: ScreenshotTargetMode {
+        didSet { UserDefaults.standard.set(screenshotTargetMode.rawValue, forKey: Keys.screenshotTargetMode) }
+    }
+    var maxImageDimension: MaxImageDimension {
+        didSet { UserDefaults.standard.set(maxImageDimension.rawValue, forKey: Keys.maxImageDimension) }
+    }
 
     struct Keys {
         static let windowExpanded = "windowExpanded"
@@ -54,6 +84,8 @@ final class UserPreferences {
         static let autoSendToBrowser = "autoSendToBrowser"
         static let autoSubmitToAI = "autoSubmitToAI"
         static let embeddedServerPort = "embeddedServerPort"
+        static let screenshotTargetMode = "screenshotTargetMode"
+        static let maxImageDimension = "maxImageDimension"
     }
 
     init() {
@@ -68,6 +100,10 @@ final class UserPreferences {
         self.autoSendToBrowser = UserDefaults.standard.object(forKey: Keys.autoSendToBrowser) as? Bool ?? false
         self.autoSubmitToAI = UserDefaults.standard.object(forKey: Keys.autoSubmitToAI) as? Bool ?? false
         self.embeddedServerPort = UserDefaults.standard.object(forKey: Keys.embeddedServerPort) as? Int ?? 8766
+        self.screenshotTargetMode = UserDefaults.standard.string(forKey: Keys.screenshotTargetMode)
+            .flatMap { ScreenshotTargetMode(rawValue: $0) } ?? .web
+        self.maxImageDimension = UserDefaults.standard.object(forKey: Keys.maxImageDimension)
+            .flatMap { MaxImageDimension(rawValue: ($0 as? Int) ?? 0) } ?? .d768
     }
 
     func saveWindowPosition(_ point: CGPoint) {

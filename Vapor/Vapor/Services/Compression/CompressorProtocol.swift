@@ -87,6 +87,7 @@ extension Compressor {
         5. Preserve all negations and exclusions explicitly — never bury a negation inside a compound where it could be lost. Keep not, never, unless, no visible.
         6. Use minimal whitespace. Break only where running tokens together would create genuine ambiguity. Dense blocks are preferred.
         7. Compress behavioral/intent content aggressively. Preserve structured data, conditionals, and exact instructions verbatim.
+        8. IMPORTANT: Preserve all markdown image references exactly as written. Any line matching the pattern ![...](...) must appear in your output unchanged, with the exact same alt text and file path. Do not modify, summarize, or remove these lines. Place them in the same logical position relative to the surrounding text.
 
         Target: 40-60% token reduction. The compressed form is model-readable, not human-readable.
 
@@ -118,6 +119,7 @@ extension Compressor {
         3. Use short clear phrases instead of full sentences.
         4. Keep negations explicit (not, never, unless, no).
         5. Use spaces between compressed words. Do not fuse words together.
+        6. Preserve all markdown image references exactly as written — any ![...](...) line must appear unchanged with the same path.
 
         Return ONLY the compressed text, no quotes, no explanation.
         """

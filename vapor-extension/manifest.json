@@ -1,13 +1,14 @@
 {
   "manifest_version": 3,
   "name": "Vapor – Prompt Injector",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Injects compressed prompts from Vapor into AI chat interfaces.",
   "permissions": [
     "tabs",
     "scripting",
     "storage",
-    "alarms"
+    "alarms",
+    "sidePanel"
   ],
   "host_permissions": [
     "http://127.0.0.1:8766/*",
@@ -23,8 +24,10 @@
     }
   ],
   "action": {
-    "default_title": "Vapor",
-    "default_popup": "popup.html"
+    "default_title": "Vapor — Open Sidebar"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
   },
   "background": {
     "service_worker": "background.js"
@@ -36,6 +39,13 @@
         "mac": "Command+Shift+C"
       },
       "description": "Capture current page"
+    },
+    "open-side-panel": {
+      "suggested_key": {
+        "default": "Alt+Shift+P",
+        "mac": "Command+Shift+P"
+      },
+      "description": "Open Vapor screenshot sidebar"
     }
   },
   "icons": {

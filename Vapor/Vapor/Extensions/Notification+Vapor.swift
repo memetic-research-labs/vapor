@@ -12,6 +12,8 @@ extension Notification.Name {
     /// Posted when the local LLM is downloaded (e.g. during onboarding) so the main window can reload.
     static let vaporLLMDownloadCompleted = Notification.Name("vaporLLMDownloadCompleted")
     static let vaporInsertContextItem = Notification.Name("vaporInsertContextItem")
+    static let vaporScreenshotReadyForSidebar = Notification.Name("vaporScreenshotReadyForSidebar")
+    static let vaporScreenshotDismissedFromSidebar = Notification.Name("vaporScreenshotDismissedFromSidebar")
     static let vaporOpenContextItem = Notification.Name("vaporOpenContextItem")
     static let vaporFocusEditor = Notification.Name("vaporFocusEditor")
     static let vaporFocusPromptHistory = Notification.Name("vaporFocusPromptHistory")

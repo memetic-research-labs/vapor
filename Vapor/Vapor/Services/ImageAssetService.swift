@@ -24,6 +24,8 @@ enum ImageAssetServiceError: LocalizedError {
 final class ImageAssetService {
     private let blobStore = BlobStore.shared
     private var modelContext: ModelContext?
+    private var archiveQueue: [(source: URL, destination: URL)] = []
+    private var isArchiving = false
 
     @MainActor
     func setModelContext(_ context: ModelContext) {
@@ -41,13 +43,17 @@ final class ImageAssetService {
         let prepared = try await Self.prepareImport(from: fileURL)
         let contentHash = prepared.contentHash
         let createdAt = prepared.createdAt
-        let originalPath = prepared.originalPath
-        let originalFilename = prepared.originalFilename
+        let shaPrefix = String(contentHash.prefix(8))
+        let canonicalFilename = "screenshot_\(shaPrefix)"
+
+        let archivedPath = Self.archiveDestination(canonicalName: canonicalFilename)
+        enqueueArchive(from: fileURL, to: archivedPath)
+        let effectiveOriginalPath = archivedPath.path
 
         let descriptor = FetchDescriptor<ImageAsset>(predicate: #Predicate { $0.contentHash == contentHash })
         if let existing = try modelContext.fetch(descriptor).first {
-            existing.originalPath = originalPath
-            existing.originalFilename = originalFilename
+            existing.originalPath = effectiveOriginalPath
+            existing.originalFilename = "\(canonicalFilename).png"
             existing.lastObservedAt = Date()
             if shouldReplaceSourceKind(existing.sourceKind, with: sourceKind) {
                 existing.sourceKind = sourceKind
@@ -66,8 +72,8 @@ final class ImageAssetService {
             pixelWidth: prepared.dimensions.width,
             pixelHeight: prepared.dimensions.height,
             byteSize: prepared.byteSize,
-            originalFilename: originalFilename,
-            originalPath: originalPath,
+            originalFilename: "\(canonicalFilename).png",
+            originalPath: effectiveOriginalPath,
             blobPath: prepared.blobRelativePath,
             thumbnailPath: prepared.thumbnailRelativePath,
             createdAt: createdAt,
@@ -79,8 +85,53 @@ final class ImageAssetService {
 
         modelContext.insert(asset)
         try modelContext.save()
-        imageAssetLogger.info("Imported image asset \(contentHash, privacy: .public) from \(originalFilename, privacy: .public)")
+        imageAssetLogger.info("Imported image asset \(shaPrefix, privacy: .public)")
         return asset
+    }
+
+    nonisolated private static func archiveDestination(canonicalName: String) -> URL {
+        let archiveDir = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Desktop/vapor-screenshots-webp/original_png", isDirectory: true)
+        try? FileManager.default.createDirectory(at: archiveDir, withIntermediateDirectories: true)
+        return archiveDir.appendingPathComponent("\(canonicalName).png")
+    }
+
+    @MainActor
+    private func enqueueArchive(from source: URL, to destination: URL) {
+        archiveQueue.append((source: source, destination: destination))
+        processArchiveQueue()
+    }
+
+    @MainActor
+    private func processArchiveQueue() {
+        guard !isArchiving else { return }
+        isArchiving = true
+
+        Task.detached(priority: .utility) { [weak self] in
+            while true {
+                let item: (source: URL, destination: URL)? = await MainActor.run { [weak self] in
+                    guard let self, !self.archiveQueue.isEmpty else { return nil }
+                    self.isArchiving = false
+                    return self.archiveQueue.removeFirst()
+                }
+                guard let item else { break }
+
+                guard item.source.path != item.destination.path else { continue }
+
+                do {
+                    let fm = FileManager.default
+                    if fm.fileExists(atPath: item.destination.path) {
+                        try fm.removeItem(at: item.destination)
+                    }
+                    try fm.moveItem(at: item.source, to: item.destination)
+                    imageAssetLogger.info("Archived original PNG: \(item.destination.lastPathComponent, privacy: .public)")
+                } catch {
+                    imageAssetLogger.warning("Failed to archive original PNG \(item.source.lastPathComponent, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                }
+
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+        }
     }
 
     @MainActor
@@ -139,19 +190,6 @@ final class ImageAssetService {
             return nil
         }
         return blobStore.fileURL(relativePath: thumbnailPath)
-    }
-
-    func promptReference(for asset: ImageAsset, annotated: Bool) -> String {
-        let referencePath = preferredReferencePath(for: asset)
-        guard annotated else { return referencePath }
-        return "[Screenshot]\npath: \(referencePath)"
-    }
-
-    func preferredReferencePath(for asset: ImageAsset) -> String {
-        if let originalPath = asset.originalPath, FileManager.default.fileExists(atPath: originalPath) {
-            return originalPath
-        }
-        return fileURL(for: asset).path
     }
 
     nonisolated private static func prepareImport(from fileURL: URL) async throws -> PreparedImageImport {
