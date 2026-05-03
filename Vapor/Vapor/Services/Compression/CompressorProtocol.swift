@@ -12,6 +12,72 @@ struct CompressedResult {
     let compressorUsed: CompressorType
 }
 
+nonisolated enum CompressionValidation {
+    static func failureReason(
+        original: String,
+        compressed: String,
+        originalTokens: Int,
+        compressedTokens: Int
+    ) -> String? {
+        if originalTokens >= 16 {
+            let acceptableMax = max(originalTokens - 8, Int(Double(originalTokens) * 0.85))
+            if compressedTokens > acceptableMax {
+                return "output was not meaningfully shorter than input"
+            }
+        }
+
+        if compressed.contains("\nInput:") || compressed.contains("\nOutput:") {
+            return "output contained hallucinated example labels"
+        }
+
+        let originalMarkdownImages = artifacts(in: original, patterns: [markdownImagePattern])
+        let compressedMarkdownImages = artifacts(in: compressed, patterns: [markdownImagePattern])
+        if !originalMarkdownImages.isSubset(of: compressedMarkdownImages) {
+            return "output changed or removed a markdown image reference"
+        }
+        if !compressedMarkdownImages.isSubset(of: originalMarkdownImages) {
+            return "output invented a markdown image reference"
+        }
+
+        let originalArtifacts = artifacts(in: original, patterns: protectedArtifactPatterns)
+        let compressedArtifacts = artifacts(in: compressed, patterns: protectedArtifactPatterns)
+        let invented = compressedArtifacts.subtracting(originalArtifacts)
+        if let firstInvented = invented.sorted().first {
+            return "output invented protected content: \(firstInvented)"
+        }
+
+        return nil
+    }
+
+    private static let markdownImagePattern = #"!\[[^\]]*\]\([^)]+\)"#
+
+    private static let protectedArtifactPatterns = [
+        markdownImagePattern,
+        #"https?://[^\s<>)\"]+"#,
+        #"(?:~|/Users|/Volumes|/Applications|/tmp|/var|/private)[^\s<>)\"]+"#,
+        #"\bscreenshot_[A-Za-z0-9_-]+\b"#,
+        #"\b[A-Za-z0-9_-]+\.(?:swift|js|ts|tsx|json|md|webp|png|jpg|jpeg|pdf|yml|yaml|html|css)\b"#,
+        #"\$[0-9][0-9,]*(?:\.[0-9]+)?"#,
+        #"\b[0-9][0-9,]*(?:\.[0-9]+)?(?:px|ms|KB|MB|GB|tokens?|minutes?|seconds?|hrs?|hours?|%)?\b"#,
+        #"\b[a-fA-F0-9]{7,64}\b"#
+    ]
+
+    private static func artifacts(in text: String, patterns: [String]) -> Set<String> {
+        var result = Set<String>()
+        for pattern in patterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+            let range = NSRange(text.startIndex..<text.endIndex, in: text)
+            for match in regex.matches(in: text, range: range) {
+                guard let matchRange = Range(match.range, in: text) else { continue }
+                result.insert(String(text[matchRange]).trimmingCharacters(in: trailingPunctuation))
+            }
+        }
+        return result
+    }
+
+    private static let trailingPunctuation = CharacterSet(charactersIn: ".,;:")
+}
+
 enum CompressionError: LocalizedError {
     case unavailable
     case apiError(String)

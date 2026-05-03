@@ -113,6 +113,14 @@
       gap: 10px;
     }
 
+    .brand-mark {
+      width: 22px;
+      height: 22px;
+      border-radius: 6px;
+      flex: none;
+      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+    }
+
     .header-title {
       font-size: 15px;
       font-weight: 700;
@@ -544,6 +552,7 @@
 
       .capture-btn.page .capture-btn-icon { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
       .capture-btn.selection .capture-btn-icon { background: rgba(168, 85, 247, 0.1); color: #7c3aed; }
+      .brand-mark { box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.08); }
 
       .message.success { background: #ecfdf5; border-color: #bbf7d0; }
       .message.error { background: #fef2f2; border-color: #fecaca; }
@@ -557,6 +566,7 @@
     <div class="top-anchor">
       <div class="header">
         <div class="header-left">
+          <img class="brand-mark" src="icons/icon48.png" alt="" />
           <span class="header-title">Vapor</span>
           <span class="status-line">
             <span class="status-dot" id="statusDot"></span>

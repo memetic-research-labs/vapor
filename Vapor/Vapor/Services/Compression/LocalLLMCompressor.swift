@@ -2,6 +2,10 @@ import Foundation
 import SwiftLlama
 import OSLog
 
+nonisolated private struct LocalCompressionResponse: Codable {
+    let compressed: String
+}
+
 actor LocalLLMCompressor: Compressor {
     let name = "Local LLM (On-Device)"
 
@@ -37,21 +41,20 @@ actor LocalLLMCompressor: Compressor {
         let systemPrompt = localCompressorPrompt
 
         let originalTokens = await countTokens(text)
-        let maxOutputTokens = Self.computeMaxOutputTokens(inputTokens: originalTokens)
-
-        let raw = try await generate(
-            systemPrompt: systemPrompt,
-            userText: text,
-            maxOutputTokens: maxOutputTokens
-        )
+        let raw = try await generateStructured(systemPrompt: systemPrompt, userText: text)
 
         let cleaned = cleanCompressedOutput(raw)
         let compressedTokens = await countTokens(cleaned)
         let ratio = originalTokens > 0 ? Double(compressedTokens) / Double(originalTokens) : 0.0
 
-        guard Self.isOutputValid(cleaned: cleaned, compressedTokens: compressedTokens, originalTokens: originalTokens) else {
-            logger.warning("Local LLM compression validation failed: output \(compressedTokens) tokens vs input \(originalTokens) tokens")
-            throw CompressionError.apiError("Compressed output failed validation — output was longer than input or contained hallucinated examples. Try again.")
+        if let failureReason = CompressionValidation.failureReason(
+            original: text,
+            compressed: cleaned,
+            originalTokens: originalTokens,
+            compressedTokens: compressedTokens
+        ) {
+            logger.warning("Local LLM compression validation failed: \(failureReason, privacy: .public)")
+            throw CompressionError.apiError("Compressed output failed validation — \(failureReason). Try again with another model or backend.")
         }
 
         return CompressedResult(
@@ -97,19 +100,36 @@ actor LocalLLMCompressor: Compressor {
         return output
     }
 
+    private func generateStructured(systemPrompt: String, userText: String) async throws -> String {
+        guard let service = llamaService else {
+            throw CompressionError.unavailable
+        }
+
+        let messages = [
+            LlamaChatMessage(role: .system, content: systemPrompt),
+            LlamaChatMessage(role: .user, content: userText)
+        ]
+
+        let response = try await service.respond(to: messages, generating: LocalCompressionResponse.self)
+        return response.compressed
+    }
+
     nonisolated private var localCompressorPrompt: String {
         """
-        Compress the following text to preserve its meaning in fewer words. Follow these rules:
+        Compress the following text to preserve its meaning in fewer words. Return valid JSON only: {"compressed":"..."}.
+
+        Follow these rules:
         1. Remove unnecessary words (articles, filler phrases, repetition).
         2. Keep all numbers, proper nouns, URLs, file paths, identifiers, hashes, code symbols, filenames, and markdown references exactly as-is.
         3. Use short clear phrases instead of full sentences.
         4. Keep negations explicit (not, never, unless, no).
         5. Use spaces between compressed words. Do not fuse words together.
         6. Preserve all markdown image references exactly as written — any ![...](...) line must appear unchanged with the same path.
+        7. Do not invent screenshots, markdown image lines, file paths, hashes, URLs, numbers, or filenames that are not in the input.
 
         Style example: "write a python script that uses pandas in order to allow one to easily query a standard real estate tax data set" becomes "write python script use pandas query real estate tax data set".
 
-        Do NOT generate additional examples. Do NOT include "Input:" or "Output:" labels in your response. Return ONLY the compressed text, nothing else.
+        Do NOT generate additional examples. Do NOT include "Input:" or "Output:" labels in your response.
         """
     }
 
@@ -117,11 +137,4 @@ actor LocalLLMCompressor: Compressor {
         min(768, max(96, Int(Double(inputTokens) * 0.65)))
     }
 
-    nonisolated static func isOutputValid(cleaned: String, compressedTokens: Int, originalTokens: Int) -> Bool {
-        if originalTokens < 16 { return true }
-        let acceptableMax = max(originalTokens - 8, Int(Double(originalTokens) * 0.85))
-        if compressedTokens > acceptableMax { return false }
-        if cleaned.contains("\nInput:") || cleaned.contains("\nOutput:") { return false }
-        return true
-    }
 }

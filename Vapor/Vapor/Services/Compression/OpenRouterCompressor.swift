@@ -44,8 +44,13 @@ actor OpenRouterCompressor: Compressor {
         let compressedTokens = await countTokens(cleaned)
         let ratio = originalTokens > 0 ? Double(compressedTokens) / Double(originalTokens) : 0.0
 
-        guard Self.isOutputValid(cleaned: cleaned, compressedTokens: compressedTokens, originalTokens: originalTokens) else {
-            throw CompressionError.apiError("Compressed output failed validation — output was longer than input or contained hallucinated examples. Try again.")
+        if let failureReason = CompressionValidation.failureReason(
+            original: text,
+            compressed: cleaned,
+            originalTokens: originalTokens,
+            compressedTokens: compressedTokens
+        ) {
+            throw CompressionError.apiError("Compressed output failed validation — \(failureReason). Try again with another model or backend.")
         }
 
         return CompressedResult(
@@ -59,7 +64,7 @@ actor OpenRouterCompressor: Compressor {
 
     // MARK: - Request building
 
-    static func buildBaseRequest(apiKey: String) -> URLRequest {
+    nonisolated static func buildBaseRequest(apiKey: String) -> URLRequest {
         var request = URLRequest(url: URL(string: "https://openrouter.ai/api/v1/chat/completions")!)
         request.httpMethod = "POST"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
@@ -88,16 +93,9 @@ actor OpenRouterCompressor: Compressor {
         min(768, max(96, Int(Double(inputTokens) * 0.65)))
     }
 
-    nonisolated static func isOutputValid(cleaned: String, compressedTokens: Int, originalTokens: Int) -> Bool {
-        if originalTokens < 16 { return true }
-        let acceptableMax = max(originalTokens - 8, Int(Double(originalTokens) * 0.85))
-        if compressedTokens > acceptableMax { return false }
-        if cleaned.contains("\nInput:") || cleaned.contains("\nOutput:") { return false }
-        return true
-    }
 }
 
-struct OpenRouterResponse: Codable {
+nonisolated struct OpenRouterResponse: Codable {
     let choices: [Choice]
 
     struct Choice: Codable {
