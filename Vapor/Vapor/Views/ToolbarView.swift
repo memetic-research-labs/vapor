@@ -38,8 +38,7 @@ struct ToolbarView: View {
                 } label: {
                     HStack(spacing: 4) {
                         if viewModel.isCompressing {
-                            ProgressView()
-                                .scaleEffect(0.7)
+                            VaporActivitySpinner(size: 14)
                                 .frame(width: 14, height: 14)
                         } else {
                             Image(systemName: "bolt.horizontal")

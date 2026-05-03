@@ -34,14 +34,30 @@ actor LocalLLMCompressor: Compressor {
     }
 
     func compress(_ text: String) async throws -> CompressedResult {
-        let compressed = try await generate(systemPrompt: compressionSystemPrompt, userText: text)
+        let systemPrompt = localCompressorPrompt
 
         let originalTokens = await countTokens(text)
-        let compressedTokens = await countTokens(compressed)
+        let maxOutputTokens = Self.computeMaxOutputTokens(inputTokens: originalTokens)
+        let cleaned = try await compressTextPreservingMarkdownImages(
+            text,
+            systemPrompt: systemPrompt,
+            maxOutputTokens: maxOutputTokens
+        )
+        let compressedTokens = await countTokens(cleaned)
         let ratio = originalTokens > 0 ? Double(compressedTokens) / Double(originalTokens) : 0.0
 
+        if let failureReason = CompressionValidation.failureReason(
+            original: text,
+            compressed: cleaned,
+            originalTokens: originalTokens,
+            compressedTokens: compressedTokens
+        ) {
+            logger.warning("Local LLM compression validation failed: \(failureReason, privacy: .public)")
+            throw CompressionError.apiError("Compressed output failed validation — \(failureReason). Try again with another model or backend.")
+        }
+
         return CompressedResult(
-            text: cleanCompressedOutput(compressed),
+            text: cleaned,
             originalTokens: originalTokens,
             compressedTokens: compressedTokens,
             ratio: ratio,
@@ -49,7 +65,7 @@ actor LocalLLMCompressor: Compressor {
         )
     }
 
-    func generate(systemPrompt: String, userText: String) async throws -> String {
+    func generate(systemPrompt: String, userText: String, maxOutputTokens: Int) async throws -> String {
         guard let service = llamaService else {
             throw CompressionError.unavailable
         }
@@ -64,19 +80,78 @@ actor LocalLLMCompressor: Compressor {
             seed: 42,
             topP: 0.9,
             repetitionPenaltyConfig: LlamaRepetitionPenaltyConfig(
-                lastN: 64,
-                repeatPenalty: 1.0,
-                freqPenalty: 0.0,
-                presentPenalty: 0.0
+                lastN: 128,
+                repeatPenalty: 1.2,
+                freqPenalty: 0.2,
+                presentPenalty: 0.1
             )
         )
 
         var output = ""
+        var tokenCount = 0
         let stream = try await service.streamCompletion(of: messages, samplingConfig: samplingConfig)
         for try await token in stream {
+            if tokenCount >= maxOutputTokens { break }
             output += token
+            tokenCount += 1
         }
 
         return output
     }
+
+    private func compressTextPreservingMarkdownImages(
+        _ text: String,
+        systemPrompt: String,
+        maxOutputTokens: Int
+    ) async throws -> String {
+        let parts = CompressionProtectedContent.splitMarkdownImageLines(text)
+        guard CompressionProtectedContent.containsMarkdownImage(parts) else {
+            return cleanCompressedOutput(try await generate(
+                systemPrompt: systemPrompt,
+                userText: text,
+                maxOutputTokens: maxOutputTokens
+            ))
+        }
+
+        var outputParts: [String] = []
+        for part in parts {
+            switch part {
+            case .text(let block):
+                let blockTokens = await countTokens(block)
+                let compressedBlock = cleanCompressedOutput(try await generate(
+                    systemPrompt: systemPrompt,
+                    userText: block,
+                    maxOutputTokens: Self.computeMaxOutputTokens(inputTokens: blockTokens)
+                ))
+                if !compressedBlock.isEmpty {
+                    outputParts.append(compressedBlock)
+                }
+            case .markdownImage(let line):
+                outputParts.append(line)
+            }
+        }
+        return outputParts.joined(separator: "\n\n")
+    }
+
+    nonisolated private var localCompressorPrompt: String {
+        """
+        Compress the following text to preserve its meaning in fewer words. Follow these rules:
+        1. Remove unnecessary words (articles, filler phrases, repetition).
+        2. Keep all numbers, proper nouns, URLs, file paths, identifiers, hashes, code symbols, filenames, and markdown references exactly as-is.
+        3. Use compact noun/verb phrases instead of full sentences.
+        4. Keep negations explicit (not, never, unless, no).
+        5. Use spaces between semantic chunks. Do not fuse unrelated words into unreadable compounds.
+        6. Preserve every markdown image reference exactly as written. If the input contains any line like ![...](...), copy that whole line verbatim into compressed, with the same alt text, path, and relative position.
+        7. Do not invent screenshots, markdown image lines, file paths, hashes, URLs, numbers, or filenames that are not in the input.
+
+        Style example: "write a python script that uses pandas in order to allow one to easily query a standard real estate tax data set" becomes "write python script use pandas query real estate tax data set".
+
+        Do NOT generate additional examples. Do NOT include "Input:" or "Output:" labels in your response. Return ONLY the compressed text, nothing else.
+        """
+    }
+
+    nonisolated static func computeMaxOutputTokens(inputTokens: Int) -> Int {
+        min(768, max(96, Int(Double(inputTokens) * 0.65)))
+    }
+
 }

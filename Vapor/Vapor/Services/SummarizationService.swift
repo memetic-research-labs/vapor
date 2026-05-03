@@ -331,7 +331,7 @@ final class SummarizationService {
         guard let compressor = cachedLocalLLMCompressor else { return nil }
 
         do {
-            let raw = try await compressor.generate(systemPrompt: prompt, userText: text)
+            let raw = try await compressor.generate(systemPrompt: prompt, userText: text, maxOutputTokens: 1024)
             return parseSummaryJSON(raw)
         } catch {
             logger.error("Local summary failed: \(error.localizedDescription)")

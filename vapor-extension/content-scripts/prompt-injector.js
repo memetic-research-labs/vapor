@@ -18,9 +18,21 @@
   }
   window.__VAPOR_INJECTOR_LOADED__ = true;
 
-  const DEBUG = false;
+  let DEBUG = false;
   let platformConfig = null;
   const platformConfigPromise = loadPlatformConfig();
+
+  chrome.storage.local.get(['vaporVerboseLogging'], (items) => {
+    DEBUG = !!items.vaporVerboseLogging;
+  });
+
+  function log(level, msg) {
+    const prefix = '[Vapor:injector]';
+    if (level === 'error') console.error(`${prefix} ${msg}`);
+    else if (level === 'warn') console.warn(`${prefix} ${msg}`);
+    else if (DEBUG) console.log(`${prefix} ${msg}`);
+    try { chrome.runtime.sendMessage({ type: 'INJECTION_LOG', level, message: msg }).catch(() => {}); } catch (_) {}
+  }
 
   async function loadPlatformConfig() {
     try {
@@ -364,18 +376,30 @@
       (async () => {
         try {
           await platformConfigPromise;
+          log('ok', `SET_PROMPT received: ${message.text?.length || 0} chars, ${message.images?.length || 0} images, autoSubmit=${message.autoSubmit}`);
+
           const target = await resolveTarget(window.location.hostname);
           if (!target) {
+            log('error', 'No prompt input found on page');
             sendResponse({ success: false, platform: 'unknown', error: 'No prompt input found' });
             return;
           }
+
+          log('ok', `Target resolved: ${target.element.tagName}#${target.element.id || ''} (${target.platform})`);
+
+          if (message.images && message.images.length > 0) {
+            log('ok', `${message.images.length} image(s) available in sidebar — right-click thumbnail to copy`);
+          }
+
           setValue(target.element, message.text);
+          log('ok', 'Text injected successfully');
 
           const mechanism = detectSubmitMechanism(target.element);
           let didSubmit = false;
 
           if (message.autoSubmit) {
             didSubmit = executeSubmit(mechanism, target.element);
+            log('ok', `Auto-submit: ${didSubmit ? 'sent' : 'failed'} (${mechanism.method})`);
           }
 
           sendResponse({
@@ -387,8 +411,26 @@
             submitConfidence: mechanism.confidence,
             autoSubmitted: didSubmit
           });
+
+          try {
+            chrome.runtime.sendMessage({
+              type: 'INJECTION_RESULT',
+              success: true,
+              platform: target.platform,
+              autoSubmitted: didSubmit
+            });
+          } catch (_) {}
         } catch (err) {
+          log('error', `SET_PROMPT failed: ${err.message}`);
           sendResponse({ success: false, error: err.message || String(err) });
+          try {
+            chrome.runtime.sendMessage({
+              type: 'INJECTION_RESULT',
+              success: false,
+              platform: 'unknown',
+              error: err.message || String(err)
+            });
+          } catch (_) {}
         }
       })();
       return true;

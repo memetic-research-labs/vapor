@@ -13,6 +13,7 @@
 		50A10B002F9C0000008E324C /* NIOCore in Frameworks */ = {isa = PBXBuildFile; productRef = 50A10AF02F9C0000008E324C /* NIOCore */; };
 		50A10B022F9C0001008E324C /* NIOHTTP1 in Frameworks */ = {isa = PBXBuildFile; productRef = 50A10B012F9C0001008E324C /* NIOHTTP1 */; };
 		50A10B042F9C0002008E324C /* NIOPosix in Frameworks */ = {isa = PBXBuildFile; productRef = 50A10B032F9C0002008E324C /* NIOPosix */; };
+		50A6E72A2FA502EC006F51F3 /* WebP in Frameworks */ = {isa = PBXBuildFile; productRef = 50A6E7292FA502EC006F51F3 /* WebP */; };
 		50B200012FAA1000008E324C /* SQLiteVec in Frameworks */ = {isa = PBXBuildFile; productRef = 50B200032FAA1000008E324C /* SQLiteVec */; };
 /* End PBXBuildFile section */
 
@@ -68,6 +69,7 @@
 				50B200012FAA1000008E324C /* SQLiteVec in Frameworks */,
 				50849C8E2F874B8B008E324C /* SwiftLlama in Frameworks */,
 				50849C902F874B8B008E324D /* KeyboardShortcuts in Frameworks */,
+				50A6E72A2FA502EC006F51F3 /* WebP in Frameworks */,
 				50849C942F874B8B008E324F /* Tiktoken in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -136,6 +138,7 @@
 				50849C912F874B8B008E324D /* KeyboardShortcuts */,
 				50B200032FAA1000008E324C /* SQLiteVec */,
 				50849C952F874B8B008E324F /* Tiktoken */,
+				50A6E7292FA502EC006F51F3 /* WebP */,
 			);
 			productName = Vapor;
 			productReference = 508498392F86F964008E324C /* Vapor.app */;
@@ -225,6 +228,7 @@
 				50849C962F874B8B008E3250 /* XCRemoteSwiftPackageReference "Tiktoken" */,
 				50B200022FAA1000008E324C /* XCRemoteSwiftPackageReference "SQLiteVec" */,
 				50A10AEF2F9C0000008E324C /* XCRemoteSwiftPackageReference "swift-nio" */,
+				50A6E7282FA502EC006F51F3 /* XCRemoteSwiftPackageReference "Swift-WebP" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 5084983A2F86F964008E324C /* Products */;
@@ -429,7 +433,7 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = YRQLJYMX5S;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -446,7 +450,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.0.4;
+				MARKETING_VERSION = 1.0.5;
 				PRODUCT_BUNDLE_IDENTIFIER = lol.mrl.app.Vapor;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -468,7 +472,7 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = YRQLJYMX5S;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -485,7 +489,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.0.4;
+				MARKETING_VERSION = 1.0.5;
 				PRODUCT_BUNDLE_IDENTIFIER = lol.mrl.app.Vapor;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -652,6 +656,14 @@
 				minimumVersion = 2.65.0;
 			};
 		};
+		50A6E7282FA502EC006F51F3 /* XCRemoteSwiftPackageReference "Swift-WebP" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/ainame/Swift-WebP.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.6.1;
+			};
+		};
 		50B200022FAA1000008E324C /* XCRemoteSwiftPackageReference "SQLiteVec" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/jkrukowski/SQLiteVec";
@@ -692,6 +704,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 50A10AEF2F9C0000008E324C /* XCRemoteSwiftPackageReference "swift-nio" */;
 			productName = NIOPosix;
+		};
+		50A6E7292FA502EC006F51F3 /* WebP */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 50A6E7282FA502EC006F51F3 /* XCRemoteSwiftPackageReference "Swift-WebP" */;
+			productName = WebP;
 		};
 		50B200032FAA1000008E324C /* SQLiteVec */ = {
 			isa = XCSwiftPackageProductDependency;

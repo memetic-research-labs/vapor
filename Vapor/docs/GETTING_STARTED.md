@@ -115,7 +115,7 @@ Vapor includes a Chrome extension that lets you inject compressed prompts direct
 
 > **Important:** The auth token is required. Without it, the extension cannot connect to Vapor. If you see a "Token mismatch" warning, the token was reset in Vapor — copy the new one from Settings.
 
-**How it works:** The extension communicates with Vapor on `localhost:8766` via SSE. When you compress a prompt, you can send it directly to a browser tab with **Cmd+Shift+P**.
+**How it works:** The extension communicates with Vapor on `localhost:8766` via SSE. When you compress a prompt, Vapor can send it directly to the selected browser tab.
 
 **Troubleshooting:**
 - If the extension badge shows "!", the connection is lost — verify Vapor is running and the token matches

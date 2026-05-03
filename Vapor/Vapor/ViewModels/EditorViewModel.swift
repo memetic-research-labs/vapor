@@ -8,7 +8,13 @@ private let logger = Logger(subsystem: "lol.mrl.app.Vapor", category: "Editor")
 @MainActor
 @Observable
 final class EditorViewModel {
-    var content: String = ""
+    var content: String = "" {
+        didSet {
+            if isCompressing {
+                contentChangedDuringCompression = true
+            }
+        }
+    }
     var compressedContent: String = ""
     var compressionRatio: Double = 0.0
     var originalTokenCount: Int = 0
@@ -18,6 +24,7 @@ final class EditorViewModel {
     var activeDictationRange: NSRange?
     var selectedCompressor: CompressorType = .localLLM
     var isCompressing: Bool = false
+    var contentChangedDuringCompression: Bool = false
     var lastSavedHistoryHash: String = ""
 
     private let clipboardService = ClipboardService()
@@ -55,15 +62,23 @@ final class EditorViewModel {
         guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         guard let compressionService else { return }
 
+        let snapshot = content
         isCompressing = true
-        defer { isCompressing = false }
+        contentChangedDuringCompression = false
+        defer {
+            isCompressing = false
+        }
 
-        let result = try await compressionService.compress(content)
+        let result = try await compressionService.compress(snapshot)
         compressedContent = result.text
         compressionRatio = result.ratio
         originalTokenCount = result.originalTokens
         compressedTokenCount = result.compressedTokens
         selectedCompressor = result.compressorUsed
+
+        if contentChangedDuringCompression {
+            logger.info("Editor content changed during compression — compressed snapshot copied, draft has unsaved changes")
+        }
 
         clipboardService.copy(compressedContent)
         logger.info("Compressed using: \(self.selectedCompressor.rawValue)")
@@ -74,7 +89,7 @@ final class EditorViewModel {
            browserBridge.isExtensionConnected {
             browserBridge.sendCompressedPrompt(
                 compressedContent,
-                original: content,
+                original: snapshot,
                 autoSubmit: preferences.autoSubmitToAI
             )
         }
@@ -89,6 +104,7 @@ final class EditorViewModel {
         originalTokenCount = 0
         compressedTokenCount = 0
         isDirty = false
+        contentChangedDuringCompression = false
     }
 
     /// Copies the original text to the clipboard, then clears the buffer.

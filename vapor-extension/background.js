@@ -10,7 +10,7 @@
  *   Content Scripts → This Extension → HTTP POST → Vapor Mac App
  */
 
-const DEBUG = true;
+let DEBUG = false;
 const SERVER_URL = 'http://127.0.0.1:8766';
 const RECONNECT_DELAY_BASE = 1000;
 const RECONNECT_DELAY_MAX = 8000;
@@ -21,6 +21,15 @@ let isConnected = false;
 let authToken = null;
 let capturedThisSession = 0;
 let authFailed = false;
+
+chrome.storage.local.get(['vaporVerboseLogging'], (items) => {
+  DEBUG = !!items.vaporVerboseLogging;
+});
+
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== 'local' || !changes.vaporVerboseLogging) return;
+  DEBUG = !!changes.vaporVerboseLogging.newValue;
+});
 
 function normalizeHost(urlString) {
   try {
@@ -157,6 +166,24 @@ async function connect() {
       }
     });
 
+    eventSource.addEventListener('sidebar_screenshot', async (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        await handleSidebarScreenshot(data);
+      } catch (err) {
+        console.error('[Vapor] Error parsing sidebar_screenshot event:', err);
+      }
+    });
+
+    eventSource.addEventListener('sidebar_screenshot_remove', async (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        await handleSidebarScreenshotRemove(data);
+      } catch (err) {
+        console.error('[Vapor] Error parsing sidebar_screenshot_remove event:', err);
+      }
+    });
+
     eventSource.addEventListener('heartbeat', () => {
       // Heartbeat keeps the SSE connection alive; no action needed
     });
@@ -250,6 +277,72 @@ async function handlePromptInject(data) {
       tabId: tab.id
     });
   }
+}
+
+function broadcastToSidebar(message) {
+  chrome.runtime.sendMessage(message).catch(() => {});
+}
+
+const MAX_SIDEBAR_SCREENSHOTS = 64;
+
+async function handleSidebarScreenshot(data) {
+  const shaPrefix = data.shaPrefix;
+  if (!shaPrefix) return;
+
+  const key = `vapor_img_${shaPrefix}`;
+  const entry = {
+    shaPrefix: shaPrefix,
+    mimeType: data.mimeType || 'image/webp',
+    base64: data.data,
+    timestamp: data.timestamp || Math.floor(Date.now() / 1000)
+  };
+
+  const { vaporScreenshotOrder = [] } = await chrome.storage.local.get('vaporScreenshotOrder');
+  const order = vaporScreenshotOrder.filter(s => s !== shaPrefix);
+  order.unshift(shaPrefix);
+
+  while (order.length > MAX_SIDEBAR_SCREENSHOTS) {
+    const removed = order.pop();
+    await chrome.storage.local.remove(`vapor_img_${removed}`);
+    if (DEBUG) console.log('[Vapor] Pruned sidebar screenshot:', removed);
+  }
+
+  let writeSucceeded = false;
+  while (!writeSucceeded) {
+    try {
+      await chrome.storage.local.set({ [key]: entry, vaporScreenshotOrder: order });
+      writeSucceeded = true;
+    } catch (err) {
+      const removed = [...order].reverse().find(s => s !== shaPrefix);
+      if (!removed) {
+        console.error('[Vapor] Failed to store sidebar screenshot:', err);
+        broadcastToSidebar({
+          type: 'SIDEBAR_ERROR',
+          message: 'Could not store screenshot. Chrome extension storage is full.'
+        });
+        return;
+      }
+      order.splice(order.indexOf(removed), 1);
+      await chrome.storage.local.remove(`vapor_img_${removed}`);
+      if (DEBUG) console.log('[Vapor] Pruned screenshot after storage failure:', removed);
+    }
+  }
+
+  broadcastToSidebar({ type: 'UPDATE_IMAGES' });
+  if (DEBUG) console.log('[Vapor] Stored sidebar screenshot:', shaPrefix, `(${(entry.base64.length * 0.75 / 1024).toFixed(0)}KB)`);
+}
+
+async function handleSidebarScreenshotRemove(data) {
+  const shaPrefix = data.shaPrefix;
+  if (!shaPrefix) return;
+
+  await chrome.storage.local.remove(`vapor_img_${shaPrefix}`);
+
+  const { vaporScreenshotOrder = [] } = await chrome.storage.local.get('vaporScreenshotOrder');
+  await chrome.storage.local.set({ vaporScreenshotOrder: vaporScreenshotOrder.filter(s => s !== shaPrefix) });
+
+  broadcastToSidebar({ type: 'UPDATE_IMAGES' });
+  if (DEBUG) console.log('[Vapor] Removed sidebar screenshot:', shaPrefix);
 }
 
 async function handleQueryTabs() {
@@ -576,10 +669,36 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     postResponse(message);
   }
 
+  // Forward injection logs/results to sidebar
+  if (message.type === 'INJECTION_RESULT' || message.type === 'INJECTION_LOG') {
+    broadcastToSidebar(message);
+  }
+
+  // Sidebar messages
+  if (message.type === 'CLEAR_IMAGES') {
+    (async () => {
+      const { vaporScreenshotOrder = [] } = await chrome.storage.local.get('vaporScreenshotOrder');
+      const keysToRemove = vaporScreenshotOrder.map(s => `vapor_img_${s}`);
+      if (keysToRemove.length > 0) {
+        await chrome.storage.local.remove([...keysToRemove, 'vaporScreenshotOrder']);
+      }
+      broadcastToSidebar({ type: 'UPDATE_IMAGES' });
+      sendResponse({ success: true });
+    })();
+    return true;
+  }
+
   return false;
 });
 
-chrome.commands.onCommand.addListener((command) => {
+chrome.action.onClicked.addListener(async (tab) => {
+  if (tab?.id) {
+    chrome.sidePanel.open({ tabId: tab.id }).catch(() => {});
+  }
+});
+
+chrome.commands.onCommand.addListener(async (command) => {
+
   if (command !== 'capture-page') return;
 
   handleCaptureRequest('page').catch((err) => {

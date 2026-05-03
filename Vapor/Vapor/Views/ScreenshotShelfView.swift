@@ -56,7 +56,7 @@ struct ScreenshotShelfView: View {
         .onReceive(NotificationCenter.default.publisher(for: .vaporScreenshotInsertSelected)) { _ in
             guard focusStore.activeZone == .screenshots,
                   let focusedAsset = currentSelectedAsset else { return }
-            screenshotShelf.insertAnnotatedReference(for: focusedAsset)
+            screenshotShelf.insertScreenshot(focusedAsset)
         }
     }
 
@@ -140,7 +140,7 @@ struct ScreenshotShelfView: View {
                                     focusedAssetID = asset.id
                                 },
                                 onInsert: {
-                                    screenshotShelf.insertAnnotatedReference(for: asset)
+                                    screenshotShelf.insertScreenshot(asset)
                                 }
                             )
                             .id(asset.id)
@@ -258,14 +258,6 @@ private struct ScreenshotShelfCard: View {
         }
         .zIndex(isFocused ? 10 : 0)
         .contextMenu {
-            Button("Insert Screenshot Reference") {
-                screenshotShelf.insertAnnotatedReference(for: asset)
-            }
-
-            Button("Insert Plain Path") {
-                screenshotShelf.insertPlainPath(for: asset)
-            }
-
             Button("Add to Context") {
                 screenshotShelf.addToContext(asset)
             }
@@ -273,11 +265,11 @@ private struct ScreenshotShelfCard: View {
             Divider()
 
             Button("Reveal in Finder") {
-                NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: screenshotShelf.displayPath(for: asset))])
+                screenshotShelf.revealAsset(asset)
             }
 
             Button("Open") {
-                NSWorkspace.shared.open(URL(fileURLWithPath: screenshotShelf.displayPath(for: asset)))
+                screenshotShelf.openAsset(asset)
             }
 
             Divider()

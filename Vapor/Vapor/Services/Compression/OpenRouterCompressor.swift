@@ -20,25 +20,23 @@ actor OpenRouterCompressor: Compressor {
         }
 
         let systemPrompt = compressionSystemPrompt
-
-        let request = try buildRequest(systemPrompt: systemPrompt, userText: text)
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse,
-              httpResponse.statusCode == 200 else {
-            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
-            throw CompressionError.apiError("HTTP \(statusCode)")
-        }
-
-        let result = try JSONDecoder().decode(OpenRouterResponse.self, from: data)
-        let compressed = cleanCompressedOutput(result.choices.first?.message.content ?? "")
-
         let originalTokens = await countTokens(text)
-        let compressedTokens = await countTokens(compressed)
+        let cleaned = try await compressTextPreservingMarkdownImages(text, systemPrompt: systemPrompt)
+
+        let compressedTokens = await countTokens(cleaned)
         let ratio = originalTokens > 0 ? Double(compressedTokens) / Double(originalTokens) : 0.0
 
+        if let failureReason = CompressionValidation.failureReason(
+            original: text,
+            compressed: cleaned,
+            originalTokens: originalTokens,
+            compressedTokens: compressedTokens
+        ) {
+            throw CompressionError.apiError("Compressed output failed validation — \(failureReason). Try again with another model or backend.")
+        }
+
         return CompressedResult(
-            text: compressed,
+            text: cleaned,
             originalTokens: originalTokens,
             compressedTokens: compressedTokens,
             ratio: ratio,
@@ -48,9 +46,7 @@ actor OpenRouterCompressor: Compressor {
 
     // MARK: - Request building
 
-    /// Builds a base URLRequest with the required OpenRouter headers.
-    /// Exposed as `static` so the test sidebar can reuse the same header configuration.
-    static func buildBaseRequest(apiKey: String) -> URLRequest {
+    nonisolated static func buildBaseRequest(apiKey: String) -> URLRequest {
         var request = URLRequest(url: URL(string: "https://openrouter.ai/api/v1/chat/completions")!)
         request.httpMethod = "POST"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
@@ -59,21 +55,70 @@ actor OpenRouterCompressor: Compressor {
         return request
     }
 
-    private func buildRequest(systemPrompt: String, userText: String) throws -> URLRequest {
+    private func buildRequest(systemPrompt: String, userText: String, maxOutputTokens: Int) throws -> URLRequest {
         var request = OpenRouterCompressor.buildBaseRequest(apiKey: apiKey)
         let body: [String: Any] = [
             "model": model,
             "messages": [
                 ["role": "system", "content": systemPrompt],
                 ["role": "user", "content": userText]
-            ]
+            ],
+            "max_tokens": maxOutputTokens,
+            "temperature": 0.1,
+            "stop": ["\n\nInput:", "\n\nOutput:", "\n\n---"]
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         return request
     }
+
+    private func compressTextPreservingMarkdownImages(_ text: String, systemPrompt: String) async throws -> String {
+        let parts = CompressionProtectedContent.splitMarkdownImageLines(text)
+        guard CompressionProtectedContent.containsMarkdownImage(parts) else {
+            return try await compressTextBlock(text, systemPrompt: systemPrompt)
+        }
+
+        var outputParts: [String] = []
+        for part in parts {
+            switch part {
+            case .text(let block):
+                let compressedBlock = try await compressTextBlock(block, systemPrompt: systemPrompt)
+                if !compressedBlock.isEmpty {
+                    outputParts.append(compressedBlock)
+                }
+            case .markdownImage(let line):
+                outputParts.append(line)
+            }
+        }
+        return outputParts.joined(separator: "\n\n")
+    }
+
+    private func compressTextBlock(_ text: String, systemPrompt: String) async throws -> String {
+        let blockTokens = await countTokens(text)
+        let request = try buildRequest(
+            systemPrompt: systemPrompt,
+            userText: text,
+            maxOutputTokens: Self.computeMaxOutputTokens(inputTokens: blockTokens)
+        )
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
+            let body = String(data: data, encoding: .utf8) ?? ""
+            throw CompressionError.apiError("HTTP \(statusCode): \(body.prefix(200))")
+        }
+
+        let result = try JSONDecoder().decode(OpenRouterResponse.self, from: data)
+        return cleanCompressedOutput(result.choices.first?.message.content ?? "")
+    }
+
+    nonisolated static func computeMaxOutputTokens(inputTokens: Int) -> Int {
+        min(768, max(96, Int(Double(inputTokens) * 0.65)))
+    }
+
 }
 
-struct OpenRouterResponse: Codable {
+nonisolated struct OpenRouterResponse: Codable {
     let choices: [Choice]
 
     struct Choice: Codable {

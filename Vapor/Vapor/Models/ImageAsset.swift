@@ -112,10 +112,7 @@ final class ImageAsset {
     }
 
     var displayTitle: String {
-        if !originalFilename.isEmpty {
-            return originalFilename
-        }
-        return sourceKind.displayName
+        String(contentHash.prefix(8))
     }
 
     var sortDate: Date {

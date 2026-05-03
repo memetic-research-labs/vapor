@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import OSLog
 import SwiftData
@@ -20,9 +21,12 @@ final class ScreenshotShelfStore {
     var lastScanDate: Date?
 
     private let imageAssetService = ImageAssetService()
+    private let imageProcessingService = ImageProcessingService.shared
     private weak var contextQueueService: ContextQueueService?
+    private var maxImageDimension: Int = 768
     private var pollTask: Task<Void, Never>?
     private var knownCandidates: [String: Date] = [:]
+    private var processingTasks: [String: Task<AttachedImage?, Never>] = [:]
 
     private init() {}
 
@@ -32,6 +36,10 @@ final class ScreenshotShelfStore {
 
     func setContextQueueService(_ service: ContextQueueService) {
         contextQueueService = service
+    }
+
+    func setMaxImageDimension(_ dimension: Int) {
+        maxImageDimension = dimension
     }
 
     func start() {
@@ -75,7 +83,8 @@ final class ScreenshotShelfStore {
             }
 
             do {
-                _ = try await imageAssetService.importImage(from: url, sourceKind: .screenshot, lifecycleState: .shelf)
+                let asset = try await imageAssetService.importImage(from: url, sourceKind: .screenshot, lifecycleState: .shelf)
+                processForSidebar(asset: asset)
             } catch {
                 screenshotLogger.warning("Skipping screenshot candidate \(url.lastPathComponent, privacy: .public): \(error.localizedDescription, privacy: .public)")
             }
@@ -84,12 +93,18 @@ final class ScreenshotShelfStore {
         knownCandidates = updatedKnownCandidates
     }
 
-    func insertAnnotatedReference(for asset: ImageAsset) {
-        NotificationCenter.default.post(name: .vaporInsertContextItem, object: imageAssetService.promptReference(for: asset, annotated: true))
-    }
-
-    func insertPlainPath(for asset: ImageAsset) {
-        NotificationCenter.default.post(name: .vaporInsertContextItem, object: imageAssetService.promptReference(for: asset, annotated: false))
+    func insertScreenshot(_ asset: ImageAsset) {
+        let shaPrefix = String(asset.contentHash.prefix(8))
+        Task { [weak self] in
+            guard let self else { return }
+            guard let path = await self.ensureWebPPath(for: asset, shaPrefix: shaPrefix) else {
+                screenshotLogger.error("Failed to process screenshot before insertion: \(shaPrefix, privacy: .public)")
+                return
+            }
+            let markdown = "![screenshot_\(shaPrefix)](\(path))"
+            NotificationCenter.default.post(name: .vaporInsertContextItem, object: markdown)
+            NotificationCenter.default.post(name: .vaporScreenshotReadyForSidebar, object: SidebarScreenshotItem(shaPrefix: shaPrefix, mimeType: "image/webp"))
+        }
     }
 
     func dismiss(_ asset: ImageAsset) {
@@ -98,6 +113,8 @@ final class ScreenshotShelfStore {
         } catch {
             screenshotLogger.error("Failed to dismiss screenshot asset: \(error.localizedDescription, privacy: .public)")
         }
+        let shaPrefix = String(asset.contentHash.prefix(8))
+        NotificationCenter.default.post(name: .vaporScreenshotDismissedFromSidebar, object: SidebarScreenshotItem(shaPrefix: shaPrefix, mimeType: "image/webp"))
     }
 
     func addToContext(_ asset: ImageAsset) {
@@ -117,8 +134,70 @@ final class ScreenshotShelfStore {
         imageAssetService.fileURL(for: asset)
     }
 
-    func displayPath(for asset: ImageAsset) -> String {
-        imageAssetService.preferredReferencePath(for: asset)
+    func revealAsset(_ asset: ImageAsset) {
+        let webpURL = webpURL(for: asset)
+        if FileManager.default.fileExists(atPath: webpURL.path) {
+            NSWorkspace.shared.activateFileViewerSelecting([webpURL])
+            return
+        }
+        if let originalPath = asset.originalPath, FileManager.default.fileExists(atPath: originalPath) {
+            NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: originalPath)])
+            return
+        }
+        NSWorkspace.shared.activateFileViewerSelecting([fileURL(for: asset)])
+    }
+
+    func openAsset(_ asset: ImageAsset) {
+        let webpURL = webpURL(for: asset)
+        if FileManager.default.fileExists(atPath: webpURL.path) {
+            NSWorkspace.shared.open(webpURL)
+            return
+        }
+        if let originalPath = asset.originalPath, FileManager.default.fileExists(atPath: originalPath) {
+            NSWorkspace.shared.open(URL(fileURLWithPath: originalPath))
+            return
+        }
+        NSWorkspace.shared.open(fileURL(for: asset))
+    }
+
+    private func processForSidebar(asset: ImageAsset) {
+        let shaPrefix = String(asset.contentHash.prefix(8))
+        let item = SidebarScreenshotItem(shaPrefix: shaPrefix, mimeType: "image/webp")
+
+        Task { @MainActor in
+            guard let _ = await ensureWebPPath(for: asset, shaPrefix: shaPrefix) else {
+                screenshotLogger.error("Failed to process screenshot for sidebar: \(shaPrefix, privacy: .public)")
+                return
+            }
+            NotificationCenter.default.post(name: .vaporScreenshotReadyForSidebar, object: item)
+        }
+    }
+
+    private func ensureWebPPath(for asset: ImageAsset, shaPrefix: String) async -> String? {
+        let targetURL = webpURL(for: asset)
+        if FileManager.default.fileExists(atPath: targetURL.path) {
+            return targetURL.path
+        }
+
+        if let existingTask = processingTasks[shaPrefix] {
+            return await existingTask.value?.webpPath
+        }
+
+        let dimension = maxImageDimension
+        let task = Task { [imageProcessingService] in
+            await imageProcessingService.processForInjection(asset: asset, maxDimension: dimension)
+        }
+        processingTasks[shaPrefix] = task
+        let result = await task.value
+        processingTasks[shaPrefix] = nil
+        return result?.webpPath
+    }
+
+    private func webpURL(for asset: ImageAsset) -> URL {
+        let shaPrefix = String(asset.contentHash.prefix(8))
+        let dir = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Desktop/vapor-screenshots-webp", isDirectory: true)
+        return dir.appendingPathComponent("screenshot_\(shaPrefix).webp")
     }
 
     private static func screenshotCandidateURLs() async -> [(url: URL, date: Date)] {

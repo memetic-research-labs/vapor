@@ -223,6 +223,42 @@ final class BrowserBridge {
         sendPrompt(compressed, original: original, autoSubmit: autoSubmit)
     }
 
+    func sendSidebarScreenshot(_ item: SidebarScreenshotItem) {
+        guard isExtensionConnected else { return }
+
+        Task.detached(priority: .utility) { [weak self] in
+            guard let self else { return }
+            let shaPrefix = item.shaPrefix
+            let dir = FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent("Desktop/vapor-screenshots-webp", isDirectory: true)
+            let fileURL = dir.appendingPathComponent("screenshot_\(shaPrefix).webp")
+
+            guard let data = try? Data(contentsOf: fileURL) else {
+                logger.warning("Sidebar screenshot WebP not found: \(shaPrefix, privacy: .public)")
+                return
+            }
+
+            let base64 = data.base64EncodedString()
+            let timestamp = Int(Date().timeIntervalSince1970)
+
+            let payload: [String: Any] = [
+                "shaPrefix": shaPrefix,
+                "mimeType": item.mimeType,
+                "data": base64,
+                "timestamp": timestamp
+            ]
+
+            await MainActor.run {
+                self.server?.broadcast(event: "sidebar_screenshot", json: payload)
+            }
+        }
+    }
+
+    func removeSidebarScreenshot(_ shaPrefix: String) {
+        guard isExtensionConnected else { return }
+        server?.broadcast(event: "sidebar_screenshot_remove", json: ["shaPrefix": shaPrefix])
+    }
+
     func queryTabs(forInterrogation: Bool = false) {
         guard isExtensionConnected else {
             lastError = "No browser extension connected"
