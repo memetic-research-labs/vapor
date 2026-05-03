@@ -118,6 +118,7 @@ async function refreshStatus() {
   } catch {
     state.connected = false;
     updateStatusDot();
+    renderSettings();
   }
 }
 
@@ -351,19 +352,23 @@ async function loadImagesFromStorage() {
     if (!entry || !entry.base64) continue;
     const mimeType = entry.mimeType || 'image/webp';
 
-    const binary = atob(entry.base64);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    const blob = new Blob([bytes], { type: mimeType });
-    const url = URL.createObjectURL(blob);
+    try {
+      const binary = atob(entry.base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      const blob = new Blob([bytes], { type: mimeType });
+      const url = URL.createObjectURL(blob);
 
-    images.push({
-      mimeType: mimeType,
-      size: blob.size,
-      blob: blob,
-      dataUrl: url,
-      shaPrefix: shaPrefix
-    });
+      images.push({
+        mimeType: mimeType,
+        size: blob.size,
+        blob: blob,
+        dataUrl: url,
+        shaPrefix: shaPrefix
+      });
+    } catch (err) {
+      log('warn', `Skipping corrupt screenshot ${shaPrefix}: ${err.message || err}`);
+    }
   }
 
   render();

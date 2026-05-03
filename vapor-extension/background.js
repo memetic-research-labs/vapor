@@ -10,7 +10,7 @@
  *   Content Scripts → This Extension → HTTP POST → Vapor Mac App
  */
 
-const DEBUG = true;
+let DEBUG = false;
 const SERVER_URL = 'http://127.0.0.1:8766';
 const RECONNECT_DELAY_BASE = 1000;
 const RECONNECT_DELAY_MAX = 8000;
@@ -21,6 +21,15 @@ let isConnected = false;
 let authToken = null;
 let capturedThisSession = 0;
 let authFailed = false;
+
+chrome.storage.local.get(['vaporVerboseLogging'], (items) => {
+  DEBUG = !!items.vaporVerboseLogging;
+});
+
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== 'local' || !changes.vaporVerboseLogging) return;
+  DEBUG = !!changes.vaporVerboseLogging.newValue;
+});
 
 function normalizeHost(urlString) {
   try {

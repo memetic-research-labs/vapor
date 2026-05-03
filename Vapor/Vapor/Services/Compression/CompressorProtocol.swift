@@ -100,7 +100,7 @@ nonisolated enum CompressionProtectedContent {
         for line in lines {
             if isMarkdownImageLine(line) {
                 flushTextBuffer()
-                parts.append(.markdownImage(line.trimmingCharacters(in: .whitespacesAndNewlines)))
+                parts.append(.markdownImage(line))
             } else {
                 textBuffer.append(line)
             }

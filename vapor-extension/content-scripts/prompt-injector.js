@@ -31,7 +31,7 @@
     if (level === 'error') console.error(`${prefix} ${msg}`);
     else if (level === 'warn') console.warn(`${prefix} ${msg}`);
     else if (DEBUG) console.log(`${prefix} ${msg}`);
-    try { chrome.runtime.sendMessage({ type: 'INJECTION_LOG', level, message: msg }); } catch (_) {}
+    try { chrome.runtime.sendMessage({ type: 'INJECTION_LOG', level, message: msg }).catch(() => {}); } catch (_) {}
   }
 
   async function loadPlatformConfig() {

@@ -44,16 +44,19 @@ final class ImageAssetService {
         let contentHash = prepared.contentHash
         let createdAt = prepared.createdAt
         let shaPrefix = String(contentHash.prefix(8))
-        let canonicalFilename = "screenshot_\(shaPrefix)"
+        let originalExtension = URL(fileURLWithPath: prepared.originalFilename).pathExtension.lowercased()
+        let canonicalFilename = originalExtension.isEmpty
+            ? "screenshot_\(shaPrefix)"
+            : "screenshot_\(shaPrefix).\(originalExtension)"
 
-        let archivedPath = Self.archiveDestination(canonicalName: canonicalFilename)
+        let archivedPath = Self.archiveDestination(canonicalFilename: canonicalFilename)
         enqueueArchive(from: fileURL, to: archivedPath)
         let effectiveOriginalPath = archivedPath.path
 
         let descriptor = FetchDescriptor<ImageAsset>(predicate: #Predicate { $0.contentHash == contentHash })
         if let existing = try modelContext.fetch(descriptor).first {
             existing.originalPath = effectiveOriginalPath
-            existing.originalFilename = "\(canonicalFilename).png"
+            existing.originalFilename = canonicalFilename
             existing.lastObservedAt = Date()
             if shouldReplaceSourceKind(existing.sourceKind, with: sourceKind) {
                 existing.sourceKind = sourceKind
@@ -72,7 +75,7 @@ final class ImageAssetService {
             pixelWidth: prepared.dimensions.width,
             pixelHeight: prepared.dimensions.height,
             byteSize: prepared.byteSize,
-            originalFilename: "\(canonicalFilename).png",
+            originalFilename: canonicalFilename,
             originalPath: effectiveOriginalPath,
             blobPath: prepared.blobRelativePath,
             thumbnailPath: prepared.thumbnailRelativePath,
@@ -89,11 +92,11 @@ final class ImageAssetService {
         return asset
     }
 
-    nonisolated private static func archiveDestination(canonicalName: String) -> URL {
+    nonisolated private static func archiveDestination(canonicalFilename: String) -> URL {
         let archiveDir = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Desktop/vapor-screenshots-webp/original_png", isDirectory: true)
         try? FileManager.default.createDirectory(at: archiveDir, withIntermediateDirectories: true, attributes: nil)
-        return archiveDir.appendingPathComponent("\(canonicalName).png")
+        return archiveDir.appendingPathComponent(canonicalFilename)
     }
 
     @MainActor
@@ -127,9 +130,9 @@ final class ImageAssetService {
                         try fm.removeItem(at: item.destination)
                     }
                     try fm.moveItem(at: item.source, to: item.destination)
-                    imageAssetLogger.info("Archived original PNG: \(item.destination.lastPathComponent, privacy: .public)")
+                    imageAssetLogger.info("Archived original screenshot: \(item.destination.lastPathComponent, privacy: .public)")
                 } catch {
-                    imageAssetLogger.warning("Failed to archive original PNG \(item.source.lastPathComponent, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                    imageAssetLogger.warning("Failed to archive original screenshot \(item.source.lastPathComponent, privacy: .public): \(error.localizedDescription, privacy: .public)")
                 }
 
                 try? await Task.sleep(for: .milliseconds(100))

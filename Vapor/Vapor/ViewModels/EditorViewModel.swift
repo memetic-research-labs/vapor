@@ -67,7 +67,6 @@ final class EditorViewModel {
         contentChangedDuringCompression = false
         defer {
             isCompressing = false
-            contentChangedDuringCompression = false
         }
 
         let result = try await compressionService.compress(snapshot)
@@ -105,6 +104,7 @@ final class EditorViewModel {
         originalTokenCount = 0
         compressedTokenCount = 0
         isDirty = false
+        contentChangedDuringCompression = false
     }
 
     /// Copies the original text to the clipboard, then clears the buffer.
