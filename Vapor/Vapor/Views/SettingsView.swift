@@ -742,6 +742,10 @@ struct SettingsView: View {
                                     HStack {
                                         Text(model.displayName)
                                         Spacer()
+                                        if compressionService.downloadedModelIDs.contains(model.id) {
+                                            Image(systemName: "checkmark.circle.fill")
+                                                .foregroundColor(.green)
+                                        }
                                         Text(String(format: "%.1f GB", model.sizeGB))
                                             .foregroundColor(.secondary)
                                     }

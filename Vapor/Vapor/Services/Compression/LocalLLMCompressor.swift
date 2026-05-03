@@ -2,10 +2,6 @@ import Foundation
 import SwiftLlama
 import OSLog
 
-nonisolated private struct LocalCompressionResponse: Codable {
-    let compressed: String
-}
-
 actor LocalLLMCompressor: Compressor {
     let name = "Local LLM (On-Device)"
 
@@ -41,7 +37,12 @@ actor LocalLLMCompressor: Compressor {
         let systemPrompt = localCompressorPrompt
 
         let originalTokens = await countTokens(text)
-        let cleaned = try await compressTextPreservingMarkdownImages(text, systemPrompt: systemPrompt)
+        let maxOutputTokens = Self.computeMaxOutputTokens(inputTokens: originalTokens)
+        let cleaned = try await compressTextPreservingMarkdownImages(
+            text,
+            systemPrompt: systemPrompt,
+            maxOutputTokens: maxOutputTokens
+        )
         let compressedTokens = await countTokens(cleaned)
         let ratio = originalTokens > 0 ? Double(compressedTokens) / Double(originalTokens) : 0.0
 
@@ -98,31 +99,30 @@ actor LocalLLMCompressor: Compressor {
         return output
     }
 
-    private func generateStructured(systemPrompt: String, userText: String) async throws -> String {
-        guard let service = llamaService else {
-            throw CompressionError.unavailable
-        }
-
-        let messages = [
-            LlamaChatMessage(role: .system, content: systemPrompt),
-            LlamaChatMessage(role: .user, content: userText)
-        ]
-
-        let response = try await service.respond(to: messages, generating: LocalCompressionResponse.self)
-        return response.compressed
-    }
-
-    private func compressTextPreservingMarkdownImages(_ text: String, systemPrompt: String) async throws -> String {
+    private func compressTextPreservingMarkdownImages(
+        _ text: String,
+        systemPrompt: String,
+        maxOutputTokens: Int
+    ) async throws -> String {
         let parts = CompressionProtectedContent.splitMarkdownImageLines(text)
         guard CompressionProtectedContent.containsMarkdownImage(parts) else {
-            return cleanCompressedOutput(try await generateStructured(systemPrompt: systemPrompt, userText: text))
+            return cleanCompressedOutput(try await generate(
+                systemPrompt: systemPrompt,
+                userText: text,
+                maxOutputTokens: maxOutputTokens
+            ))
         }
 
         var outputParts: [String] = []
         for part in parts {
             switch part {
             case .text(let block):
-                let compressedBlock = cleanCompressedOutput(try await generateStructured(systemPrompt: systemPrompt, userText: block))
+                let blockTokens = await countTokens(block)
+                let compressedBlock = cleanCompressedOutput(try await generate(
+                    systemPrompt: systemPrompt,
+                    userText: block,
+                    maxOutputTokens: Self.computeMaxOutputTokens(inputTokens: blockTokens)
+                ))
                 if !compressedBlock.isEmpty {
                     outputParts.append(compressedBlock)
                 }
@@ -135,9 +135,7 @@ actor LocalLLMCompressor: Compressor {
 
     nonisolated private var localCompressorPrompt: String {
         """
-        Compress the following text to preserve its meaning in fewer words. Return valid JSON only: {"compressed":"..."}.
-
-        Follow these rules:
+        Compress the following text to preserve its meaning in fewer words. Follow these rules:
         1. Remove unnecessary words (articles, filler phrases, repetition).
         2. Keep all numbers, proper nouns, URLs, file paths, identifiers, hashes, code symbols, filenames, and markdown references exactly as-is.
         3. Use compact noun/verb phrases instead of full sentences.
@@ -148,7 +146,7 @@ actor LocalLLMCompressor: Compressor {
 
         Style example: "write a python script that uses pandas in order to allow one to easily query a standard real estate tax data set" becomes "write python script use pandas query real estate tax data set".
 
-        Do NOT generate additional examples. Do NOT include "Input:" or "Output:" labels in your response.
+        Do NOT generate additional examples. Do NOT include "Input:" or "Output:" labels in your response. Return ONLY the compressed text, nothing else.
         """
     }
 

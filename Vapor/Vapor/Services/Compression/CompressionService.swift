@@ -110,11 +110,13 @@ final class CompressionService {
             UserDefaults.standard.set(selectedLocalModel.id, forKey: localLLMModelIDKey)
             selectedModelAvailabilityTask?.cancel()
             selectedModelAvailabilityTask = Task {
+                await loadSelectedLocalModelIfAvailable()
                 await checkAvailability()
             }
         }
     }
     var downloadedModelID: String?
+    var downloadedModelIDs: Set<String> = []
 
     private let telemetry = CompressionTelemetry.shared
     private var resetTask: Task<Void, Never>?
@@ -132,13 +134,14 @@ final class CompressionService {
 
     private var openRouterCompressor: OpenRouterCompressor?
     private var localLLMCompressor: LocalLLMCompressor?
+    private var loadedLocalModelID: String?
 
     private let openRouterApiKeyKey = "openRouterApiKey"
     private let localLLMModelIDKey = "localLLMModelID"
     private let localLLMModelURLKey = "localLLMModelURL"
 
     var isSelectedLocalModelDownloaded: Bool {
-        downloadedModelID == selectedLocalModel.id
+        FileManager.default.fileExists(atPath: localModelURL(for: selectedLocalModel).path)
     }
 
     init() {
@@ -164,20 +167,16 @@ final class CompressionService {
             selectedCompressor = type
         }
 
-        if let savedModelPath = UserDefaults.standard.url(forKey: localLLMModelURLKey),
-           FileManager.default.fileExists(atPath: savedModelPath.path) {
-            let resolvedModel = resolveSavedLocalModel(for: savedModelPath)
-            selectedLocalModel = resolvedModel
-            downloadedModelID = resolvedModel.id
-            localLLMCompressor = LocalLLMCompressor(modelURL: savedModelPath)
-            Task {
-                isModelLoading = true
-                try? await localLLMCompressor?.loadModel()
-                isModelLoading = false
-            }
-        } else if let savedModelID = UserDefaults.standard.string(forKey: localLLMModelIDKey),
-                  let model = LocalLLMModel.find(by: savedModelID) {
+        refreshDownloadedLocalModels()
+
+        if let savedModelID = UserDefaults.standard.string(forKey: localLLMModelIDKey),
+           let model = LocalLLMModel.find(by: savedModelID) {
             selectedLocalModel = model
+        }
+
+        Task {
+            await loadSelectedLocalModelIfAvailable()
+            await checkAvailability()
         }
     }
 
@@ -195,7 +194,64 @@ final class CompressionService {
         return .defaultModel
     }
 
+    private static var modelsDirectory: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+            .appendingPathComponent("Vapor/Models", isDirectory: true)
+    }
+
+    private func localModelURL(for model: LocalLLMModel) -> URL {
+        Self.modelsDirectory.appendingPathComponent(model.fileName)
+    }
+
+    private func refreshDownloadedLocalModels() {
+        let downloaded = Set(LocalLLMModel.curatedModels.compactMap { model in
+            FileManager.default.fileExists(atPath: localModelURL(for: model).path) ? model.id : nil
+        })
+        downloadedModelIDs = downloaded
+        downloadedModelID = downloaded.contains(selectedLocalModel.id) ? selectedLocalModel.id : downloaded.sorted().first
+    }
+
+    private func loadSelectedLocalModelIfAvailable() async {
+        refreshDownloadedLocalModels()
+
+        let model = selectedLocalModel
+        let modelURL = localModelURL(for: model)
+        guard FileManager.default.fileExists(atPath: modelURL.path) else {
+            if loadedLocalModelID == model.id {
+                localLLMCompressor = nil
+                loadedLocalModelID = nil
+            }
+            return
+        }
+
+        if loadedLocalModelID == model.id,
+           let localLLMCompressor,
+           await localLLMCompressor.isAvailable {
+            return
+        }
+
+        localLLMCompressor = LocalLLMCompressor(modelURL: modelURL)
+        loadedLocalModelID = model.id
+        UserDefaults.standard.set(modelURL, forKey: localLLMModelURLKey)
+
+        isModelLoading = true
+        defer { isModelLoading = false }
+
+        do {
+            logger.info("Loading local model: \(model.displayName) at \(modelURL.path)")
+            try await localLLMCompressor?.loadModel()
+        } catch {
+            logger.error("Failed to load local LLM model at \(modelURL.path): \(error.localizedDescription)")
+            if loadedLocalModelID == model.id {
+                localLLMCompressor = nil
+                loadedLocalModelID = nil
+            }
+        }
+    }
+
     func checkAvailability() async {
+        refreshDownloadedLocalModels()
+
         if let openRouter = openRouterCompressor {
             availableCompressors[.openRouter] = await openRouter.isAvailable
         } else {
@@ -204,7 +260,7 @@ final class CompressionService {
 
         if let localLLM = localLLMCompressor {
             let localLLMAvailable = await localLLM.isAvailable
-            availableCompressors[.localLLM] = isSelectedLocalModelDownloaded && localLLMAvailable
+            availableCompressors[.localLLM] = isSelectedLocalModelDownloaded && loadedLocalModelID == selectedLocalModel.id && localLLMAvailable
         } else {
             availableCompressors[.localLLM] = false
         }
@@ -248,10 +304,8 @@ final class CompressionService {
             }
         }
 
-        let appContainer = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let modelsDir = appContainer.appendingPathComponent("Vapor/Models", isDirectory: true)
-
-        try FileManager.default.createDirectory(at: modelsDir, withIntermediateDirectories: true)
+        let modelsDir = Self.modelsDirectory
+        try FileManager.default.createDirectory(at: modelsDir, withIntermediateDirectories: true, attributes: nil)
 
         let modelURL = modelsDir.appendingPathComponent(model.fileName)
         let temporaryModelURL = modelURL.appendingPathExtension("download")
@@ -319,8 +373,10 @@ final class CompressionService {
         UserDefaults.standard.set(model.id, forKey: localLLMModelIDKey)
         selectedLocalModel = model
         downloadedModelID = model.id
+        refreshDownloadedLocalModels()
 
         localLLMCompressor = LocalLLMCompressor(modelURL: modelURL)
+        loadedLocalModelID = model.id
         logger.info("Loading model...")
         try await localLLMCompressor?.loadModel()
         logger.info("Model loaded successfully!")
@@ -356,21 +412,8 @@ final class CompressionService {
     }
 
     func reloadLocalLLMIfNeeded() async {
-        guard let savedModelPath = UserDefaults.standard.url(forKey: localLLMModelURLKey),
-              FileManager.default.fileExists(atPath: savedModelPath.path) else { return }
-        let resolvedModel = resolveSavedLocalModel(for: savedModelPath)
-        selectedLocalModel = resolvedModel
-        downloadedModelID = resolvedModel.id
-        localLLMCompressor = LocalLLMCompressor(modelURL: savedModelPath)
-        isModelLoading = true
-        defer { isModelLoading = false }
-
-        do {
-            try await localLLMCompressor?.loadModel()
-        } catch {
-            logger.error("Failed to load local LLM model at \(savedModelPath.path): \(error.localizedDescription)")
-        }
-
+        refreshDownloadedLocalModels()
+        await loadSelectedLocalModelIfAvailable()
         await checkAvailability()
 
         if let saved = UserDefaults.standard.string(forKey: "selectedCompressor"),
@@ -380,15 +423,20 @@ final class CompressionService {
     }
 
     func deleteLocalLLMModel() {
-        if let savedModelPath = UserDefaults.standard.url(forKey: localLLMModelURLKey) {
-            try? FileManager.default.removeItem(at: savedModelPath)
-            logger.info("Deleted model at: \(savedModelPath.path)")
+        let modelURL = localModelURL(for: selectedLocalModel)
+        if FileManager.default.fileExists(atPath: modelURL.path) {
+            try? FileManager.default.removeItem(at: modelURL)
+            logger.info("Deleted model at: \(modelURL.path)")
         }
-        UserDefaults.standard.removeObject(forKey: localLLMModelURLKey)
-        localLLMCompressor = nil
+        if loadedLocalModelID == selectedLocalModel.id {
+            UserDefaults.standard.removeObject(forKey: localLLMModelURLKey)
+            localLLMCompressor = nil
+            loadedLocalModelID = nil
+        }
         availableCompressors[.localLLM] = false
         modelDownloadProgress = 0
-        downloadedModelID = nil
+        refreshDownloadedLocalModels()
+        downloadedModelID = downloadedModelIDs.contains(selectedLocalModel.id) ? selectedLocalModel.id : nil
     }
 
     private func activeModelName() -> String {
@@ -412,8 +460,11 @@ final class CompressionService {
         func runCompression() async throws -> (result: CompressedResult, backend: CompressorType, isFirstInference: Bool) {
             switch selectedCompressor {
             case .localLLM:
+                await loadSelectedLocalModelIfAvailable()
                 guard isSelectedLocalModelDownloaded,
-                      let localLLM = localLLMCompressor, await localLLM.isAvailable else {
+                      loadedLocalModelID == selectedLocalModel.id,
+                      let localLLM = localLLMCompressor,
+                      await localLLM.isAvailable else {
                     throw CompressionError.unavailable
                 }
                 let key = "Local LLM (On-Device):\(selectedLocalModel.displayName)"
