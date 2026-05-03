@@ -78,6 +78,53 @@ nonisolated enum CompressionValidation {
     private static let trailingPunctuation = CharacterSet(charactersIn: ".,;:")
 }
 
+nonisolated enum CompressionProtectedContent {
+    enum Part {
+        case text(String)
+        case markdownImage(String)
+    }
+
+    static func splitMarkdownImageLines(_ text: String) -> [Part] {
+        let lines = text.components(separatedBy: .newlines)
+        var parts: [Part] = []
+        var textBuffer: [String] = []
+
+        func flushTextBuffer() {
+            let block = textBuffer.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+            if !block.isEmpty {
+                parts.append(.text(block))
+            }
+            textBuffer.removeAll()
+        }
+
+        for line in lines {
+            if isMarkdownImageLine(line) {
+                flushTextBuffer()
+                parts.append(.markdownImage(line.trimmingCharacters(in: .whitespacesAndNewlines)))
+            } else {
+                textBuffer.append(line)
+            }
+        }
+
+        flushTextBuffer()
+        return parts
+    }
+
+    static func containsMarkdownImage(_ parts: [Part]) -> Bool {
+        parts.contains { part in
+            if case .markdownImage = part { return true }
+            return false
+        }
+    }
+
+    private static func isMarkdownImageLine(_ line: String) -> Bool {
+        let pattern = #"^\s*!\[[^\]]*\]\([^)]+\)\s*$"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return false }
+        let range = NSRange(line.startIndex..<line.endIndex, in: line)
+        return regex.firstMatch(in: line, range: range)?.range == range
+    }
+}
+
 enum CompressionError: LocalizedError {
     case unavailable
     case apiError(String)

@@ -41,9 +41,7 @@ actor LocalLLMCompressor: Compressor {
         let systemPrompt = localCompressorPrompt
 
         let originalTokens = await countTokens(text)
-        let raw = try await generateStructured(systemPrompt: systemPrompt, userText: text)
-
-        let cleaned = cleanCompressedOutput(raw)
+        let cleaned = try await compressTextPreservingMarkdownImages(text, systemPrompt: systemPrompt)
         let compressedTokens = await countTokens(cleaned)
         let ratio = originalTokens > 0 ? Double(compressedTokens) / Double(originalTokens) : 0.0
 
@@ -112,6 +110,27 @@ actor LocalLLMCompressor: Compressor {
 
         let response = try await service.respond(to: messages, generating: LocalCompressionResponse.self)
         return response.compressed
+    }
+
+    private func compressTextPreservingMarkdownImages(_ text: String, systemPrompt: String) async throws -> String {
+        let parts = CompressionProtectedContent.splitMarkdownImageLines(text)
+        guard CompressionProtectedContent.containsMarkdownImage(parts) else {
+            return cleanCompressedOutput(try await generateStructured(systemPrompt: systemPrompt, userText: text))
+        }
+
+        var outputParts: [String] = []
+        for part in parts {
+            switch part {
+            case .text(let block):
+                let compressedBlock = cleanCompressedOutput(try await generateStructured(systemPrompt: systemPrompt, userText: block))
+                if !compressedBlock.isEmpty {
+                    outputParts.append(compressedBlock)
+                }
+            case .markdownImage(let line):
+                outputParts.append(line)
+            }
+        }
+        return outputParts.joined(separator: "\n\n")
     }
 
     nonisolated private var localCompressorPrompt: String {
