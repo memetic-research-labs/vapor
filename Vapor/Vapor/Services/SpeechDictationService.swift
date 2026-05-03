@@ -30,8 +30,8 @@ final class SpeechDictationService {
     private var hasDeliveredFinalResult: Bool = false
     private var isCancellationRequested: Bool = false
 
-    var onTextUpdate: ((String, Bool) -> Void)?
-    var onError: ((String) -> Void)?
+    var onTextUpdate: (@MainActor (String, Bool) -> Void)?
+    var onError: (@MainActor (String) -> Void)?
 
     init(locale: Locale = .current) {
         recognizer = SFSpeechRecognizer(locale: locale)
@@ -43,7 +43,7 @@ final class SpeechDictationService {
 
     // MARK: - Public API
 
-    func toggleDictation(onTextUpdate: @escaping (String, Bool) -> Void) {
+    func toggleDictation(onTextUpdate: @escaping @MainActor (String, Bool) -> Void) {
         switch isDictating {
         case true:
             logger.debug("Toggle OFF (stop dictation)")
@@ -54,7 +54,7 @@ final class SpeechDictationService {
         }
     }
 
-    func startDictation(onTextUpdate: @escaping (String, Bool) -> Void) {
+    func startDictation(onTextUpdate: @escaping @MainActor (String, Bool) -> Void) {
         startDictationInternal(onTextUpdate: onTextUpdate)
     }
 
@@ -135,7 +135,7 @@ final class SpeechDictationService {
 
     // MARK: - Private
 
-    private func startDictationInternal(onTextUpdate: @escaping (String, Bool) -> Void) {
+    private func startDictationInternal(onTextUpdate: @escaping @MainActor (String, Bool) -> Void) {
         guard recognitionTask == nil else { return }
 
         state = .idle
@@ -166,16 +166,28 @@ final class SpeechDictationService {
 
             let request = SFSpeechAudioBufferRecognitionRequest()
             request.shouldReportPartialResults = true
+            // Use on-device recognition when available: no network latency, better privacy.
+            if recognizer.supportsOnDeviceRecognition {
+                request.requiresOnDeviceRecognition = true
+            }
             self.recognitionRequest = request
 
             let inputNode = self.audioEngine.inputNode
-            let recordingFormat = inputNode.outputFormat(forBus: 0)
-            inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { [weak self] buffer, _ in
+            // 16 kHz mono Float32 — the sample rate speech models use internally.
+            // This cuts tap callbacks from ~43/s (at 44 kHz) to ~15/s and halves
+            // the buffer data, which directly reduces main-actor Task dispatches.
+            let speechFormat = AVAudioFormat(
+                commonFormat: .pcmFormatFloat32,
+                sampleRate: 16000,
+                channels: 1,
+                interleaved: false
+            ) ?? inputNode.outputFormat(forBus: 0)
+            inputNode.installTap(onBus: 0, bufferSize: 1024, format: speechFormat) { [weak self] buffer, _ in
                 guard let self = self else { return }
 
-                let channelCount = Int(buffer.format.channelCount)
+                // RMS-based input level for the VU meter (mono, so always channel 0).
                 let frameLength = Int(buffer.frameLength)
-                if channelCount > 0, let floatChannelData = buffer.floatChannelData, frameLength > 0 {
+                if frameLength > 0, let floatChannelData = buffer.floatChannelData {
                     let ptr = floatChannelData[0]
                     var sum: Float = 0
                     for i in 0..<frameLength {

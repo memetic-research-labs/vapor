@@ -671,9 +671,7 @@ struct ContentView: View {
                         toastService.showError(msg)
                     }
                     dictationService.startDictation(onTextUpdate: { text, isFinal in
-                        Task { @MainActor in
-                            viewModel.applyDictationTranscript(text, isFinal: isFinal)
-                        }
+                        viewModel.applyDictationTranscript(text, isFinal: isFinal)
                     })
                 } else {
                     dictationService.pauseDictation()
