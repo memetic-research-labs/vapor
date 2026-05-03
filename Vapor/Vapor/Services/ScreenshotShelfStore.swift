@@ -26,7 +26,7 @@ final class ScreenshotShelfStore {
     private var maxImageDimension: Int = 768
     private var pollTask: Task<Void, Never>?
     private var knownCandidates: [String: Date] = [:]
-    private var processingInFlight: Set<String> = []
+    private var processingTasks: [String: Task<AttachedImage?, Never>] = [:]
 
     private init() {}
 
@@ -97,12 +97,14 @@ final class ScreenshotShelfStore {
         let shaPrefix = String(asset.contentHash.prefix(8))
         Task { [weak self] in
             guard let self else { return }
-            let result = await self.imageProcessingService.processForInjection(asset: asset, maxDimension: self.maxImageDimension)
-            let path = result?.webpPath ?? self.webpURL(for: asset).path
+            guard let path = await self.ensureWebPPath(for: asset, shaPrefix: shaPrefix) else {
+                screenshotLogger.error("Failed to process screenshot before insertion: \(shaPrefix, privacy: .public)")
+                return
+            }
             let markdown = "![screenshot_\(shaPrefix)](\(path))"
             NotificationCenter.default.post(name: .vaporInsertContextItem, object: markdown)
+            NotificationCenter.default.post(name: .vaporScreenshotReadyForSidebar, object: SidebarScreenshotItem(shaPrefix: shaPrefix, mimeType: "image/webp"))
         }
-        processForSidebar(asset: asset)
     }
 
     func dismiss(_ asset: ImageAsset) {
@@ -160,25 +162,35 @@ final class ScreenshotShelfStore {
 
     private func processForSidebar(asset: ImageAsset) {
         let shaPrefix = String(asset.contentHash.prefix(8))
-        let targetURL = webpURL(for: asset)
         let item = SidebarScreenshotItem(shaPrefix: shaPrefix, mimeType: "image/webp")
 
-        if FileManager.default.fileExists(atPath: targetURL.path) {
-            NotificationCenter.default.post(name: .vaporScreenshotReadyForSidebar, object: item)
-            return
-        }
-
-        guard !processingInFlight.contains(shaPrefix) else { return }
-        processingInFlight.insert(shaPrefix)
-
         Task { @MainActor in
-            defer { processingInFlight.remove(shaPrefix) }
-            guard let _ = await imageProcessingService.processForInjection(asset: asset, maxDimension: maxImageDimension) else {
+            guard let _ = await ensureWebPPath(for: asset, shaPrefix: shaPrefix) else {
                 screenshotLogger.error("Failed to process screenshot for sidebar: \(shaPrefix, privacy: .public)")
                 return
             }
             NotificationCenter.default.post(name: .vaporScreenshotReadyForSidebar, object: item)
         }
+    }
+
+    private func ensureWebPPath(for asset: ImageAsset, shaPrefix: String) async -> String? {
+        let targetURL = webpURL(for: asset)
+        if FileManager.default.fileExists(atPath: targetURL.path) {
+            return targetURL.path
+        }
+
+        if let existingTask = processingTasks[shaPrefix] {
+            return await existingTask.value?.webpPath
+        }
+
+        let dimension = maxImageDimension
+        let task = Task { [imageProcessingService] in
+            await imageProcessingService.processForInjection(asset: asset, maxDimension: dimension)
+        }
+        processingTasks[shaPrefix] = task
+        let result = await task.value
+        processingTasks[shaPrefix] = nil
+        return result?.webpPath
     }
 
     private func webpURL(for asset: ImageAsset) -> URL {

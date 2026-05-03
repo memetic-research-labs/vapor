@@ -107,9 +107,7 @@ actor LocalLLMCompressor: Compressor {
         5. Use spaces between compressed words. Do not fuse words together.
         6. Preserve all markdown image references exactly as written — any ![...](...) line must appear unchanged with the same path.
 
-        Example:
-        Input: write a python script that uses pandas in order to allow one to easily query a standard real estate tax data set
-        Output: write python script use pandas query real estate tax data set
+        Style example: "write a python script that uses pandas in order to allow one to easily query a standard real estate tax data set" becomes "write python script use pandas query real estate tax data set".
 
         Do NOT generate additional examples. Do NOT include "Input:" or "Output:" labels in your response. Return ONLY the compressed text, nothing else.
         """

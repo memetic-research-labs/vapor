@@ -14,8 +14,7 @@ Run after reloading the extension in `chrome://extensions` (Developer mode).
 ## 1. Sidebar Basics
 
 - [ ] Click toolbar icon → sidebar opens with status dot, settings gear, screenshot grid
-- [ ] `Cmd+Shift+P` → sidebar opens
-- [ ] Side panel empty state shows "Attach screenshots in Vapor, then drag them here"
+- [ ] Side panel empty state shows "Screenshots appear here" and "right-click a thumbnail to copy"
 - [ ] Connection dot is green (connected) or red (disconnected)
 - [ ] Click "Clear" with no images → no error, empty state stays
 - [ ] Click "Verbose" toggle → log container appears
@@ -109,4 +108,4 @@ Right-click → Copy Image is the current workaround.
 - Programmatic clipboard write is blocked in side panel context — tracked in #23
 - Drag-and-drop from side panel to webpage does NOT work (Chrome strips cross-context `DataTransfer` data)
 - Right-click → Copy Image on thumbnails is the only reliable image copy method
-- `sidePanel.open()` requires a user gesture in MV3 — the keyboard shortcut and toolbar icon always work
+- `sidePanel.open()` requires a user gesture in MV3 — the toolbar icon opens the sidebar

@@ -106,21 +106,14 @@ globalThis.chrome = {
 | `findSubmitButton` proximity | Among equal scores, picks closer button |
 | `executeSubmit` button click | Calls `.click()` on resolved button |
 | `executeSubmit` enter key | Falls back to `Enter` keydown/keypress/keyup events |
-| `findFileInput` via config | Uses `imageUploadSelector` from platform config |
-| `findFileInput` dynamic discovery | Finds `input[type="file"][accept*="image"]` |
-| `injectImages` drag-drop path | Dispatches `dragenter` + `dragover` + `drop` on drop target |
-| `injectImages` file input fallback | Sets `files` on file input and dispatches `change` event |
-| `injectImages` multiple images | Processes sequentially with delays |
-| `injectImages` no images | Early return, no errors |
 
 #### `sidepanel.js`
 
 | Test | What it verifies |
 |------|-----------------|
 | `UPDATE_IMAGES` | Creates thumbnails from base64 data, renders grid |
-| `UPDATE_PROMPT_TEXT` | Renders prompt text section |
 | `CLEAR_IMAGES` | Revokes blob URLs, clears array, renders empty state |
-| Drag start | Sets `image/webp` and `Files` on `DataTransfer`, adds `File` object |
+| Thumbnail click | Shows right-click Copy Image guidance |
 | Log toggle | Shows/hides log container, persists to `chrome.storage.local` |
 
 #### `config/platform-config.js`
@@ -129,7 +122,7 @@ globalThis.chrome = {
 |------|-----------------|
 | Known hostnames | Returns correct config for `chatgpt.com`, `claude.ai`, `gemini.google.com`, etc. |
 | Unknown hostname | Returns `_default` config |
-| Config shape | Has `promptSelectors`, `imageDropTarget`, `imageUploadSelector` for all platforms |
+| Config shape | Has `promptSelectors` for all platforms |
 
 #### `background.js`
 
@@ -255,7 +248,7 @@ tests/
 
 3. **No eval in content script isolated world**: Can't directly test content script internals from Playwright. Test via observed DOM mutations instead.
 
-4. **Synthetic event limitations**: Browser may silently ignore synthetic `DragEvent` or `ClipboardEvent`. Unit tests verify the code path; E2E tests verify the DOM effects (which may be empty for some platforms). Sidebar drag-and-drop (real user gesture) is the only fully reliable image injection method.
+4. **Synthetic event limitations**: Browser may silently ignore synthetic `DragEvent` or `ClipboardEvent`. Vapor does not currently auto-inject images. The supported image flow is right-click thumbnail → Copy Image, then paste into the AI chat.
 
 5. **Fixed extension ID for E2E**: Use a `key` field in manifest for consistent extension IDs across test runs.
 
@@ -263,6 +256,6 @@ tests/
 
 ## When to implement
 
-- **Unit tests**: Good first step — fast to write, fast to run, catches regressions in `resolveTarget`, `setValue`, `injectImages` path selection, sidebar rendering.
+- **Unit tests**: Good first step — fast to write, fast to run, catches regressions in `resolveTarget`, `setValue`, sidebar rendering, and storage handling.
 - **E2E tests**: Higher value when the extension stabilizes and we want CI protection against Chrome API changes or platform DOM changes.
 - **Start with**: Unit tests for `prompt-injector.js` (most complex logic, most likely to break) and `sidepanel.js` (new code). E2E for extension loading and side panel page.

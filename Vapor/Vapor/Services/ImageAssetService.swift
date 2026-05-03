@@ -92,7 +92,7 @@ final class ImageAssetService {
     nonisolated private static func archiveDestination(canonicalName: String) -> URL {
         let archiveDir = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Desktop/vapor-screenshots-webp/original_png", isDirectory: true)
-        try? FileManager.default.createDirectory(at: archiveDir, withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(at: archiveDir, withIntermediateDirectories: true, attributes: nil)
         return archiveDir.appendingPathComponent("\(canonicalName).png")
     }
 
@@ -110,7 +110,11 @@ final class ImageAssetService {
         Task.detached(priority: .utility) { [weak self] in
             while true {
                 let item: (source: URL, destination: URL)? = await MainActor.run { [weak self] in
-                    guard let self, !self.archiveQueue.isEmpty else { return nil }
+                    guard let self else { return nil }
+                    guard !self.archiveQueue.isEmpty else {
+                        self.isArchiving = false
+                        return nil
+                    }
                     return self.archiveQueue.removeFirst()
                 }
                 guard let item else { break }
@@ -129,9 +133,6 @@ final class ImageAssetService {
                 }
 
                 try? await Task.sleep(for: .milliseconds(100))
-            }
-            await MainActor.run { [weak self] in
-                self?.isArchiving = false
             }
         }
     }

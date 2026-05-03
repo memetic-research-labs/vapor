@@ -44,7 +44,7 @@ struct VaporApp: App {
             in: .userDomainMask
         )[0]
         let storeDir = appSupport.appendingPathComponent("lol.mrl.app.Vapor", isDirectory: true)
-        try? FileManager.default.createDirectory(at: storeDir, withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(at: storeDir, withIntermediateDirectories: true, attributes: nil)
         return storeDir.appendingPathComponent("Vapor.store")
     }
 
@@ -184,6 +184,7 @@ struct VaporApp: App {
                     contextQueueService.setModelContext(sharedModelContainer.mainContext)
                     screenshotShelfStore.setModelContext(sharedModelContainer.mainContext)
                     screenshotShelfStore.setContextQueueService(contextQueueService)
+                    screenshotShelfStore.setMaxImageDimension(preferences.maxImageDimension.rawValue)
                     screenshotShelfStore.start()
                     Task { @MainActor in await vectorizationService.initialize() }
                     setupBrowserBridge()
@@ -198,6 +199,9 @@ struct VaporApp: App {
                             NSApp.activate(ignoringOtherApps: true)
                         }
                     }
+                }
+                .onChange(of: preferences.maxImageDimension) { _, newValue in
+                    screenshotShelfStore.setMaxImageDimension(newValue.rawValue)
                 }
                 .onDisappear {
                     if let onboardingObserver {

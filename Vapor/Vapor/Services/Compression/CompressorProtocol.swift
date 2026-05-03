@@ -70,12 +70,6 @@ extension Compressor {
         if result.lowercased().hasPrefix("output:") {
             result = String(result.dropFirst(7)).trimmingCharacters(in: .whitespacesAndNewlines)
         }
-        if let inputRange = result.range(of: "\nInput:", options: .caseInsensitive) {
-            result = String(result[..<inputRange.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-        if let inputRange = result.range(of: "\n\n---", options: .regularExpression) {
-            result = String(result[..<inputRange.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
-        }
         return result
     }
 

@@ -27,6 +27,8 @@ function escapeHtml(str) {
 }
 
 const images = [];
+const pendingLogEntries = [];
+const MAX_LOG_ENTRIES = 200;
 let verboseLogging = false;
 let settingsOpen = false;
 let state = {
@@ -60,11 +62,37 @@ settingsBtn.innerHTML = icon('settings');
 clearBtn.innerHTML = icon('trash');
 
 function log(level, msg) {
+  const shouldShow = verboseLogging || level === 'warn' || level === 'error';
+  if (!shouldShow) return;
+
   const ts = new Date().toLocaleTimeString('en-US', { hour12: false });
+  const text = `[${ts}] ${msg}`;
+
+  pendingLogEntries.push({ level, text });
+  if (pendingLogEntries.length > MAX_LOG_ENTRIES) {
+    pendingLogEntries.splice(0, pendingLogEntries.length - MAX_LOG_ENTRIES);
+  }
+
+  if (!verboseLogging) return;
+
   const entry = document.createElement('div');
   entry.className = `log-entry ${level}`;
-  entry.textContent = `[${ts}] ${msg}`;
+  entry.textContent = text;
   logContainer.appendChild(entry);
+  while (logContainer.children.length > MAX_LOG_ENTRIES) {
+    logContainer.removeChild(logContainer.firstChild);
+  }
+  logContainer.scrollTop = logContainer.scrollHeight;
+}
+
+function renderBufferedLogs() {
+  logContainer.innerHTML = '';
+  for (const { level, text } of pendingLogEntries) {
+    const entry = document.createElement('div');
+    entry.className = `log-entry ${level}`;
+    entry.textContent = text;
+    logContainer.appendChild(entry);
+  }
   logContainer.scrollTop = logContainer.scrollHeight;
 }
 
@@ -306,7 +334,7 @@ chrome.storage.local.get(['vaporSettingsExpanded', 'vaporVerboseLogging'], (item
     toastTimer = setTimeout(() => toast.classList.remove('show'), 2000);
   }
 
-  async function loadImagesFromStorage() {
+async function loadImagesFromStorage() {
   for (const img of images) {
     URL.revokeObjectURL(img.dataUrl);
   }
@@ -314,21 +342,23 @@ chrome.storage.local.get(['vaporSettingsExpanded', 'vaporVerboseLogging'], (item
 
   const data = await chrome.storage.local.get(['vaporScreenshotOrder']);
   const order = data.vaporScreenshotOrder || [];
+  const keys = order.map(shaPrefix => `vapor_img_${shaPrefix}`);
+  const entries = keys.length > 0 ? await chrome.storage.local.get(keys) : {};
 
   for (const shaPrefix of order) {
     const key = `vapor_img_${shaPrefix}`;
-    const result = await chrome.storage.local.get(key);
-    const entry = result[key];
+    const entry = entries[key];
     if (!entry || !entry.base64) continue;
+    const mimeType = entry.mimeType || 'image/webp';
 
     const binary = atob(entry.base64);
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    const blob = new Blob([bytes], { type: entry.mimeType });
+    const blob = new Blob([bytes], { type: mimeType });
     const url = URL.createObjectURL(blob);
 
     images.push({
-      mimeType: entry.mimeType,
+      mimeType: mimeType,
       size: blob.size,
       blob: blob,
       dataUrl: url,
@@ -344,7 +374,12 @@ chrome.storage.local.get(['vaporSettingsExpanded', 'vaporVerboseLogging'], (item
 
 function render() {
   if (images.length === 0) {
-    contentEl.innerHTML = '<div class="empty"><div class="empty-icon">' + iconEl('imagePlus', 'icon-2xl') + '</div><div class="empty-text">Drag screenshots to AI chats<br>to attach them as images</div></div>';
+    contentEl.innerHTML = `
+      <div class="empty">
+        <div class="empty-icon">${iconEl('imagePlus', 'icon-2xl')}</div>
+        <div class="empty-text">Screenshots appear here<br>right-click a thumbnail to copy</div>
+      </div>
+    `;
     screenshotCount.style.display = 'none';
     return;
   }
@@ -367,8 +402,9 @@ function render() {
   contentEl.innerHTML = html;
 
   document.querySelectorAll('.thumb-card').forEach(card => {
-    card.addEventListener('click', async (e) => {
-      const idx = parseInt(card.dataset.index, 10) || parseInt(e.target.dataset.index, 10);
+    card.addEventListener('click', () => {
+      const idx = Number.parseInt(card.dataset.index, 10);
+      if (Number.isNaN(idx)) return;
       const img = images[idx];
       if (!img) return;
 
@@ -392,7 +428,11 @@ logToggle.addEventListener('click', () => {
   logToggle.textContent = verboseLogging ? 'Compact' : 'Verbose';
   logContainer.style.display = verboseLogging ? 'block' : 'none';
   chrome.storage.local.set({ vaporVerboseLogging: verboseLogging });
-  if (!verboseLogging) logContainer.innerHTML = '';
+  if (verboseLogging) {
+    renderBufferedLogs();
+  } else {
+    logContainer.innerHTML = '';
+  }
 });
 
 window.addEventListener('beforeunload', () => {
@@ -421,6 +461,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === 'INJECTION_LOG') {
     const level = message.level || 'ok';
     log(level, message.message || '');
+    return true;
+  }
+
+  if (message.type === 'SIDEBAR_ERROR') {
+    const msg = message.message || 'Sidebar error';
+    showToast(msg);
+    log('error', msg);
     return true;
   }
 

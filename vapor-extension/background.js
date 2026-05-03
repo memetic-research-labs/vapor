@@ -288,8 +288,6 @@ async function handleSidebarScreenshot(data) {
     timestamp: data.timestamp || Math.floor(Date.now() / 1000)
   };
 
-  await chrome.storage.local.set({ [key]: entry });
-
   const { vaporScreenshotOrder = [] } = await chrome.storage.local.get('vaporScreenshotOrder');
   const order = vaporScreenshotOrder.filter(s => s !== shaPrefix);
   order.unshift(shaPrefix);
@@ -300,7 +298,26 @@ async function handleSidebarScreenshot(data) {
     if (DEBUG) console.log('[Vapor] Pruned sidebar screenshot:', removed);
   }
 
-  await chrome.storage.local.set({ vaporScreenshotOrder: order });
+  let writeSucceeded = false;
+  while (!writeSucceeded) {
+    try {
+      await chrome.storage.local.set({ [key]: entry, vaporScreenshotOrder: order });
+      writeSucceeded = true;
+    } catch (err) {
+      const removed = [...order].reverse().find(s => s !== shaPrefix);
+      if (!removed) {
+        console.error('[Vapor] Failed to store sidebar screenshot:', err);
+        broadcastToSidebar({
+          type: 'SIDEBAR_ERROR',
+          message: 'Could not store screenshot. Chrome extension storage is full.'
+        });
+        return;
+      }
+      order.splice(order.indexOf(removed), 1);
+      await chrome.storage.local.remove(`vapor_img_${removed}`);
+      if (DEBUG) console.log('[Vapor] Pruned screenshot after storage failure:', removed);
+    }
+  }
 
   broadcastToSidebar({ type: 'UPDATE_IMAGES' });
   if (DEBUG) console.log('[Vapor] Stored sidebar screenshot:', shaPrefix, `(${(entry.base64.length * 0.75 / 1024).toFixed(0)}KB)`);
