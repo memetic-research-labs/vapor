@@ -62,15 +62,19 @@ extension Compressor {
     /// Clean LLM output by stripping quotes, whitespace, and common wrapper artifacts.
     nonisolated func cleanCompressedOutput(_ text: String) -> String {
         var result = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        // Strip wrapping quotes (single or double)
         while (result.hasPrefix("\"") && result.hasSuffix("\"")) ||
               (result.hasPrefix("'") && result.hasSuffix("'")) {
             result = String(result.dropFirst().dropLast())
             result = result.trimmingCharacters(in: .whitespacesAndNewlines)
         }
-        // Strip leading "Output:" if the model echoes the format
         if result.lowercased().hasPrefix("output:") {
             result = String(result.dropFirst(7)).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        if let inputRange = result.range(of: "\nInput:", options: .caseInsensitive) {
+            result = String(result[..<inputRange.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        if let inputRange = result.range(of: "\n\n---", options: .regularExpression) {
+            result = String(result[..<inputRange.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
         }
         return result
     }

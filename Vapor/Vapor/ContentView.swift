@@ -83,8 +83,14 @@ struct ContentView: View {
             .safeAreaInset(edge: .bottom) {
                 if windowManager.windowState == .expanded {
                     Button(action: { openWindow(id: "activity-log") }) {
-                        HStack(spacing: 0) {
-                            Text(statusBar.statusMessage)
+                        HStack(spacing: 6) {
+                            if compressionService.statusMessage != "Ready" && !compressionService.statusMessage.hasPrefix("Done") && !compressionService.statusMessage.isEmpty {
+                                VaporActivitySpinner(size: 10)
+                            }
+
+                            Text(compressionService.statusMessage != "Ready" && !compressionService.statusMessage.isEmpty
+                                 ? compressionService.statusMessage
+                                 : statusBar.statusMessage)
                                 .font(.system(size: 10))
                                 .foregroundColor(.secondary)
                                 .lineLimit(1)
@@ -109,7 +115,9 @@ struct ContentView: View {
             }
             .onChange(of: compressionService.statusMessage) { _, newValue in
                 guard !newValue.isEmpty, newValue != "Ready" else { return }
-                statusBar.setCompressionStatus(newValue)
+                if newValue.hasPrefix("Done") || newValue.localizedCaseInsensitiveContains("failed") {
+                    statusBar.setCompressionStatus(newValue)
+                }
             }
             .alert("Browser Server Error", isPresented: .init(
                 get: { browserBridge.portConflict },
@@ -556,13 +564,15 @@ struct ContentView: View {
             try await viewModel.compressAndCopy()
             if !viewModel.compressedContent.isEmpty {
                 let hasCompressedBefore = UserDefaults.standard.bool(forKey: "hasCompressedBefore")
-                if !hasCompressedBefore {
+                if viewModel.contentChangedDuringCompression {
+                    toastService.showInfo("Compressed earlier snapshot copied — current draft has changes")
+                } else if !hasCompressedBefore {
                     toastService.showInfo("Compressed prompt copied. Switch to your terminal or AI tool and press ⌘V.")
                     UserDefaults.standard.set(true, forKey: "hasCompressedBefore")
                 } else {
                     toastService.showSuccess("Compressed & copied (\(String(format: "%.2f", viewModel.compressionRatio)) ratio)")
                 }
-                if preferences.autoMinimizeEnabled {
+                if preferences.autoMinimizeEnabled && !viewModel.contentChangedDuringCompression {
                     windowManager.minimize()
                 }
             }

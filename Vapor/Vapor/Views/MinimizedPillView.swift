@@ -155,8 +155,7 @@ struct MinimizedPillView: View {
                 .frame(width: 10, height: 10)
 
         case .modelLoading:
-            ProgressView()
-                .controlSize(.mini)
+            VaporActivitySpinner(size: 12)
 
         case .dictating:
             HStack(spacing: 4) {
@@ -170,8 +169,7 @@ struct MinimizedPillView: View {
             }
 
         case .compressing:
-            ProgressView()
-                .controlSize(.mini)
+            VaporActivitySpinner(size: 12)
 
         case .copied:
             Image(systemName: "checkmark.circle.fill")

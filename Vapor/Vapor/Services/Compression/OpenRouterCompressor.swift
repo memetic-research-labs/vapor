@@ -20,25 +20,36 @@ actor OpenRouterCompressor: Compressor {
         }
 
         let systemPrompt = compressionSystemPrompt
+        let originalTokens = await countTokens(text)
+        let maxOutputTokens = Self.computeMaxOutputTokens(inputTokens: originalTokens)
 
-        let request = try buildRequest(systemPrompt: systemPrompt, userText: text)
+        let request = try buildRequest(
+            systemPrompt: systemPrompt,
+            userText: text,
+            maxOutputTokens: maxOutputTokens
+        )
         let (data, response) = try await URLSession.shared.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse,
               httpResponse.statusCode == 200 else {
             let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
-            throw CompressionError.apiError("HTTP \(statusCode)")
+            let body = String(data: data, encoding: .utf8) ?? ""
+            throw CompressionError.apiError("HTTP \(statusCode): \(body.prefix(200))")
         }
 
         let result = try JSONDecoder().decode(OpenRouterResponse.self, from: data)
-        let compressed = cleanCompressedOutput(result.choices.first?.message.content ?? "")
+        let rawContent = result.choices.first?.message.content ?? ""
+        let cleaned = cleanCompressedOutput(rawContent)
 
-        let originalTokens = await countTokens(text)
-        let compressedTokens = await countTokens(compressed)
+        let compressedTokens = await countTokens(cleaned)
         let ratio = originalTokens > 0 ? Double(compressedTokens) / Double(originalTokens) : 0.0
 
+        guard Self.isOutputValid(cleaned: cleaned, compressedTokens: compressedTokens, originalTokens: originalTokens) else {
+            throw CompressionError.apiError("Compressed output failed validation — output was longer than input or contained hallucinated examples. Try again.")
+        }
+
         return CompressedResult(
-            text: compressed,
+            text: cleaned,
             originalTokens: originalTokens,
             compressedTokens: compressedTokens,
             ratio: ratio,
@@ -48,8 +59,6 @@ actor OpenRouterCompressor: Compressor {
 
     // MARK: - Request building
 
-    /// Builds a base URLRequest with the required OpenRouter headers.
-    /// Exposed as `static` so the test sidebar can reuse the same header configuration.
     static func buildBaseRequest(apiKey: String) -> URLRequest {
         var request = URLRequest(url: URL(string: "https://openrouter.ai/api/v1/chat/completions")!)
         request.httpMethod = "POST"
@@ -59,17 +68,32 @@ actor OpenRouterCompressor: Compressor {
         return request
     }
 
-    private func buildRequest(systemPrompt: String, userText: String) throws -> URLRequest {
+    private func buildRequest(systemPrompt: String, userText: String, maxOutputTokens: Int) throws -> URLRequest {
         var request = OpenRouterCompressor.buildBaseRequest(apiKey: apiKey)
         let body: [String: Any] = [
             "model": model,
             "messages": [
                 ["role": "system", "content": systemPrompt],
                 ["role": "user", "content": userText]
-            ]
+            ],
+            "max_tokens": maxOutputTokens,
+            "temperature": 0.1,
+            "stop": ["\n\nInput:", "\n\nOutput:", "\n\n---"]
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         return request
+    }
+
+    nonisolated static func computeMaxOutputTokens(inputTokens: Int) -> Int {
+        min(768, max(96, Int(Double(inputTokens) * 0.65)))
+    }
+
+    nonisolated static func isOutputValid(cleaned: String, compressedTokens: Int, originalTokens: Int) -> Bool {
+        if originalTokens < 16 { return true }
+        let acceptableMax = max(originalTokens - 8, Int(Double(originalTokens) * 0.85))
+        if compressedTokens > acceptableMax { return false }
+        if cleaned.contains("\nInput:") || cleaned.contains("\nOutput:") { return false }
+        return true
     }
 }
 

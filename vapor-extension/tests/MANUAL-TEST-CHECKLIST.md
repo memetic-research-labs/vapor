@@ -91,6 +91,19 @@ Right-click → Copy Image is the current workaround.
 
 ---
 
+## 8. Compression Preservation Rules
+
+- [ ] Prompt containing file paths (e.g., `/Users/.../file.swift`) is sent — paths preserved exactly after compression
+- [ ] Prompt containing numbers (e.g., `HTTP 200`, `$200,000`, `45 minutes`) is sent — numbers preserved
+- [ ] Prompt containing hashes/IDs (e.g., `screenshot_bcd1013e`, `sha:abc123`) is sent — preserved
+- [ ] Prompt containing URLs (e.g., `https://example.com/path`) is sent — preserved
+- [ ] Prompt containing code symbols (e.g., `var`, `func`, `println!`) is sent — preserved
+- [ ] Compressed output does NOT contain hallucinated `Input:` / `Output:` example pairs
+- [ ] Compressed output is NOT longer than the original
+- [ ] If compression validation fails, error is shown (nothing copied to clipboard)
+
+---
+
 ## Notes
 
 - Programmatic clipboard write is blocked in side panel context — tracked in #23
