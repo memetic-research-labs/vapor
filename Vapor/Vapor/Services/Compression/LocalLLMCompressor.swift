@@ -121,10 +121,10 @@ actor LocalLLMCompressor: Compressor {
         Follow these rules:
         1. Remove unnecessary words (articles, filler phrases, repetition).
         2. Keep all numbers, proper nouns, URLs, file paths, identifiers, hashes, code symbols, filenames, and markdown references exactly as-is.
-        3. Use short clear phrases instead of full sentences.
+        3. Use compact noun/verb phrases instead of full sentences.
         4. Keep negations explicit (not, never, unless, no).
-        5. Use spaces between compressed words. Do not fuse words together.
-        6. Preserve all markdown image references exactly as written — any ![...](...) line must appear unchanged with the same path.
+        5. Use spaces between semantic chunks. Do not fuse unrelated words into unreadable compounds.
+        6. Preserve every markdown image reference exactly as written. If the input contains any line like ![...](...), copy that whole line verbatim into compressed, with the same alt text, path, and relative position.
         7. Do not invent screenshots, markdown image lines, file paths, hashes, URLs, numbers, or filenames that are not in the input.
 
         Style example: "write a python script that uses pandas in order to allow one to easily query a standard real estate tax data set" becomes "write python script use pandas query real estate tax data set".
