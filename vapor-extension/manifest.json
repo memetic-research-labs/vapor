@@ -39,13 +39,6 @@
         "mac": "Command+Shift+C"
       },
       "description": "Capture current page"
-    },
-    "open-side-panel": {
-      "suggested_key": {
-        "default": "Alt+Shift+P",
-        "mac": "Command+Shift+P"
-      },
-      "description": "Open Vapor screenshot sidebar"
     }
   },
   "icons": {

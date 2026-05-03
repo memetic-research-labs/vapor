@@ -296,7 +296,17 @@ chrome.storage.local.get(['vaporSettingsExpanded', 'vaporVerboseLogging'], (item
   logContainer.style.display = verboseLogging ? 'block' : 'none';
 });
 
-async function loadImagesFromStorage() {
+  let toastTimer = null;
+
+  function showToast(text) {
+    const toast = document.getElementById('toast');
+    toast.textContent = text;
+    toast.classList.add('show');
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove('show'), 2000);
+  }
+
+  async function loadImagesFromStorage() {
   for (const img of images) {
     URL.revokeObjectURL(img.dataUrl);
   }
@@ -347,8 +357,8 @@ function render() {
     const img = images[i];
     const sizeKB = (img.size / 1024).toFixed(0);
     const hash = img.shaPrefix ? `<span class="thumb-hash">${escapeHtml(img.shaPrefix)}</span>` : '';
-    html += `<div class="thumb-card" draggable="true" data-index="${i}" title="${escapeHtml(img.mimeType)}, ${sizeKB}KB — drag to AI chat">
-      <img src="${img.dataUrl}" alt="Screenshot" />
+    html += `<div class="thumb-card" data-index="${i}">
+      <img src="${img.dataUrl}" alt="Screenshot" data-index="${i}" />
       <div class="thumb-info">${hash}<span class="thumb-size">${sizeKB}KB</span></div>
     </div>`;
   }
@@ -356,25 +366,14 @@ function render() {
 
   contentEl.innerHTML = html;
 
-  document.querySelectorAll('.thumb-card[draggable="true"]').forEach(card => {
-    card.addEventListener('dragstart', (e) => {
-      const idx = parseInt(card.dataset.index, 10);
+  document.querySelectorAll('.thumb-card').forEach(card => {
+    card.addEventListener('click', async (e) => {
+      const idx = parseInt(card.dataset.index, 10) || parseInt(e.target.dataset.index, 10);
       const img = images[idx];
       if (!img) return;
 
-      log('ok', `Dragging screenshot ${img.shaPrefix || idx + 1} (${img.mimeType}, ${(img.size / 1024).toFixed(0)}KB)`);
-
-      e.dataTransfer.effectAllowed = 'copy';
-      e.dataTransfer.setData('image/webp', img.dataUrl);
-      e.dataTransfer.setData('Files', img.dataUrl);
-
-      const filename = img.shaPrefix ? `screenshot_${img.shaPrefix}.webp` : `screenshot_${idx + 1}.webp`;
-      const file = new File(
-        [img.blob],
-        filename,
-        { type: img.mimeType }
-      );
-      e.dataTransfer.items.add(file);
+      showToast('Right-click image → Copy to clipboard');
+      log('ok', `Selected ${img.shaPrefix || 'screenshot'} — right-click to copy`);
     });
   });
 }

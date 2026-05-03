@@ -672,13 +672,6 @@ chrome.action.onClicked.addListener(async (tab) => {
 });
 
 chrome.commands.onCommand.addListener(async (command) => {
-  if (command === 'open-side-panel') {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (tab?.id) {
-      chrome.sidePanel.open({ tabId: tab.id }).catch(() => {});
-    }
-    return;
-  }
 
   if (command !== 'capture-page') return;
 

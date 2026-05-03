@@ -412,14 +412,14 @@
       position: relative;
       border-radius: var(--v-radius);
       overflow: hidden;
-      cursor: grab;
       border: 2px solid var(--v-border);
       transition: border-color 0.15s, transform 0.12s;
       aspect-ratio: 16 / 10;
       background: var(--v-surface);
+      cursor: pointer;
     }
 
-    .thumb-card:active { cursor: grabbing; transform: scale(0.97); }
+    .thumb-card:active { transform: scale(0.97); }
     .thumb-card:hover { border-color: var(--v-accent); }
 
     .thumb-card img {
@@ -427,9 +427,7 @@
       height: 100%;
       object-fit: cover;
       display: block;
-      -webkit-user-drag: element;
       user-select: none;
-      pointer-events: none;
     }
 
     .thumb-info {
@@ -503,6 +501,30 @@
     .log-entry.warn { color: var(--v-warning); }
     .log-entry.ok { color: var(--v-success); }
 
+    .toast {
+      position: fixed;
+      bottom: 16px;
+      left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: var(--v-text);
+      color: var(--v-bg);
+      font-size: 12px;
+      font-weight: 600;
+      padding: 8px 16px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      z-index: 100;
+      opacity: 0;
+      transition: transform 0.25s ease, opacity 0.25s ease;
+      pointer-events: none;
+      white-space: nowrap;
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
     /* ---- LIGHT MODE ---- */
     @media (prefers-color-scheme: light) {
       :root {
@@ -555,6 +577,7 @@
       </div>
     </div>
     <div id="content"></div>
+    <div class="toast" id="toast"></div>
     <div class="log-section">
       <div class="log-header">
         <span class="log-label">Log</span>
