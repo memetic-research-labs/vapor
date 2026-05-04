@@ -9,6 +9,20 @@ private let logger = Logger(subsystem: "lol.mrl.app.Vapor", category: "Dictation
 @MainActor
 @Observable
 final class SpeechDictationService {
+    enum RecognitionRoute: String {
+        case automatic = "Automatic"
+        case unavailable = "Unavailable"
+
+        var description: String {
+            switch self {
+            case .automatic:
+                return "System-selected; may use on-device or Apple network recognition."
+            case .unavailable:
+                return "Speech recognizer is unavailable for the current locale."
+            }
+        }
+    }
+
     enum DictationState: Equatable {
         case idle
         case requestingPermission
@@ -21,6 +35,7 @@ final class SpeechDictationService {
     private(set) var isDictating: Bool = false
     private(set) var currentTranscript: String = ""
     private(set) var inputLevel: Float = 0.0
+    private(set) var lastRecognitionRoute: RecognitionRoute = .unavailable
 
     private let recognizer: SFSpeechRecognizer?
     private let audioEngine = AVAudioEngine()
@@ -40,8 +55,22 @@ final class SpeechDictationService {
         recognizer = SFSpeechRecognizer(locale: locale)
         if recognizer?.isAvailable == true {
             state = .ready
+            lastRecognitionRoute = .automatic
         }
         logger.debug("Initialized for locale: \(self.recognizer?.locale.identifier ?? "default"), available: \(self.recognizer?.isAvailable ?? false)")
+    }
+
+    var localeIdentifier: String {
+        recognizer?.locale.identifier ?? Locale.current.identifier
+    }
+
+    var supportsOnDeviceRecognition: Bool {
+        recognizer?.supportsOnDeviceRecognition == true
+    }
+
+    var recognizerAvailabilityDescription: String {
+        guard let recognizer else { return "Unavailable" }
+        return recognizer.isAvailable ? "Available" : "Unavailable"
     }
 
     // MARK: - Public API
@@ -161,6 +190,7 @@ final class SpeechDictationService {
                 let msg = "Speech recognizer is not available on this Mac."
                 logger.error("Dictation blocked: \(msg)")
                 self.state = .error(msg)
+                self.lastRecognitionRoute = .unavailable
                 self.onError?(msg)
                 return
             }
@@ -169,6 +199,9 @@ final class SpeechDictationService {
 
             let request = SFSpeechAudioBufferRecognitionRequest()
             request.shouldReportPartialResults = true
+            // Do not require on-device recognition here. Automatic mode lets dictation
+            // continue for locales or installs where local speech assets are unavailable.
+            self.lastRecognitionRoute = .automatic
             self.recognitionRequest = request
 
             let inputNode = self.audioEngine.inputNode
@@ -277,6 +310,7 @@ final class SpeechDictationService {
         recognitionRequest = nil
         recognitionTask?.cancel()
         recognitionTask = nil
+        lastInputLevelUpdateTime = 0
 
         isDictating = false
         inputLevel = 0.0

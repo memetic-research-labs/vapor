@@ -9,6 +9,7 @@ struct ContentView: View {
     @Environment(WindowManager.self) private var windowManager
     @Environment(UserPreferences.self) private var preferences
     @Environment(CompressionService.self) private var compressionService
+    @Environment(SpeechDictationService.self) private var dictationService
     @Environment(BrowserBridge.self) private var browserBridge
     @Environment(MainWindowFocusStore.self) private var focusStore
     @Environment(StatusBarService.self) private var statusBar
@@ -16,7 +17,6 @@ struct ContentView: View {
     @State private var viewModel = EditorViewModel()
     @State private var historyService = PromptHistoryService()
     @State private var toastService = ToastService()
-    @State private var dictationService = SpeechDictationService()
     @State private var workspace: AppWorkspace = .compose
     @State private var showContextTray = false
     @State private var isEditorFocused = false
