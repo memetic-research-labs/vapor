@@ -9,6 +9,7 @@ private let logger = Logger(subsystem: "lol.mrl.app.Vapor", category: "Settings"
 
 struct SettingsView: View {
     @Bindable var compressionService: CompressionService
+    @Bindable var dictationService: SpeechDictationService
     let preferences: UserPreferences
     @Environment(BrowserBridge.self) private var browserBridge
     @Environment(VectorizationService.self) private var vectorizationService
@@ -311,6 +312,7 @@ struct SettingsView: View {
     private var telemetryTab: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
+                telemetryCurrentConfigurationBox
                 telemetryServiceEventsBox
                 telemetryBackendPerformanceBox
                 telemetryRecentHistoryBox
@@ -320,7 +322,93 @@ struct SettingsView: View {
         }
         .onAppear {
             if selectedTab == .telemetry {
+                loadOpenRouterSettings()
                 Task { await compressionService.checkAvailability() }
+            }
+        }
+    }
+
+    private var telemetryCurrentConfigurationBox: some View {
+        GroupBox("Current Configuration") {
+            VStack(alignment: .leading, spacing: 10) {
+                settingsStatusRow(
+                    title: "Compression",
+                    value: currentCompressionSummary,
+                    detail: compressionService.isSelectedCompressorReady ? "Ready" : "Unavailable or still loading",
+                    systemImage: compressionService.isSelectedCompressorReady ? "checkmark.circle.fill" : "exclamationmark.triangle.fill",
+                    color: compressionService.isSelectedCompressorReady ? .green : .orange
+                )
+
+                Divider()
+
+                settingsStatusRow(
+                    title: "Dictation",
+                    value: dictationService.lastRecognitionRoute.rawValue,
+                    detail: dictationService.lastRecognitionRoute.description,
+                    systemImage: dictationService.supportsOnDeviceRecognition ? "lock.shield.fill" : "network",
+                    color: dictationService.supportsOnDeviceRecognition ? .green : .orange
+                )
+
+                settingsStatusRow(
+                    title: "Speech Recognizer",
+                    value: "\(dictationService.recognizerAvailabilityDescription) · \(dictationService.localeIdentifier)",
+                    detail: dictationService.supportsOnDeviceRecognition
+                        ? "On-device recognition is supported, but automatic mode does not guarantee it."
+                        : "On-device recognition is not reported as supported; Apple may use network recognition.",
+                    systemImage: "waveform",
+                    color: .gray
+                )
+
+                Divider()
+
+                settingsStatusRow(
+                    title: "Browser Bridge",
+                    value: browserBridge.isRunning ? "Running" : "Stopped",
+                    detail: browserBridge.isRunning
+                        ? "Chrome extension can connect on port \(preferences.embeddedServerPort)."
+                        : "Browser integration is disabled or the bridge is not running.",
+                    systemImage: browserBridge.isRunning ? "globe.badge.chevron.backward" : "globe.badge.exclamationmark",
+                    color: browserBridge.isRunning ? .green : .gray
+                )
+            }
+            .padding(8)
+        }
+    }
+
+    private var currentCompressionSummary: String {
+        switch compressionService.selectedCompressor {
+        case .localLLM:
+            return "Local LLM · \(compressionService.selectedLocalModel.displayName)"
+        case .openRouter:
+            return "OpenRouter · \(selectedCompressionOpenRouterModel)"
+        }
+    }
+
+    private func settingsStatusRow(
+        title: String,
+        value: String,
+        detail: String,
+        systemImage: String,
+        color: Color
+    ) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: systemImage)
+                .font(.system(size: 12))
+                .foregroundColor(color)
+                .frame(width: 18)
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(title)
+                        .font(.system(size: 12, weight: .semibold))
+                    Text(value)
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundColor(.secondary)
+                }
+                Text(detail)
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }

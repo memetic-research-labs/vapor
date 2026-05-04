@@ -9,6 +9,20 @@ private let logger = Logger(subsystem: "lol.mrl.app.Vapor", category: "Dictation
 @MainActor
 @Observable
 final class SpeechDictationService {
+    enum RecognitionRoute: String {
+        case automatic = "Automatic"
+        case unavailable = "Unavailable"
+
+        var description: String {
+            switch self {
+            case .automatic:
+                return "System-selected; may use on-device or Apple network recognition."
+            case .unavailable:
+                return "Speech recognizer is unavailable for the current locale."
+            }
+        }
+    }
+
     enum DictationState: Equatable {
         case idle
         case requestingPermission
@@ -21,6 +35,7 @@ final class SpeechDictationService {
     private(set) var isDictating: Bool = false
     private(set) var currentTranscript: String = ""
     private(set) var inputLevel: Float = 0.0
+    private(set) var lastRecognitionRoute: RecognitionRoute = .unavailable
 
     private let recognizer: SFSpeechRecognizer?
     private let audioEngine = AVAudioEngine()
@@ -29,21 +44,34 @@ final class SpeechDictationService {
     private var hasAudioTap: Bool = false
     private var hasDeliveredFinalResult: Bool = false
     private var isCancellationRequested: Bool = false
-
-    var onTextUpdate: ((String, Bool) -> Void)?
-    var onError: ((String) -> Void)?
+    var onTextUpdate: (@MainActor (String, Bool) -> Void)?
+    var onError: (@MainActor (String) -> Void)?
 
     init(locale: Locale = .current) {
         recognizer = SFSpeechRecognizer(locale: locale)
         if recognizer?.isAvailable == true {
             state = .ready
+            lastRecognitionRoute = .automatic
         }
         logger.debug("Initialized for locale: \(self.recognizer?.locale.identifier ?? "default"), available: \(self.recognizer?.isAvailable ?? false)")
     }
 
+    var localeIdentifier: String {
+        recognizer?.locale.identifier ?? Locale.current.identifier
+    }
+
+    var supportsOnDeviceRecognition: Bool {
+        recognizer?.supportsOnDeviceRecognition == true
+    }
+
+    var recognizerAvailabilityDescription: String {
+        guard let recognizer else { return "Unavailable" }
+        return recognizer.isAvailable ? "Available" : "Unavailable"
+    }
+
     // MARK: - Public API
 
-    func toggleDictation(onTextUpdate: @escaping (String, Bool) -> Void) {
+    func toggleDictation(onTextUpdate: @escaping @MainActor (String, Bool) -> Void) {
         switch isDictating {
         case true:
             logger.debug("Toggle OFF (stop dictation)")
@@ -54,7 +82,7 @@ final class SpeechDictationService {
         }
     }
 
-    func startDictation(onTextUpdate: @escaping (String, Bool) -> Void) {
+    func startDictation(onTextUpdate: @escaping @MainActor (String, Bool) -> Void) {
         startDictationInternal(onTextUpdate: onTextUpdate)
     }
 
@@ -135,7 +163,7 @@ final class SpeechDictationService {
 
     // MARK: - Private
 
-    private func startDictationInternal(onTextUpdate: @escaping (String, Bool) -> Void) {
+    private func startDictationInternal(onTextUpdate: @escaping @MainActor (String, Bool) -> Void) {
         guard recognitionTask == nil else { return }
 
         state = .idle
@@ -158,6 +186,7 @@ final class SpeechDictationService {
                 let msg = "Speech recognizer is not available on this Mac."
                 logger.error("Dictation blocked: \(msg)")
                 self.state = .error(msg)
+                self.lastRecognitionRoute = .unavailable
                 self.onError?(msg)
                 return
             }
@@ -166,33 +195,48 @@ final class SpeechDictationService {
 
             let request = SFSpeechAudioBufferRecognitionRequest()
             request.shouldReportPartialResults = true
+            // Do not require on-device recognition here. Automatic mode lets dictation
+            // continue for locales or installs where local speech assets are unavailable.
+            self.lastRecognitionRoute = .automatic
             self.recognitionRequest = request
 
             let inputNode = self.audioEngine.inputNode
+            // The tap format must match the node's output format; AVAudioEngine does not
+            // resample for us. Use the hardware format and throttle VU-meter dispatches.
             let recordingFormat = inputNode.outputFormat(forBus: 0)
+            var lastInputLevelUpdateTime: CFAbsoluteTime = 0
+            let vuMeterThrottleInterval: CFTimeInterval = 1.0 / 15.0  // ~15 updates/sec
             inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { [weak self] buffer, _ in
                 guard let self = self else { return }
 
                 let channelCount = Int(buffer.format.channelCount)
                 let frameLength = Int(buffer.frameLength)
                 if channelCount > 0, let floatChannelData = buffer.floatChannelData, frameLength > 0 {
-                    let ptr = floatChannelData[0]
-                    var sum: Float = 0
-                    for i in 0..<frameLength {
-                        let sample = ptr[i]
-                        sum += sample * sample
-                    }
-                    let rms = sqrtf(sum / Float(frameLength))
+                    // Throttle to ~15 VU-meter updates/sec to avoid flooding the main actor.
+                    // At 44100 Hz / 1024 samples the tap fires ~43×/sec; we only dispatch
+                    // a Task { @MainActor } once per vuMeterThrottleInterval.
+                    let now = CFAbsoluteTimeGetCurrent()
+                    if now - lastInputLevelUpdateTime >= vuMeterThrottleInterval {
+                        lastInputLevelUpdateTime = now
 
-                    let minDb: Float = -60.0
-                    let clampedRms = max(rms, 1e-5)
-                    let db = 20.0 * log10f(clampedRms)
-                    let clampedDb = max(minDb, db)
-                    let normalized = (clampedDb - minDb) / -minDb
+                        let ptr = floatChannelData[0]
+                        var sum: Float = 0
+                        for i in 0..<frameLength {
+                            let sample = ptr[i]
+                            sum += sample * sample
+                        }
+                        let rms = sqrtf(sum / Float(frameLength))
 
-                    Task { @MainActor in
-                        let smoothing: Float = 0.2
-                        self.inputLevel = self.inputLevel * (1 - smoothing) + normalized * smoothing
+                        let minDb: Float = -60.0
+                        let clampedRms = max(rms, 1e-5)
+                        let db = 20.0 * log10f(clampedRms)
+                        let clampedDb = max(minDb, db)
+                        let normalized = (clampedDb - minDb) / -minDb
+
+                        Task { @MainActor in
+                            let smoothing: Float = 0.2
+                            self.inputLevel = self.inputLevel * (1 - smoothing) + normalized * smoothing
+                        }
                     }
                 }
 

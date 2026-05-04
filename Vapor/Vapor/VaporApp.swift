@@ -12,6 +12,7 @@ struct VaporApp: App {
     @State private var preferences = UserPreferences()
     @State private var windowManager: WindowManager
     @State private var compressionService = CompressionService()
+    @State private var dictationService = SpeechDictationService()
     @State private var browserBridge = BrowserBridge()
     @State private var contextQueueService = ContextQueueService()
     @State private var vectorizationService = VectorizationService.shared
@@ -134,7 +135,11 @@ struct VaporApp: App {
         .defaultSize(width: 520, height: 580)
 
         Settings {
-            SettingsView(compressionService: compressionService, preferences: preferences)
+            SettingsView(
+                compressionService: compressionService,
+                dictationService: dictationService,
+                preferences: preferences
+            )
                 .environment(browserBridge)
                 .environment(vectorizationService)
                 .modelContainer(sharedModelContainer)
@@ -172,6 +177,7 @@ struct VaporApp: App {
                 .environment(windowManager)
                 .environment(preferences)
                 .environment(compressionService)
+                .environment(dictationService)
                 .environment(browserBridge)
                 .environment(contextQueueService)
                 .environment(vectorizationService)

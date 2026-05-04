@@ -456,13 +456,11 @@ private final class DictationDemoController {
                 if isFnDown, !self.isListening {
                     self.isListening = true
                     self.dictationService.onError = { msg in
-                        Task { @MainActor in
-                            self.isListening = false
-                            self.demoText = "Error: \(msg)"
-                        }
+                        self.isListening = false
+                        self.demoText = "Error: \(msg)"
                     }
                     self.dictationService.startDictation { text, _ in
-                        Task { @MainActor in self.demoText = text }
+                        self.demoText = text
                     }
                 } else if !isFnDown, self.isListening {
                     self.isListening = false
