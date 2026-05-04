@@ -14,13 +14,17 @@ struct ContextExplorerView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(ContextExplorerStore.self) private var explorerStore
     @Environment(VectorizationService.self) private var vectorizationService
+    @Environment(ProjectService.self) private var projectService
     @Environment(\.openWindow) private var openWindow
 
     @Query(sort: [SortDescriptor(\ContextItem.capturedAt, order: .reverse)]) private var items: [ContextItem]
     @Query(sort: [SortDescriptor(\URLRecord.lastSeenAt, order: .reverse)]) private var urlRecords: [URLRecord]
     @Query(sort: [SortDescriptor(\EntityRecord.lastSeenAt, order: .reverse)]) private var entityRecords: [EntityRecord]
+    @Query(sort: [SortDescriptor(\VaporProject.lastActiveAt, order: .reverse)]) private var projects: [VaporProject]
+    @Query(filter: #Predicate { !$0.isArchived }, sort: [SortDescriptor(\AISession.startedAt, order: .reverse)]) private var aiSessions: [AISession]
 
     @State private var semanticResultIDs: [UUID] = []
+    @State private var semanticTurnResultIDs: [UUID] = []
     @State private var isRunningSemanticSearch = false
     @State private var semanticSearchTask: Task<Void, Never>?
     @State private var semanticSearchRequestID = 0
@@ -49,6 +53,10 @@ struct ContextExplorerView: View {
 
     private var totalTagCount: Int {
         Set(items.flatMap(\.tags)).count
+    }
+
+    private var unassignedItemCount: Int {
+        items.filter { $0.project == nil }.count
     }
 
     private var sourceDomains: [ExplorerFacetCount] {
@@ -215,6 +223,8 @@ struct ContextExplorerView: View {
                                     }
                                 }
                             }
+                        case .aiSessions:
+                            sessionListPane
                         case .recent, .processing, .failed:
                             resultsPane
                         }
@@ -251,6 +261,9 @@ struct ContextExplorerView: View {
         .onChange(of: explorerStore.selectedKindRaw) { _, _ in
             runSemanticSearchIfNeeded()
         }
+        .onChange(of: explorerStore.selectedProjectID) { _, _ in
+            runSemanticSearchIfNeeded()
+        }
         .onChange(of: explorerStore.selectedSection) { _, _ in
             runSemanticSearchIfNeeded()
         }
@@ -280,6 +293,59 @@ struct ContextExplorerView: View {
                 sidebarRow(.urls, badge: urlRecords.count)
                 sidebarRow(.tags, badge: totalTagCount)
                 sidebarRow(.types, badge: types.count)
+            }
+
+            Section("AI") {
+                sidebarRow(.aiSessions, badge: aiSessions.count)
+            }
+
+            if !projects.isEmpty || explorerStore.selectedProjectID != nil {
+                Section("Projects") {
+                    Button {
+                        explorerStore.selectedProjectID = UUID()
+                        explorerStore.clearPivotSelections()
+                        explorerStore.selectedSection = .recent
+                    } label: {
+                        HStack {
+                            Label("Unassigned", systemImage: "tray")
+                            Spacer()
+                            Text("\(unassignedItemCount)")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundColor(.secondary)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Capsule().fill(Color.secondary.opacity(0.12)))
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(explorerStore.selectedProjectID == UUID() ? .primary : .secondary)
+                    .padding(.leading, 4)
+
+                    ForEach(projects) { project in
+                        Button {
+                            explorerStore.selectedProjectID = project.id
+                            explorerStore.clearPivotSelections()
+                            explorerStore.selectedSection = .recent
+                        } label: {
+                            HStack {
+                                Label(project.name, systemImage: "folder")
+                                if let hex = project.colorHex, let color = Color(hex: hex) {
+                                    Circle().fill(color).frame(width: 8, height: 8)
+                                }
+                                Spacer()
+                                Text("\(project.contextItems.count)")
+                                    .font(.system(size: 10, weight: .medium))
+                                    .foregroundColor(.secondary)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Capsule().fill(Color.secondary.opacity(0.12)))
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(explorerStore.selectedProjectID == project.id ? .primary : .secondary)
+                        .padding(.leading, 4)
+                    }
+                }
             }
 
             Section("Queue") {
@@ -729,7 +795,7 @@ struct ContextExplorerView: View {
 
     private var resultsPane: some View {
         VStack(spacing: 0) {
-            if sortedFilteredItems.isEmpty {
+            if sortedFilteredItems.isEmpty && filteredSemanticTurns.isEmpty {
                 ContentUnavailableView(
                     "No Matching Context",
                     systemImage: "magnifyingglass",
@@ -737,27 +803,55 @@ struct ContextExplorerView: View {
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                List(sortedFilteredItems) { item in
-                    Button {
-                        openWindow(value: ContextItemDetailPayload(itemID: item.id))
-                    } label: {
-                        explorerItemRow(item)
+                List {
+                    if !sortedFilteredItems.isEmpty {
+                        Section {
+                            ForEach(sortedFilteredItems) { item in
+                                Button {
+                                    openWindow(value: ContextItemDetailPayload(itemID: item.id))
+                                } label: {
+                                    explorerItemRow(item)
+                                }
+                                .buttonStyle(.plain)
+                                .contentShape(Rectangle())
+                                .contextMenu {
+                                    Button("Open Detail") {
+                                        openWindow(value: ContextItemDetailPayload(itemID: item.id))
+                                    }
+                                    if let sourceLink = item.sortedURLLinks.first(where: { $0.role == .source }), !sourceLink.domain.isEmpty {
+                                        Button("Filter by Domain") {
+                                            explorerStore.focusOnDomain(sourceLink.domain)
+                                        }
+                                    }
+                                    if let author = item.sourceAuthor, !author.isEmpty {
+                                        Button("Filter by Author") {
+                                            explorerStore.focusOnAuthor(author)
+                                        }
+                                    }
+                                }
+                            }
+                        } header: {
+                            if !filteredSemanticTurns.isEmpty && !sortedFilteredItems.isEmpty {
+                                Text("Context Items")
+                            }
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .contentShape(Rectangle())
-                    .contextMenu {
-                        Button("Open Detail") {
-                            openWindow(value: ContextItemDetailPayload(itemID: item.id))
-                        }
-                        if let sourceLink = item.sortedURLLinks.first(where: { $0.role == .source }), !sourceLink.domain.isEmpty {
-                            Button("Filter by Domain") {
-                                explorerStore.focusOnDomain(sourceLink.domain)
+
+                    if !filteredSemanticTurns.isEmpty && explorerStore.semanticMode == .semantic {
+                        Section {
+                            ForEach(filteredSemanticTurns) { turn in
+                                Button {
+                                    if let session = turn.session {
+                                        explorerStore.focusOnSession(session.id)
+                                    }
+                                } label: {
+                                    semanticTurnRow(turn)
+                                }
+                                .buttonStyle(.plain)
+                                .contentShape(Rectangle())
                             }
-                        }
-                        if let author = item.sourceAuthor, !author.isEmpty {
-                            Button("Filter by Author") {
-                                explorerStore.focusOnAuthor(author)
-                            }
+                        } header: {
+                            Text("AI Session Turns")
                         }
                     }
                 }
@@ -893,7 +987,7 @@ struct ContextExplorerView: View {
             if item.status != .processing && item.status != .pending { return false }
         case .failed:
             if item.status != .failed { return false }
-        case .recent, .overview, .domains, .authors, .entities, .urls, .tags, .types:
+        case .recent, .overview, .domains, .authors, .entities, .urls, .tags, .types, .aiSessions:
             break
         }
 
@@ -924,6 +1018,14 @@ struct ContextExplorerView: View {
 
         if let selectedKind = explorerStore.selectedKind, item.kind != selectedKind {
             return false
+        }
+
+        if let selectedProjectID = explorerStore.selectedProjectID {
+            if explorerStore.selectedProjectID == UUID() {
+                if item.project != nil { return false }
+            } else {
+                if item.project?.id != selectedProjectID { return false }
+            }
         }
 
         let query = explorerStore.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -962,6 +1064,7 @@ struct ContextExplorerView: View {
         guard !query.isEmpty else {
             semanticSearchRequestID += 1
             semanticResultIDs = []
+            semanticTurnResultIDs = []
             isRunningSemanticSearch = false
             return
         }
@@ -969,6 +1072,7 @@ struct ContextExplorerView: View {
         guard vectorizationService.isReady else {
             semanticSearchRequestID += 1
             semanticResultIDs = []
+            semanticTurnResultIDs = []
             isRunningSemanticSearch = false
             return
         }
@@ -986,13 +1090,84 @@ struct ContextExplorerView: View {
 
             guard !Task.isCancelled, requestID == semanticSearchRequestID else { return }
 
-            let resultIDs = await vectorizationService.searchContextItemIDs(matching: query, limit: 50)
+            async let contextIDs = vectorizationService.searchContextItemIDs(matching: query, limit: 50)
+            async let turnIDs = vectorizationService.searchTurnIDs(matching: query, limit: 25)
+
+            let results = await contextIDs
+            let turnResults = await turnIDs
 
             guard !Task.isCancelled, requestID == semanticSearchRequestID else { return }
 
-            semanticResultIDs = resultIDs
+            semanticResultIDs = results
+            semanticTurnResultIDs = turnResults
             isRunningSemanticSearch = false
             semanticSearchTask = nil
         }
+    }
+
+    @ViewBuilder
+    private var sessionListPane: some View {
+        if let sessionID = explorerStore.selectedSessionID,
+           let session = aiSessions.first(where: { $0.id == sessionID }) {
+            SessionReaderView(session: session)
+        } else {
+            SessionListView(sessions: filteredSessions) { sessionID in
+                explorerStore.selectedSessionID = sessionID
+            }
+        }
+    }
+
+    private var filteredSessions: [AISession] {
+        let base = aiSessions
+        if let projectID = explorerStore.selectedProjectID {
+            return base.filter { $0.project?.id == projectID }
+        }
+        return base
+    }
+
+    private var allTurns: [AITurn] {
+        Array(aiSessions.flatMap(\.turns))
+    }
+
+    private var filteredSemanticTurns: [AITurn] {
+        guard !semanticTurnResultIDs.isEmpty else { return [] }
+        let turnByID = Dictionary(uniqueKeysWithValues: allTurns.map { ($0.id, $0) })
+        let matched = semanticTurnResultIDs.compactMap { turnByID[$0] }
+        if let projectID = explorerStore.selectedProjectID {
+            return matched.filter { $0.session?.project?.id == projectID }
+        }
+        return matched
+    }
+
+    @ViewBuilder
+    private func semanticTurnRow(_ turn: AITurn) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(turn.role.capitalized)
+                    .font(.system(size: 10, weight: .semibold))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(turn.role.lowercased() == "user" ? Color.blue.opacity(0.15) : Color.green.opacity(0.15)))
+                    .foregroundStyle(turn.role.lowercased() == "user" ? Color.blue : Color.green)
+                if let model = turn.modelID {
+                    Text(model)
+                        .font(.system(size: 9))
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                }
+                Spacer()
+                if let session = turn.session {
+                    Text(session.title)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            Text(String(turn.content.prefix(200)))
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+        }
+        .padding(.vertical, 2)
     }
 }

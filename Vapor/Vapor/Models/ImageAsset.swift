@@ -63,6 +63,9 @@ final class ImageAsset {
     var lifecycleStateRaw: String
     var dismissedFromShelf: Bool
 
+    var project: VaporProject?
+    var aiSession: AISession?
+
     @Relationship(deleteRule: .cascade, inverse: \ContextItemImageLink.imageAsset)
     var links: [ContextItemImageLink] = []
 

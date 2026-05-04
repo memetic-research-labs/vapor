@@ -21,6 +21,7 @@ enum ContextExplorerSection: String, Codable, CaseIterable, Identifiable {
     case urls
     case tags
     case types
+    case aiSessions
     case processing
     case failed
 
@@ -36,6 +37,7 @@ enum ContextExplorerSection: String, Codable, CaseIterable, Identifiable {
         case .urls: "URLs"
         case .tags: "Tags"
         case .types: "Types"
+        case .aiSessions: "AI Sessions"
         case .processing: "Processing"
         case .failed: "Failed"
         }
@@ -51,6 +53,7 @@ enum ContextExplorerSection: String, Codable, CaseIterable, Identifiable {
         case .urls: "link"
         case .tags: "tag"
         case .types: "square.stack.3d.up"
+        case .aiSessions: "bubble.left.and.text.bubble.right"
         case .processing: "hourglass"
         case .failed: "exclamationmark.triangle"
         }
@@ -80,6 +83,8 @@ private struct PersistedContextExplorerState: Codable {
     var selectedURLHash: String?
     var selectedTag: String?
     var selectedKindRaw: String?
+    var selectedProjectID: UUID?
+    var selectedSessionID: UUID?
     var semanticMode: ContextExplorerSemanticMode
     var readyOnly: Bool
     var sortMode: ContextExplorerSortMode
@@ -99,6 +104,8 @@ final class ContextExplorerStore {
     var selectedURLHash: String? { didSet { persist() } }
     var selectedTag: String? { didSet { persist() } }
     var selectedKindRaw: String? { didSet { persist() } }
+    var selectedProjectID: UUID? { didSet { persist() } }
+    var selectedSessionID: UUID? { didSet { persist() } }
     var semanticMode: ContextExplorerSemanticMode = .keyword { didSet { persist() } }
     var readyOnly: Bool = false { didSet { persist() } }
     var sortMode: ContextExplorerSortMode = .newestFirst { didSet { persist() } }
@@ -126,6 +133,7 @@ final class ContextExplorerStore {
             || selectedURLHash != nil
             || selectedTag != nil
             || selectedKind != nil
+            || selectedProjectID != nil
     }
 
     var hasActiveSearch: Bool {
@@ -167,6 +175,9 @@ final class ContextExplorerStore {
         case .types:
             selectedKind = nil
             clearNonTypeSelections()
+        case .aiSessions:
+            clearPivotSelections()
+            selectedSessionID = nil
         }
     }
 
@@ -242,6 +253,12 @@ final class ContextExplorerStore {
         semanticMode = .keyword
     }
 
+    func focusOnSession(_ sessionID: UUID) {
+        selectedSection = .aiSessions
+        selectedSessionID = sessionID
+        clearPivotSelections()
+    }
+
     func clearQuery() {
         searchText = ""
         semanticMode = .keyword
@@ -271,13 +288,14 @@ final class ContextExplorerStore {
         return values
     }
 
-    private func clearPivotSelections() {
+    func clearPivotSelections() {
         selectedDomain = nil
         selectedAuthor = nil
         selectedEntityHash = nil
         selectedURLHash = nil
         selectedTag = nil
         selectedKind = nil
+        selectedProjectID = nil
     }
 
     private func clearNonDomainSelections() {
@@ -286,6 +304,7 @@ final class ContextExplorerStore {
         selectedURLHash = nil
         selectedTag = nil
         selectedKind = nil
+        selectedProjectID = nil
     }
 
     private func clearNonAuthorSelections() {
@@ -294,6 +313,7 @@ final class ContextExplorerStore {
         selectedURLHash = nil
         selectedTag = nil
         selectedKind = nil
+        selectedProjectID = nil
     }
 
     private func clearNonEntitySelections() {
@@ -302,6 +322,7 @@ final class ContextExplorerStore {
         selectedURLHash = nil
         selectedTag = nil
         selectedKind = nil
+        selectedProjectID = nil
     }
 
     private func clearNonURLSelections() {
@@ -310,6 +331,7 @@ final class ContextExplorerStore {
         selectedEntityHash = nil
         selectedTag = nil
         selectedKind = nil
+        selectedProjectID = nil
     }
 
     private func clearNonTagSelections() {
@@ -318,6 +340,7 @@ final class ContextExplorerStore {
         selectedEntityHash = nil
         selectedURLHash = nil
         selectedKind = nil
+        selectedProjectID = nil
     }
 
     private func clearNonTypeSelections() {
@@ -326,6 +349,7 @@ final class ContextExplorerStore {
         selectedEntityHash = nil
         selectedURLHash = nil
         selectedTag = nil
+        selectedProjectID = nil
     }
 
     private func restore() {
@@ -343,6 +367,8 @@ final class ContextExplorerStore {
         selectedURLHash = state.selectedURLHash
         selectedTag = state.selectedTag
         selectedKindRaw = state.selectedKindRaw
+        selectedProjectID = state.selectedProjectID
+        selectedSessionID = state.selectedSessionID
         semanticMode = state.semanticMode
         readyOnly = state.readyOnly
         sortMode = state.sortMode
@@ -361,6 +387,8 @@ final class ContextExplorerStore {
             selectedURLHash: selectedURLHash,
             selectedTag: selectedTag,
             selectedKindRaw: selectedKindRaw,
+            selectedProjectID: selectedProjectID,
+            selectedSessionID: selectedSessionID,
             semanticMode: semanticMode,
             readyOnly: readyOnly,
             sortMode: sortMode

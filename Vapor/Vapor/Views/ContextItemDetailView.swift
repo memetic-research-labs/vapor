@@ -1094,6 +1094,13 @@ extension EntityKind {
         case .number: "number"
         case .code: "chevron.left.forwardslash.chevron.right"
         case .concept: "lightbulb"
+        case .model: "cpu"
+        case .tool: "wrench.and.screwdriver"
+        case .library: "package"
+        case .api: "arrow.left.arrow.right"
+        case .file: "doc"
+        case .error: "exclamationmark.triangle"
+        case .decision: "gavel"
         }
     }
 
@@ -1108,6 +1115,13 @@ extension EntityKind {
         case .number: "Number"
         case .code: "Code"
         case .concept: "Concept"
+        case .model: "Model"
+        case .tool: "Tool"
+        case .library: "Library"
+        case .api: "API"
+        case .file: "File"
+        case .error: "Error"
+        case .decision: "Decision"
         }
     }
 }

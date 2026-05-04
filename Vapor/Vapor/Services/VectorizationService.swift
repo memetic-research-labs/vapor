@@ -15,6 +15,7 @@ final class VectorizationService {
     private static let tableName = "vec_items_minilm_l12_multilingual_v2"
     private static let contextEmbeddingPrefix = "ctx:"
     private static let promptEmbeddingPrefix = "prompt:"
+    private static let sessionEmbeddingPrefix = "aisession:"
 
     private let embeddingService = MiniLMEmbeddingService()
 
@@ -105,6 +106,124 @@ final class VectorizationService {
             metadata: ["embeddingID": embeddingID, "recordID": record.stableIdentifier]
         )
         return embeddingID
+    }
+
+    func ensureEmbedding(for turn: AITurn, force: Bool = false) async throws -> String? {
+        let embeddingID = Self.namespacedEmbeddingID(turn.embeddingID, prefix: Self.sessionEmbeddingPrefix, fallback: turn.id.uuidString)
+        if !force,
+           let existingID = turn.embeddingID,
+           existingID.hasPrefix(Self.sessionEmbeddingPrefix),
+           try await embeddingExists(id: existingID) {
+            return existingID
+        }
+
+        let sessionTitle = turn.session?.title ?? ""
+        let text = "ROLE: \(turn.role)\nMODEL: \(turn.modelID ?? "")\nTOOL: \(turn.toolName ?? "")\nSESSION: \(sessionTitle)\n\n\(turn.content)"
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        let embedding = try await generateEmbedding(for: trimmed)
+        try await upsert(embedding: embedding, id: embeddingID)
+        turn.embeddingID = embeddingID
+
+        try await upsertSessionMeta(SessionMetaRecord(
+            embeddingID: embeddingID,
+            turnID: turn.id.uuidString,
+            sessionID: turn.session?.id.uuidString,
+            projectID: turn.session?.project?.id.uuidString,
+            role: turn.role,
+            tool: turn.toolName,
+            branch: turn.session?.branchName,
+            modelID: turn.modelID,
+            capturedAt: turn.capturedAt.timeIntervalSince1970,
+            tags: turn.session?.tags.joined(separator: ","),
+            entityKinds: turn.entityLinks.compactMap { $0.entityRecord?.kind.rawValue }.joined(separator: ",")
+        ))
+
+        return embeddingID
+    }
+
+    func ensureEmbedding(for session: AISession, force: Bool = false) async throws -> String? {
+        let embeddingID = Self.namespacedEmbeddingID(session.embeddingID, prefix: Self.sessionEmbeddingPrefix, fallback: "session-\(session.id.uuidString)")
+        if !force,
+           let existingID = session.embeddingID,
+           existingID.hasPrefix(Self.sessionEmbeddingPrefix),
+           try await embeddingExists(id: existingID) {
+            return existingID
+        }
+
+        var segments: [String] = []
+        segments.append("SESSION: \(session.title)")
+        segments.append("TOOL: \(session.tool)")
+        if let project = session.projectName { segments.append("PROJECT: \(project)") }
+        if let branch = session.branchName { segments.append("BRANCH: \(branch)") }
+        if let abstract = session.summaryAbstract { segments.append(abstract) }
+        segments.append(session.tags.joined(separator: ", "))
+
+        let text = segments.joined(separator: "\n\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return nil }
+
+        let embedding = try await generateEmbedding(for: text)
+        try await upsert(embedding: embedding, id: embeddingID)
+        session.embeddingID = embeddingID
+        return embeddingID
+    }
+
+    func searchTurnIDs(matching query: String, limit: Int = 50) async -> [UUID] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+
+        do {
+            let embedding = try await generateEmbedding(for: trimmed)
+            let database = try await Self.sharedDatabase()
+            let rows = try await database.query(
+                "SELECT embedding_id, distance FROM \(Self.tableName) WHERE embedding_id LIKE ? AND embedding MATCH ? AND k = ?",
+                params: ["\(Self.sessionEmbeddingPrefix)%", embedding, max(limit * 3, limit)]
+            )
+
+            return rows.compactMap { row in
+                guard let value = row["embedding_id"] as? String else { return nil }
+                return UUID(uuidString: Self.stripEmbeddingPrefix(from: value))
+            }
+        } catch {
+            vectorLogger.error("Semantic session search failed: \(error.localizedDescription, privacy: .public)")
+            lastError = error.localizedDescription
+            return []
+        }
+    }
+
+    func backfillMissingSessionEmbeddings(in context: ModelContext) async {
+        await initialize()
+        guard isReady else { return }
+        StatusBarService.shared.log("Backfilling session embeddings", domain: .vectorization)
+
+        let descriptor = FetchDescriptor<AITurn>(sortBy: [SortDescriptor(\.capturedAt, order: .reverse)])
+
+        do {
+            let turns = try context.fetch(descriptor)
+            var didIndexNew = false
+            var count = 0
+            for turn in turns where turn.embeddingID == nil {
+                if try await ensureEmbedding(for: turn) != nil {
+                    didIndexNew = true
+                    count += 1
+                }
+                if count >= 20 { break }
+            }
+            if didIndexNew {
+                try context.save()
+                await refreshVectorCount()
+            }
+            StatusBarService.shared.log(
+                "Session embedding backfill complete",
+                domain: .vectorization,
+                level: .success,
+                metadata: ["indexed": String(count)]
+            )
+        } catch {
+            vectorLogger.error("Failed to backfill session embeddings: \(error.localizedDescription, privacy: .public)")
+            lastError = error.localizedDescription
+        }
     }
 
     func removeEmbedding(id: String) async {
@@ -304,6 +423,35 @@ final class VectorizationService {
         return false
     }
 
+    private struct SessionMetaRecord {
+        let embeddingID: String
+        let turnID: String
+        let sessionID: String?
+        let projectID: String?
+        let role: String?
+        let tool: String?
+        let branch: String?
+        let modelID: String?
+        let capturedAt: Double?
+        let tags: String?
+        let entityKinds: String?
+    }
+
+    private func upsertSessionMeta(_ meta: SessionMetaRecord) async throws {
+        let database = try await Self.sharedDatabase()
+        try await database.execute(
+            "INSERT OR REPLACE INTO \(Self.metaTableName)(embedding_id, turn_id, session_id, project_id, role, tool, branch, model_id, captured_at, tags, entity_kinds) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            params: [
+                meta.embeddingID, meta.turnID,
+                meta.sessionID ?? "", meta.projectID ?? "",
+                meta.role ?? "", meta.tool ?? "",
+                meta.branch ?? "", meta.modelID ?? "",
+                meta.capturedAt ?? 0,
+                meta.tags ?? "", meta.entityKinds ?? ""
+            ]
+        )
+    }
+
     private func searchableText(for item: ContextItem) -> String? {
         var segments: [String] = []
 
@@ -375,6 +523,8 @@ final class VectorizationService {
         }
     }
 
+    private static let metaTableName = "aisession_meta"
+
     private static func initializeSchema(database: Database) async throws {
         do {
             let tableInfo = try await database.query("PRAGMA table_info(\(tableName))")
@@ -387,6 +537,33 @@ final class VectorizationService {
             try await database.execute(
                 "CREATE VIRTUAL TABLE \(tableName) USING vec0(embedding float[\(MiniLMEmbeddingService.dimensions)], embedding_id TEXT)"
             )
+        }
+
+        do {
+            let metaInfo = try await database.query("PRAGMA table_info(\(metaTableName))")
+            if metaInfo.isEmpty {
+                try await database.execute("""
+                    CREATE TABLE \(metaTableName) (
+                        embedding_id TEXT PRIMARY KEY,
+                        turn_id TEXT,
+                        session_id TEXT,
+                        project_id TEXT,
+                        role TEXT,
+                        tool TEXT,
+                        branch TEXT,
+                        model_id TEXT,
+                        captured_at REAL,
+                        tags TEXT,
+                        entity_kinds TEXT
+                    )
+                """)
+                try await database.execute("CREATE INDEX idx_meta_session ON \(metaTableName)(session_id)")
+                try await database.execute("CREATE INDEX idx_meta_project ON \(metaTableName)(project_id)")
+                try await database.execute("CREATE INDEX idx_meta_tool ON \(metaTableName)(tool)")
+                try await database.execute("CREATE INDEX idx_meta_role ON \(metaTableName)(role)")
+            }
+        } catch {
+            vectorLogger.error("Failed to create aisession_meta table: \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -416,7 +593,7 @@ final class VectorizationService {
 
     private static func candidateEmbeddingIDs(for id: String) -> [String] {
         let stripped = stripEmbeddingPrefix(from: id)
-        let candidates = [id, stripped, "\(contextEmbeddingPrefix)\(stripped)", "\(promptEmbeddingPrefix)\(stripped)"]
+        let candidates = [id, stripped, "\(contextEmbeddingPrefix)\(stripped)", "\(promptEmbeddingPrefix)\(stripped)", "\(sessionEmbeddingPrefix)\(stripped)"]
         return Array(Set(candidates))
     }
 

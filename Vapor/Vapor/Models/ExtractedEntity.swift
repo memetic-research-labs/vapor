@@ -10,6 +10,13 @@ enum EntityKind: String, Codable, CaseIterable {
     case number
     case code
     case concept
+    case model
+    case tool
+    case library
+    case api
+    case file
+    case error
+    case decision
 }
 
 struct ExtractedEntity: Codable, Identifiable, Sendable {

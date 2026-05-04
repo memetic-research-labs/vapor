@@ -28,6 +28,8 @@ final class PromptRecord {
     var isFavorite: Bool
     var tags: [String]
     var embeddingID: String?
+
+    var project: VaporProject?
     
     init(
         originalText: String,

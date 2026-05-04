@@ -34,6 +34,15 @@ struct SettingsView: View {
     @State private var useCustomSummarizationOpenRouterModel: Bool = false
     @State private var customSummarizationOpenRouterModel: String = ""
     @State private var cloudModelSearchText: String = ""
+    @State private var sessionCaptureEnabled: Bool = false
+    @State private var showCaptureOnboarding: Bool = false
+    @State private var openCodeLogPath: String = ""
+    @State private var idleTimeoutMinutes: Double = 30
+    @State private var screenshotLinkWindow: Double = 30
+    @State private var exportAutoCommit: Bool = false
+    @State private var exportIncludeMedia: Bool = true
+    @State private var exportDenylistText: String = ""
+    @State private var newProjectName: String = ""
     #if DEBUG
     @State private var swiftDataClearStatus: String = ""
     @State private var vectorStoreClearStatus: String = ""
@@ -48,6 +57,9 @@ struct SettingsView: View {
         case cloud = "Cloud"
         case general = "General"
         case browser = "Browser"
+        case sessionCapture = "Session Capture"
+        case projects = "Projects"
+        case export = "Export & Redaction"
         case telemetry = "Telemetry"
         #if DEBUG
         case dataManagement = "Data Management"
@@ -62,6 +74,9 @@ struct SettingsView: View {
             case .browser: return "globe"
             case .cloud: return "cloud"
             case .general: return "gearshape.2"
+            case .sessionCapture: return "camera.viewfinder"
+            case .projects: return "folder.badge.gear"
+            case .export: return "square.and.arrow.up"
             case .telemetry: return "chart.bar"
             #if DEBUG
             case .dataManagement: return "trash"
@@ -72,12 +87,12 @@ struct SettingsView: View {
         #if DEBUG
         static let allCases: [SettingsTab] = [
             .compression, .contextProcessing, .cloud,
-            .general, .browser, .telemetry, .dataManagement
+            .general, .browser, .sessionCapture, .projects, .export, .telemetry, .dataManagement
         ]
         #else
         static let allCases: [SettingsTab] = [
             .compression, .contextProcessing, .cloud,
-            .general, .browser, .telemetry
+            .general, .browser, .sessionCapture, .projects, .export, .telemetry
         ]
         #endif
     }
@@ -94,7 +109,7 @@ struct SettingsView: View {
                 let aiTabs: [SettingsTab] = [.compression, .contextProcessing, .cloud]
                 return aiTabs
             case .app:
-                var appTabs: [SettingsTab] = [.general, .browser, .telemetry]
+                var appTabs: [SettingsTab] = [.general, .browser, .sessionCapture, .projects, .export, .telemetry]
                 #if DEBUG
                 appTabs.append(.dataManagement)
                 #endif
@@ -125,6 +140,12 @@ struct SettingsView: View {
                     contextProcessingTab
                 case .browser:
                     browserTab
+                case .sessionCapture:
+                    sessionCaptureTab
+                case .projects:
+                    projectsTab
+                case .export:
+                    exportTab
                 case .cloud:
                     cloudTab
                 case .general:
@@ -304,6 +325,179 @@ struct SettingsView: View {
         }
         .onAppear {
             displayedAuthToken = browserBridge.authToken()
+        }
+    }
+
+    // MARK: - Session Capture Tab
+
+    private var sessionCaptureTab: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                GroupBox("AI Session Capture") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Toggle("Enable session capture", isOn: Binding(
+                            get: { sessionCaptureEnabled },
+                            set: { newValue in
+                                if newValue && !UserDefaults.standard.bool(forKey: "sessionCaptureOnboarded") {
+                                    showCaptureOnboarding = true
+                                } else {
+                                    sessionCaptureEnabled = newValue
+                                    UserDefaults.standard.set(newValue, forKey: "sessionCaptureEnabled")
+                                }
+                            }
+                        ))
+                        Text("Automatically capture AI coding sessions from supported tools.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(4)
+                }
+
+                GroupBox("OpenCode") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Text("Log path:")
+                                .font(.caption)
+                            TextField("Auto-detected", text: $openCodeLogPath)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.caption)
+                            Button("Reset") {
+                                openCodeLogPath = ""
+                                UserDefaults.standard.removeObject(forKey: "openCodeLogPath")
+                            }
+                            .buttonStyle(.borderless)
+                        }
+                        Text("Path to OpenCode conversation log. Leave empty for auto-detection.")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                    .padding(4)
+                }
+
+                GroupBox("Timing") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Text("Idle timeout:")
+                            Spacer()
+                            Text("\(Int(idleTimeoutMinutes)) min")
+                        }
+                        .font(.caption)
+                        Slider(value: $idleTimeoutMinutes, in: 5...120, step: 5)
+                            .onChange(of: idleTimeoutMinutes) {
+                                UserDefaults.standard.set(idleTimeoutMinutes, forKey: "sessionIdleTimeoutMinutes")
+                            }
+
+                        HStack {
+                            Text("Screenshot link window:")
+                            Spacer()
+                            Text("\(Int(screenshotLinkWindow))s")
+                        }
+                        .font(.caption)
+                        Slider(value: $screenshotLinkWindow, in: 5...120, step: 5)
+                            .onChange(of: screenshotLinkWindow) {
+                                UserDefaults.standard.set(screenshotLinkWindow, forKey: "screenshotLinkWindow")
+                            }
+                        Text("How close in time a screenshot must be to an AI turn to be linked.")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                    .padding(4)
+                }
+            }
+            .padding(20)
+        }
+        .onAppear {
+            sessionCaptureEnabled = UserDefaults.standard.bool(forKey: "sessionCaptureEnabled")
+            openCodeLogPath = UserDefaults.standard.string(forKey: "openCodeLogPath") ?? ""
+            idleTimeoutMinutes = UserDefaults.standard.double(forKey: "sessionIdleTimeoutMinutes")
+            if idleTimeoutMinutes == 0 { idleTimeoutMinutes = 30 }
+            screenshotLinkWindow = UserDefaults.standard.double(forKey: "screenshotLinkWindow")
+            if screenshotLinkWindow == 0 { screenshotLinkWindow = 30 }
+        }
+        .sheet(isPresented: $showCaptureOnboarding) {
+            CaptureOnboardingView(sessionCaptureEnabled: $sessionCaptureEnabled, isPresented: $showCaptureOnboarding)
+        }
+    }
+
+    // MARK: - Projects Tab
+
+    private var projectsTab: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                GroupBox("Create Project") {
+                    HStack {
+                        TextField("Project name", text: $newProjectName)
+                            .textFieldStyle(.roundedBorder)
+                        Button("Create") {
+                            guard !newProjectName.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+                            Task { @MainActor in
+                                _ = try? ProjectService.shared.createProject(name: newProjectName.trimmingCharacters(in: .whitespaces))
+                                newProjectName = ""
+                            }
+                        }
+                        .disabled(newProjectName.trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
+                    .padding(4)
+                }
+
+                GroupBox("Projects") {
+                    ProjectsList()
+                        .padding(4)
+                }
+            }
+            .padding(20)
+        }
+    }
+
+    // MARK: - Export Tab
+
+    private var exportTab: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                GroupBox("Git Export") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Toggle("Auto-commit on export", isOn: $exportAutoCommit)
+                            .onChange(of: exportAutoCommit) {
+                                UserDefaults.standard.set(exportAutoCommit, forKey: "exportAutoCommit")
+                            }
+                        Toggle("Include media files", isOn: $exportIncludeMedia)
+                            .onChange(of: exportIncludeMedia) {
+                                UserDefaults.standard.set(exportIncludeMedia, forKey: "exportIncludeMedia")
+                            }
+                        Text("Exported sessions are stored in .vapor-context/ within the project git directory.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(4)
+                }
+
+                GroupBox("Redaction Denylist") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("One regex pattern per line. Matches will be redacted as [REDACTED: user-denylist].")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        TextEditor(text: $exportDenylistText)
+                            .font(.system(.caption, design: .monospaced))
+                            .frame(height: 120)
+                            .border(Color(nsColor: .separatorColor))
+                        Button("Save Denylist") {
+                            let patterns = exportDenylistText
+                                .split(separator: "\n")
+                                .map { String($0).trimmingCharacters(in: .whitespaces) }
+                                .filter { !$0.isEmpty }
+                            UserDefaults.standard.set(patterns, forKey: "exportDenylistPatterns")
+                        }
+                    }
+                    .padding(4)
+                }
+            }
+            .padding(20)
+        }
+        .onAppear {
+            exportAutoCommit = UserDefaults.standard.bool(forKey: "exportAutoCommit")
+            exportIncludeMedia = UserDefaults.standard.bool(forKey: "exportIncludeMedia")
+            let patterns = UserDefaults.standard.stringArray(forKey: "exportDenylistPatterns") ?? []
+            exportDenylistText = patterns.joined(separator: "\n")
         }
     }
 

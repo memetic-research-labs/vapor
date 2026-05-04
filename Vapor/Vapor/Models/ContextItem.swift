@@ -11,6 +11,7 @@ enum ContextItemKind: String, Codable, CaseIterable, Sendable {
     case xhrBinary
     case pageSnapshot
     case manualText
+    case spec
 
     var displayName: String {
         switch self {
@@ -23,6 +24,7 @@ enum ContextItemKind: String, Codable, CaseIterable, Sendable {
         case .xhrBinary: "API Binary"
         case .pageSnapshot: "Page Snapshot"
         case .manualText: "Text"
+        case .spec: "Spec"
         }
     }
 
@@ -37,6 +39,7 @@ enum ContextItemKind: String, Codable, CaseIterable, Sendable {
         case .xhrBinary: "archivebox"
         case .pageSnapshot: "globe"
         case .manualText: "pencil"
+        case .spec: "doc.badge.gearshape"
         }
     }
 }
@@ -80,6 +83,8 @@ final class ContextItem {
     var extractionBackendRaw: String?
     var embeddingID: String?
     var captureJobId: String?
+
+    var project: VaporProject?
 
     @Relationship(deleteRule: .cascade, inverse: \ContextItemURLLink.contextItem)
     var urlLinks: [ContextItemURLLink] = []

@@ -72,6 +72,18 @@ nonisolated final class VaporHTTPHandler: ChannelInboundHandler, @unchecked Send
             case (.POST, "/api/context"):
                 break
             default:
+                if requestPath.hasPrefix("/api/sessions") ||
+                   requestPath.hasPrefix("/api/projects") ||
+                   requestPath.hasPrefix("/api/search/") {
+                    Task { @MainActor in
+                        let query = Self.parseQueryParams(from: head.uri)
+                        let response = SessionAPIRouter.shared.handle(method: head.method.rawValue, path: requestPath, query: query, body: nil)
+                        if head.method == .GET {
+                            self.sendJSON(context: context, status: HTTPResponseStatus(statusCode: response.status), body: response.body)
+                        }
+                    }
+                    return
+                }
                 if head.method == .GET, requestPath.hasPrefix("/api/context/status/") {
                     let jobId = String(requestPath.dropFirst("/api/context/status/".count))
                     let status = contextItemStatusProvider(jobId)
@@ -98,7 +110,12 @@ nonisolated final class VaporHTTPHandler: ChannelInboundHandler, @unchecked Send
                 case (.POST, "/api/context"):
                     handleContextCapture(context: context)
                 default:
-                    break
+                    if requestPath.hasPrefix("/api/sessions") ||
+                       requestPath.hasPrefix("/api/projects") ||
+                       requestPath.hasPrefix("/api/search/") ||
+                       requestPath.hasPrefix("/api/export") {
+                        handleSessionAPI(context: context)
+                    }
                 }
             }
             requestHead = nil
@@ -114,7 +131,7 @@ nonisolated final class VaporHTTPHandler: ChannelInboundHandler, @unchecked Send
         }
         var headers = HTTPHeaders()
         headers.add(name: "Access-Control-Allow-Origin", value: origin)
-        headers.add(name: "Access-Control-Allow-Methods", value: "GET, POST, OPTIONS")
+        headers.add(name: "Access-Control-Allow-Methods", value: "GET, POST, PUT, DELETE, OPTIONS")
         headers.add(name: "Access-Control-Allow-Headers", value: "Content-Type, Authorization")
         headers.add(name: "Access-Control-Max-Age", value: "86400")
         headers.add(name: "Vary", value: "Origin")
@@ -259,6 +276,36 @@ nonisolated final class VaporHTTPHandler: ChannelInboundHandler, @unchecked Send
         onContextCapture(json)
         let jobId = json["jobId"] as? String ?? "unknown"
         sendJSON(context: context, status: .ok, body: ["status": "accepted", "jobId": jobId])
+    }
+
+    private func handleSessionAPI(context: ChannelHandlerContext) {
+        let bytes = bodyBuffer?.readableBytes ?? 0
+        let bodyStr = bodyBuffer.map { $0.getString(at: 0, length: bytes) } ?? nil
+        var bodyJSON: [String: Any]?
+        if let str = bodyStr, let data = str.data(using: .utf8) {
+            bodyJSON = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        }
+
+        Task { @MainActor in
+            let query = self.requestHead.map { Self.parseQueryParams(from: $0.uri) } ?? [:]
+            let path = self.requestPath
+            let method = self.requestHead?.method.rawValue ?? "GET"
+            let response = SessionAPIRouter.shared.handle(method: method, path: path, query: query, body: bodyJSON)
+            self.sendJSON(context: context, status: HTTPResponseStatus(statusCode: response.status), body: response.body)
+        }
+    }
+
+    nonisolated private static func parseQueryParams(from uri: String) -> [String: String] {
+        guard let queryStart = uri.firstIndex(of: "?") else { return [:] }
+        let query = String(uri[uri.index(after: queryStart)...])
+        var params: [String: String] = [:]
+        for pair in query.split(separator: "&") {
+            let parts = pair.split(separator: "=", maxSplits: 1).map(String.init)
+            if parts.count == 2 {
+                params[parts[0].removingPercentEncoding ?? parts[0]] = parts[1].removingPercentEncoding ?? parts[1]
+            }
+        }
+        return params
     }
 
     func errorCaught(context: ChannelHandlerContext, error: Error) {

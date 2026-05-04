@@ -19,6 +19,13 @@ struct VaporApp: App {
     @State private var contextExplorerStore = ContextExplorerStore.shared
     @State private var screenshotShelfStore = ScreenshotShelfStore.shared
     @State private var mainWindowFocusStore = MainWindowFocusStore()
+    @State private var projectService = ProjectService.shared
+    @State private var sessionFacade = SessionCaptureFacade.shared
+    @State private var aiSessionService = AISessionService.shared
+    @State private var sessionEntityService = SessionEntityService.shared
+    @State private var sessionAPIRouter = SessionAPIRouter.shared
+    @State private var specIngestionService = SpecIngestionService.shared
+    @State private var gitExportService = GitExportService.shared
     @State private var appDelegate: VaporAppDelegate?
     @State private var onboardingObserver: NSObjectProtocol?
     @Environment(\.openWindow) private var openWindow
@@ -185,10 +192,21 @@ struct VaporApp: App {
                 .environment(screenshotShelfStore)
                 .environment(mainWindowFocusStore)
                 .environment(StatusBarService.shared)
+                .environment(projectService)
+                .environment(sessionFacade)
+                .environment(aiSessionService)
+                .environment(sessionEntityService)
                 .onAppear {
                     browserBridge.setContextQueueService(contextQueueService)
                     contextQueueService.setModelContext(sharedModelContainer.mainContext)
                     screenshotShelfStore.setModelContext(sharedModelContainer.mainContext)
+                    projectService.setModelContext(sharedModelContainer.mainContext)
+                    aiSessionService.setModelContext(sharedModelContainer.mainContext)
+                    sessionEntityService.setModelContext(sharedModelContainer.mainContext)
+                    sessionAPIRouter.setModelContext(sharedModelContainer.mainContext)
+                    specIngestionService.setModelContext(sharedModelContainer.mainContext)
+                    specIngestionService.startWatching()
+                    gitExportService.setModelContext(sharedModelContainer.mainContext)
                     screenshotShelfStore.setContextQueueService(contextQueueService)
                     screenshotShelfStore.setMaxImageDimension(preferences.maxImageDimension.rawValue)
                     screenshotShelfStore.start()
