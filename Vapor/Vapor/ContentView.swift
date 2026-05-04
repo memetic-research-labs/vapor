@@ -717,4 +717,5 @@ struct ContentView: View {
         .modelContainer(for: PromptRecord.self, inMemory: true)
         .environment(WindowManager.shared)
         .environment(UserPreferences())
+        .environment(SpeechDictationService())
 }

@@ -44,10 +44,6 @@ final class SpeechDictationService {
     private var hasAudioTap: Bool = false
     private var hasDeliveredFinalResult: Bool = false
     private var isCancellationRequested: Bool = false
-    // Throttle VU-meter Task dispatches to ~15/s; accessed only from the serial audio tap thread.
-    private var lastInputLevelUpdateTime: CFAbsoluteTime = 0
-    private let vuMeterThrottleInterval: CFTimeInterval = 1.0 / 15.0  // ~15 updates/sec
-
     var onTextUpdate: (@MainActor (String, Bool) -> Void)?
     var onError: (@MainActor (String) -> Void)?
 
@@ -208,6 +204,8 @@ final class SpeechDictationService {
             // The tap format must match the node's output format; AVAudioEngine does not
             // resample for us. Use the hardware format and throttle VU-meter dispatches.
             let recordingFormat = inputNode.outputFormat(forBus: 0)
+            var lastInputLevelUpdateTime: CFAbsoluteTime = 0
+            let vuMeterThrottleInterval: CFTimeInterval = 1.0 / 15.0  // ~15 updates/sec
             inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { [weak self] buffer, _ in
                 guard let self = self else { return }
 
@@ -218,8 +216,8 @@ final class SpeechDictationService {
                     // At 44100 Hz / 1024 samples the tap fires ~43×/sec; we only dispatch
                     // a Task { @MainActor } once per vuMeterThrottleInterval.
                     let now = CFAbsoluteTimeGetCurrent()
-                    if now - self.lastInputLevelUpdateTime >= self.vuMeterThrottleInterval {
-                        self.lastInputLevelUpdateTime = now
+                    if now - lastInputLevelUpdateTime >= vuMeterThrottleInterval {
+                        lastInputLevelUpdateTime = now
 
                         let ptr = floatChannelData[0]
                         var sum: Float = 0
@@ -310,7 +308,6 @@ final class SpeechDictationService {
         recognitionRequest = nil
         recognitionTask?.cancel()
         recognitionTask = nil
-        lastInputLevelUpdateTime = 0
 
         isDictating = false
         inputLevel = 0.0
