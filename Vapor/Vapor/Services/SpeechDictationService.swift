@@ -29,6 +29,9 @@ final class SpeechDictationService {
     private var hasAudioTap: Bool = false
     private var hasDeliveredFinalResult: Bool = false
     private var isCancellationRequested: Bool = false
+    // Throttle VU-meter Task dispatches to ~15/s; accessed only from the serial audio tap thread.
+    private var lastInputLevelUpdateTime: CFAbsoluteTime = 0
+    private let vuMeterThrottleInterval: CFTimeInterval = 1.0 / 15.0  // ~15 updates/sec
 
     var onTextUpdate: (@MainActor (String, Bool) -> Void)?
     var onError: (@MainActor (String) -> Void)?
@@ -166,45 +169,43 @@ final class SpeechDictationService {
 
             let request = SFSpeechAudioBufferRecognitionRequest()
             request.shouldReportPartialResults = true
-            // Use on-device recognition when available: no network latency, better privacy.
-            if recognizer.supportsOnDeviceRecognition {
-                request.requiresOnDeviceRecognition = true
-            }
             self.recognitionRequest = request
 
             let inputNode = self.audioEngine.inputNode
-            // 16 kHz mono Float32 — the sample rate speech models use internally.
-            // This cuts tap callbacks from ~43/s (at 44 kHz) to ~15/s and halves
-            // the buffer data, which directly reduces main-actor Task dispatches.
-            let speechFormat = AVAudioFormat(
-                commonFormat: .pcmFormatFloat32,
-                sampleRate: 16000,
-                channels: 1,
-                interleaved: false
-            ) ?? inputNode.outputFormat(forBus: 0)
-            inputNode.installTap(onBus: 0, bufferSize: 1024, format: speechFormat) { [weak self] buffer, _ in
+            // The tap format must match the node's output format; AVAudioEngine does not
+            // resample for us. Use the hardware format and throttle VU-meter dispatches.
+            let recordingFormat = inputNode.outputFormat(forBus: 0)
+            inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { [weak self] buffer, _ in
                 guard let self = self else { return }
 
-                // RMS-based input level for the VU meter (mono, so always channel 0).
+                let channelCount = Int(buffer.format.channelCount)
                 let frameLength = Int(buffer.frameLength)
-                if frameLength > 0, let floatChannelData = buffer.floatChannelData {
-                    let ptr = floatChannelData[0]
-                    var sum: Float = 0
-                    for i in 0..<frameLength {
-                        let sample = ptr[i]
-                        sum += sample * sample
-                    }
-                    let rms = sqrtf(sum / Float(frameLength))
+                if channelCount > 0, let floatChannelData = buffer.floatChannelData, frameLength > 0 {
+                    // Throttle to ~15 VU-meter updates/sec to avoid flooding the main actor.
+                    // At 44100 Hz / 1024 samples the tap fires ~43×/sec; we only dispatch
+                    // a Task { @MainActor } once per vuMeterThrottleInterval.
+                    let now = CFAbsoluteTimeGetCurrent()
+                    if now - self.lastInputLevelUpdateTime >= self.vuMeterThrottleInterval {
+                        self.lastInputLevelUpdateTime = now
 
-                    let minDb: Float = -60.0
-                    let clampedRms = max(rms, 1e-5)
-                    let db = 20.0 * log10f(clampedRms)
-                    let clampedDb = max(minDb, db)
-                    let normalized = (clampedDb - minDb) / -minDb
+                        let ptr = floatChannelData[0]
+                        var sum: Float = 0
+                        for i in 0..<frameLength {
+                            let sample = ptr[i]
+                            sum += sample * sample
+                        }
+                        let rms = sqrtf(sum / Float(frameLength))
 
-                    Task { @MainActor in
-                        let smoothing: Float = 0.2
-                        self.inputLevel = self.inputLevel * (1 - smoothing) + normalized * smoothing
+                        let minDb: Float = -60.0
+                        let clampedRms = max(rms, 1e-5)
+                        let db = 20.0 * log10f(clampedRms)
+                        let clampedDb = max(minDb, db)
+                        let normalized = (clampedDb - minDb) / -minDb
+
+                        Task { @MainActor in
+                            let smoothing: Float = 0.2
+                            self.inputLevel = self.inputLevel * (1 - smoothing) + normalized * smoothing
+                        }
                     }
                 }
 
