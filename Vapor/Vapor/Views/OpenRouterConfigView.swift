@@ -7,7 +7,7 @@ struct OpenRouterConfigView: View {
     // The caller can pass a closure that fires after a key is successfully saved.
     var onKeyChanged: ((String) -> Void)? = nil
 
-    private let oauthService = OpenRouterOAuthService.shared
+    @Environment(OpenRouterOAuthService.self) private var oauthService
     @State private var showManualEntry = false
     @State private var manualKeyDraft = ""
 
@@ -98,6 +98,17 @@ struct OpenRouterConfigView: View {
                 .font(.system(size: 10))
                 .foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
+
+            Button {
+                if let url = URL(string: "https://openrouter.ai/") {
+                    NSWorkspace.shared.open(url)
+                }
+            } label: {
+                Text("Don't have an account? Sign up at openrouter.ai →")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
         }
     }
 

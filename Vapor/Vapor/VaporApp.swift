@@ -19,6 +19,7 @@ struct VaporApp: App {
     @State private var contextExplorerStore = ContextExplorerStore.shared
     @State private var screenshotShelfStore = ScreenshotShelfStore.shared
     @State private var mainWindowFocusStore = MainWindowFocusStore()
+    @State private var oauthService = OpenRouterOAuthService.shared
     @State private var appDelegate: VaporAppDelegate?
     @State private var onboardingObserver: NSObjectProtocol?
     @Environment(\.openWindow) private var openWindow
@@ -129,6 +130,7 @@ struct VaporApp: App {
 
         WindowGroup("Vapor Onboarding", id: "onboarding") {
             OnboardingView()
+                .environment(oauthService)
         }
         .windowStyle(.titleBar)
         .windowResizability(.contentSize)
@@ -142,6 +144,7 @@ struct VaporApp: App {
             )
                 .environment(browserBridge)
                 .environment(vectorizationService)
+                .environment(oauthService)
                 .modelContainer(sharedModelContainer)
         }
 
@@ -185,6 +188,7 @@ struct VaporApp: App {
                 .environment(screenshotShelfStore)
                 .environment(mainWindowFocusStore)
                 .environment(StatusBarService.shared)
+                .environment(oauthService)
                 .onAppear {
                     browserBridge.setContextQueueService(contextQueueService)
                     contextQueueService.setModelContext(sharedModelContainer.mainContext)

@@ -703,7 +703,6 @@ private struct LLMSetupStepView: View {
 
 private struct OpenRouterSetupStepView: View {
     @Bindable var store: OnboardingStore
-    private let oauthService = OpenRouterOAuthService.shared
 
     var body: some View {
         StepCard(
@@ -721,68 +720,66 @@ private struct OpenRouterSetupStepView: View {
                 }
                 .padding(.horizontal, -8)
 
-                if oauthService.isConnected {
-                    Divider()
+                Divider()
 
-                    Text("Entity Extraction Model")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.secondary)
+                Text("Entity Extraction Model")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.secondary)
 
-                    Picker("NER Model", selection: $store.selectedNERModel) {
-                        ForEach(NERModel.curatedModels) { model in
-                            HStack {
-                                Text(model.displayName)
-                                Spacer()
-                                Text(model.priceLabel)
-                                    .foregroundStyle(.secondary)
-                            }
-                            .tag(model)
+                Picker("NER Model", selection: $store.selectedNERModel) {
+                    ForEach(NERModel.curatedModels) { model in
+                        HStack {
+                            Text(model.displayName)
+                            Spacer()
+                            Text(model.priceLabel)
+                                .foregroundStyle(.secondary)
                         }
+                        .tag(model)
                     }
-                    .labelsHidden()
-                    .pickerStyle(.menu)
-                    .frame(maxWidth: 320, alignment: .leading)
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .frame(maxWidth: 320, alignment: .leading)
 
-                    Toggle("Use custom model", isOn: $store.useCustomNERModel)
-                        .toggleStyle(.checkbox)
-                        .controlSize(.small)
+                Toggle("Use custom model", isOn: $store.useCustomNERModel)
+                    .toggleStyle(.checkbox)
+                    .controlSize(.small)
 
-                    if store.useCustomNERModel {
-                        TextField("Custom model ID (e.g. google/gemma-4-31b-it)", text: $store.customNERModel)
-                            .frame(maxWidth: 320)
-                            .textFieldStyle(.roundedBorder)
-                    }
+                if store.useCustomNERModel {
+                    TextField("Custom model ID (e.g. google/gemma-4-31b-it)", text: $store.customNERModel)
+                        .frame(maxWidth: 320)
+                        .textFieldStyle(.roundedBorder)
+                }
 
-                    Divider()
+                Divider()
 
-                    Text("Compression Model")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.secondary)
+                Text("Compression Model")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.secondary)
 
-                    Picker("Compression Model", selection: $store.selectedCompressionModel) {
-                        ForEach(CompressionModelOption.curatedModels) { model in
-                            HStack {
-                                Text(model.displayName)
-                                Spacer()
-                                Text(model.priceLabel)
-                                    .foregroundStyle(.secondary)
-                            }
-                            .tag(model)
+                Picker("Compression Model", selection: $store.selectedCompressionModel) {
+                    ForEach(CompressionModelOption.curatedModels) { model in
+                        HStack {
+                            Text(model.displayName)
+                            Spacer()
+                            Text(model.priceLabel)
+                                .foregroundStyle(.secondary)
                         }
+                        .tag(model)
                     }
-                    .labelsHidden()
-                    .pickerStyle(.menu)
-                    .frame(maxWidth: 320, alignment: .leading)
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .frame(maxWidth: 320, alignment: .leading)
 
-                    Toggle("Use custom model", isOn: $store.useCustomCompressionModel)
-                        .toggleStyle(.checkbox)
-                        .controlSize(.small)
+                Toggle("Use custom model", isOn: $store.useCustomCompressionModel)
+                    .toggleStyle(.checkbox)
+                    .controlSize(.small)
 
-                    if store.useCustomCompressionModel {
-                        TextField("Custom model ID (e.g. anthropic/claude-sonnet-4)", text: $store.openRouterCompressionModel)
-                            .frame(maxWidth: 320)
-                            .textFieldStyle(.roundedBorder)
-                    }
+                if store.useCustomCompressionModel {
+                    TextField("Custom model ID (e.g. anthropic/claude-sonnet-4)", text: $store.openRouterCompressionModel)
+                        .frame(maxWidth: 320)
+                        .textFieldStyle(.roundedBorder)
                 }
             }
             .padding(.horizontal, 8)

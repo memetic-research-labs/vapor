@@ -22,7 +22,7 @@ struct ToolSidebarView: View {
 
     @State private var selectedItem: ToolRailItem = .target
     @State private var showingOpenRouterConfig = false
-    private let oauthService = OpenRouterOAuthService.shared
+    @Environment(OpenRouterOAuthService.self) private var oauthService
     @State private var pulseScale: CGFloat = 1.0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -42,10 +42,7 @@ struct ToolSidebarView: View {
         .background(Color(nsColor: .controlBackgroundColor))
         .sheet(isPresented: $showingOpenRouterConfig) {
             OpenRouterConfigView { newKey in
-                compressionService.setOpenRouterApiKey(
-                    newKey,
-                    model: UserDefaults.standard.string(forKey: "openRouterModel") ?? compressionService.openRouterModel
-                )
+                compressionService.setOpenRouterApiKey(newKey, model: compressionService.openRouterModel)
             }
         }
         .onAppear {
