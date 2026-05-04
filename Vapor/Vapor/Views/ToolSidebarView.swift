@@ -15,11 +15,16 @@ struct ToolSidebarView: View {
     let preferences: UserPreferences
     @Environment(BrowserBridge.self) private var browserBridge
     @Environment(MainWindowFocusStore.self) private var focusStore
+    @Environment(CompressionService.self) private var compressionService
     let onChooseTarget: () -> Void
     let onPostToTarget: () -> Void
     let onToggleDictation: () -> Void
 
     @State private var selectedItem: ToolRailItem = .target
+    @State private var showingOpenRouterConfig = false
+    private let oauthService = OpenRouterOAuthService.shared
+    @State private var pulseScale: CGFloat = 1.0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(spacing: 8) {
@@ -28,11 +33,31 @@ struct ToolSidebarView: View {
             dictationButton
 
             Spacer(minLength: 0)
+
+            openRouterButton
         }
         .padding(.vertical, 6)
         .frame(width: railWidth)
         .frame(maxHeight: .infinity, alignment: .top)
         .background(Color(nsColor: .controlBackgroundColor))
+        .sheet(isPresented: $showingOpenRouterConfig) {
+            OpenRouterConfigView { newKey in
+                compressionService.setOpenRouterApiKey(
+                    newKey,
+                    model: UserDefaults.standard.string(forKey: "openRouterModel") ?? compressionService.openRouterModel
+                )
+            }
+        }
+        .onAppear {
+            startPulseIfNeeded()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .vaporOpenRouterKeyChanged)) { _ in
+            if oauthService.isConnected {
+                withAnimation(.easeOut(duration: 0.3)) { pulseScale = 1.0 }
+            } else {
+                startPulseIfNeeded()
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .vaporFocusToolRail)) { _ in
             focusStore.focus(.toolRail)
         }
@@ -114,6 +139,60 @@ struct ToolSidebarView: View {
         }
         .buttonStyle(.plain)
         .help(dictationHelpText)
+    }
+
+    // MARK: - OpenRouter button
+
+    private var openRouterButton: some View {
+        Button {
+            showingOpenRouterConfig = true
+        } label: {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Color(nsColor: .windowBackgroundColor))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(
+                                oauthService.isConnected
+                                    ? Color.indigo.opacity(0.25)
+                                    : Color.orange.opacity(0.6),
+                                lineWidth: oauthService.isConnected ? 1 : 1.5
+                            )
+                    )
+                    .frame(width: buttonSize, height: buttonSize)
+
+                Image(systemName: oauthService.isConnected ? "cloud.fill" : "cloud")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(oauthService.isConnected ? .indigo : .orange)
+                    .scaleEffect(oauthService.isConnected ? 1.0 : pulseScale)
+            }
+            .overlay(alignment: .topTrailing) {
+                if oauthService.isConnected {
+                    Circle()
+                        .fill(Color.green)
+                        .frame(width: 7, height: 7)
+                        .offset(x: 3, y: -3)
+                }
+            }
+            .frame(width: buttonSize, height: buttonSize)
+        }
+        .buttonStyle(.plain)
+        .help(oauthService.isConnected ? "OpenRouter connected" : "Connect OpenRouter (required for cloud features)")
+        .padding(.bottom, 4)
+    }
+
+    private func startPulseIfNeeded() {
+        guard !oauthService.isConnected else { return }
+        if reduceMotion {
+            // Provide a static visual cue (slightly enlarged) without animation
+            pulseScale = 1.08
+        } else {
+            withAnimation(
+                .easeInOut(duration: 0.85).repeatForever(autoreverses: true)
+            ) {
+                pulseScale = 1.18
+            }
+        }
     }
 
     private func sidebarIcon(symbol: String, tint: Color, isSelected: Bool) -> some View {

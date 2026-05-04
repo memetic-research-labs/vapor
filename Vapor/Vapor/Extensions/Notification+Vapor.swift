@@ -34,4 +34,6 @@ extension Notification.Name {
     static let vaporToolMoveDown = Notification.Name("vaporToolMoveDown")
     static let vaporToolActivate = Notification.Name("vaporToolActivate")
     static let vaporShowOnboarding = Notification.Name("vaporShowOnboarding")
+    /// Posted when the OpenRouter API key changes (object: the new key as String, or "" when disconnected).
+    static let vaporOpenRouterKeyChanged = Notification.Name("vaporOpenRouterKeyChanged")
 }

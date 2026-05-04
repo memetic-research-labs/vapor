@@ -245,6 +245,11 @@ struct ContentView: View {
                 .onReceive(NotificationCenter.default.publisher(for: .vaporLLMDownloadCompleted)) { _ in
                     Task { await compressionService.reloadLocalLLMIfNeeded() }
                 }
+                .onReceive(NotificationCenter.default.publisher(for: .vaporOpenRouterKeyChanged)) { notification in
+                    let key = (notification.object as? String) ?? ""
+                    let model = UserDefaults.standard.string(forKey: "openRouterModel") ?? compressionService.openRouterModel
+                    compressionService.setOpenRouterApiKey(key, model: model)
+                }
         )
     }
 

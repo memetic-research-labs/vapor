@@ -8,5 +8,16 @@
 	<string>Vapor needs microphone access to capture your voice for text dictation.</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.productivity</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>lol.mrl.app.Vapor.oauth</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>vaporapp</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

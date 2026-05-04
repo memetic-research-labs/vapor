@@ -1184,17 +1184,17 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 20) {
                 GroupBox("OpenRouter API") {
                     VStack(alignment: .leading, spacing: 12) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("API Key")
-                                .font(.system(size: 12, weight: .medium))
-                            SecureField("Enter your OpenRouter API key", text: $openRouterApiKey)
-                                .textFieldStyle(.roundedBorder)
-                                .onChange(of: openRouterApiKey) { _, newValue in
-                                    compressionService.setOpenRouterApiKey(newValue, model: selectedCompressionOpenRouterModel)
-                                }
+                        OpenRouterConfigView { newKey in
+                            openRouterApiKey = newKey
+                            compressionService.setOpenRouterApiKey(newKey, model: selectedCompressionOpenRouterModel)
+                            if !newKey.isEmpty {
+                                refreshOpenRouterCatalogIfNeeded(force: true)
+                            }
                         }
 
-                        Text("The Cloud tab only manages authentication and the live model catalog. Compression, entity extraction, and summarization each choose their own cloud model in their respective tabs.")
+                        Divider()
+
+                        Text("The Cloud tab manages authentication and the live model catalog. Compression, entity extraction, and summarization each choose their own cloud model in their respective tabs.")
                             .font(.system(size: 10))
                             .foregroundColor(.secondary)
 
@@ -1220,6 +1220,15 @@ struct SettingsView: View {
                         }
                     }
                     .padding(8)
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .vaporOpenRouterKeyChanged)) { notification in
+                    if let key = notification.object as? String {
+                        openRouterApiKey = key
+                        compressionService.setOpenRouterApiKey(key, model: selectedCompressionOpenRouterModel)
+                        if !key.isEmpty {
+                            refreshOpenRouterCatalogIfNeeded(force: true)
+                        }
+                    }
                 }
 
                 GroupBox("Model Catalog") {
