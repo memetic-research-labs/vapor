@@ -17,6 +17,8 @@ nonisolated final class VaporHTTPHandler: ChannelInboundHandler, @unchecked Send
     let contextItemStatusProvider: @Sendable (String) -> String?
     let onSessionSearch: @Sendable () -> (String, String?, Int) async -> [[String: Any]]
     let onSessionContext: @Sendable () -> (String, String, Int, Int) async -> [String: Any]?
+    let onAgentIndexStatus: @Sendable () -> (String?, String?, String?) async -> [String: Any]
+    let onAgentCurrentSession: @Sendable () -> (String?, String?) async -> [String: Any]
 
     private var requestHead: HTTPRequestHead?
     private var requestPath: String = ""
@@ -30,7 +32,9 @@ nonisolated final class VaporHTTPHandler: ChannelInboundHandler, @unchecked Send
         onContextCapture: @escaping @Sendable ([String: Any]) -> Void,
         contextItemStatusProvider: @escaping @Sendable (String) -> String?,
         onSessionSearch: @escaping @Sendable () -> (String, String?, Int) async -> [[String: Any]] = { { _, _, _ in [] } },
-        onSessionContext: @escaping @Sendable () -> (String, String, Int, Int) async -> [String: Any]? = { { _, _, _, _ in nil } }
+        onSessionContext: @escaping @Sendable () -> (String, String, Int, Int) async -> [String: Any]? = { { _, _, _, _ in nil } },
+        onAgentIndexStatus: @escaping @Sendable () -> (String?, String?, String?) async -> [String: Any] = { { _, _, _ in ["error": "not_available"] } },
+        onAgentCurrentSession: @escaping @Sendable () -> (String?, String?) async -> [String: Any] = { { _, _ in ["error": "not_available"] } }
     ) {
         self.sseHub = sseHub
         self.authTokenProvider = authTokenProvider
@@ -39,6 +43,8 @@ nonisolated final class VaporHTTPHandler: ChannelInboundHandler, @unchecked Send
         self.contextItemStatusProvider = contextItemStatusProvider
         self.onSessionSearch = onSessionSearch
         self.onSessionContext = onSessionContext
+        self.onAgentIndexStatus = onAgentIndexStatus
+        self.onAgentCurrentSession = onAgentCurrentSession
     }
 
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
@@ -97,6 +103,26 @@ nonisolated final class VaporHTTPHandler: ChannelInboundHandler, @unchecked Send
                     }
                     if remainder.contains("/context") {
                         handleSessionContextGET(context: context, head: head, sessionID: String(remainder.split(separator: "/").first ?? Substring(remainder)))
+                        return
+                    }
+                }
+                if head.method == .GET, requestPath == "/api/agent/index/status" {
+                    handleAgentIndexStatusGET(context: context, head: head)
+                    return
+                }
+                if head.method == .GET, requestPath == "/api/agent/current-session" {
+                    handleAgentCurrentSessionGET(context: context, head: head)
+                    return
+                }
+                if head.method == .GET, requestPath == "/api/agent/search" {
+                    handleSessionSearchGET(context: context, head: head)
+                    return
+                }
+                if head.method == .GET, requestPath.hasPrefix("/api/agent/sessions/") {
+                    let remainder = String(requestPath.dropFirst("/api/agent/sessions/".count))
+                    let parts = remainder.split(separator: "/").map(String.init)
+                    if parts.count == 2, parts[1] == "search" {
+                        handleAgentSessionSearchGET(context: context, head: head, sessionID: parts[0])
                         return
                     }
                 }
@@ -318,6 +344,54 @@ nonisolated final class VaporHTTPHandler: ChannelInboundHandler, @unchecked Send
             } else {
                 sendJSON(context: context, status: .notFound, body: ["error": "No results found"])
             }
+        }
+    }
+
+    private func handleAgentSessionSearchGET(context: ChannelHandlerContext, head: HTTPRequestHead, sessionID: String) {
+        let queryItems = head.uri.split(separator: "?", maxSplits: 1).last
+            .flatMap { URLComponents(string: "?\($0)") }?.queryItems ?? []
+        let query = queryItems.first(where: { $0.name == "q" })?.value ?? ""
+        let limitStr = queryItems.first(where: { $0.name == "limit" })?.value ?? "20"
+        let limit = Int(limitStr) ?? 20
+
+        guard !query.isEmpty else {
+            sendJSON(context: context, status: .badRequest, body: ["error": "Missing 'q' parameter"])
+            return
+        }
+
+        Task {
+            let searchFn = onSessionSearch()
+            let results = await searchFn(query, sessionID, limit)
+            sendJSON(context: context, status: .ok, body: ["results": results, "count": results.count, "session_id": sessionID])
+        }
+    }
+
+    private func handleAgentIndexStatusGET(context: ChannelHandlerContext, head: HTTPRequestHead) {
+        let queryItems = head.uri.split(separator: "?", maxSplits: 1).last
+            .flatMap { URLComponents(string: "?\($0)") }?.queryItems ?? []
+        let sessionID = queryItems.first(where: { $0.name == "session_id" })?.value
+        let cwd = queryItems.first(where: { $0.name == "cwd" })?.value
+        let source = queryItems.first(where: { $0.name == "source" })?.value
+
+        Task {
+            let statusFn = onAgentIndexStatus()
+            let result = await statusFn(sessionID, cwd, source)
+            let hasError = result["error"] != nil
+            sendJSON(context: context, status: hasError ? .notFound : .ok, body: result)
+        }
+    }
+
+    private func handleAgentCurrentSessionGET(context: ChannelHandlerContext, head: HTTPRequestHead) {
+        let queryItems = head.uri.split(separator: "?", maxSplits: 1).last
+            .flatMap { URLComponents(string: "?\($0)") }?.queryItems ?? []
+        let cwd = queryItems.first(where: { $0.name == "cwd" })?.value
+        let source = queryItems.first(where: { $0.name == "source" })?.value
+
+        Task {
+            let currentFn = onAgentCurrentSession()
+            let result = await currentFn(cwd, source)
+            let hasError = result["error"] != nil
+            sendJSON(context: context, status: hasError ? .notFound : .ok, body: result)
         }
     }
 

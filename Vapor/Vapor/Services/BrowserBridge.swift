@@ -192,6 +192,27 @@ final class BrowserBridge {
                                     "unique_turns": turnSourceIDs
                                 ] as [String: Any]
                             }
+                        },
+                        onAgentIndexStatus: { [weak self] in
+                            return { sessionID, cwd, source in
+                                let vectorization = await MainActor.run { self?.vectorizationService }
+                                return await Self.agentIndexStatus(
+                                    sessionID: sessionID,
+                                    cwd: cwd,
+                                    source: source,
+                                    vectorizationService: vectorization
+                                )
+                            }
+                        },
+                        onAgentCurrentSession: { [weak self] in
+                            return { cwd, source in
+                                let vectorization = await MainActor.run { self?.vectorizationService }
+                                return await Self.agentCurrentSession(
+                                    cwd: cwd,
+                                    source: source,
+                                    vectorizationService: vectorization
+                                )
+                            }
                         }
                     )
                     guard !Task.isCancelled else {
@@ -721,6 +742,168 @@ final class BrowserBridge {
             recordEstimate: json["recordEstimate"] as? Int,
             sizeHint: json["sizeHint"] as? String
         )
+    }
+
+    nonisolated private static func agentCurrentSession(
+        cwd: String?,
+        source: String?,
+        vectorizationService: VectorizationService?
+    ) async -> [String: Any] {
+        guard source == nil || source == "opencode" else {
+            return ["error": "unsupported_source", "source": source ?? ""]
+        }
+        guard let session = inferOpenCodeSession(cwd: cwd) else {
+            return ["error": "no_current_session", "message": "No OpenCode session could be inferred for the supplied cwd."]
+        }
+
+        var body = sessionPayload(session)
+        body["index_status"] = await agentIndexStatus(
+            sessionID: session.id,
+            cwd: cwd,
+            source: source,
+            vectorizationService: vectorizationService
+        )
+        return body
+    }
+
+    nonisolated private static func agentIndexStatus(
+        sessionID: String?,
+        cwd: String?,
+        source: String?,
+        vectorizationService: VectorizationService?
+    ) async -> [String: Any] {
+        guard source == nil || source == "opencode" else {
+            return ["error": "unsupported_source", "source": source ?? ""]
+        }
+        guard let vectorizationService else {
+            return ["error": "vectorization_unavailable", "message": "Vapor vectorization service is not available."]
+        }
+        guard let session = sessionID.flatMap({ OpenCodeReader.shared.fetchSession(sessionID: $0) }) ?? inferOpenCodeSession(cwd: cwd) else {
+            return ["error": "no_session", "message": "No OpenCode session could be inferred. Provide session_id or cwd."]
+        }
+
+        let indexer = await MainActor.run { OpenCodeSessionIndexer.shared }
+        let status = await indexer.checkImportState(
+            sourceID: session.id,
+            sessionTimeUpdated: session.timeUpdated,
+            vectorizationService: vectorizationService
+        )
+        let activeState = await MainActor.run { indexer.state }
+        let isActive = activeIndexInfo(activeState, sessionID: session.id)
+
+        var payload = sessionPayload(session)
+        let statusPayload = statusPayload(status, active: isActive, model: await MainActor.run { vectorizationService.providerDisplayName })
+        for (key, value) in statusPayload { payload[key] = value }
+        return payload
+    }
+
+    nonisolated private static func inferOpenCodeSession(cwd: String?) -> OpenCodeSession? {
+        let reader = OpenCodeReader.shared
+        if let cwd, !cwd.isEmpty,
+           let session = reader.fetchSessions(limit: 1, directory: cwd).first {
+            return session
+        }
+        return reader.fetchSessions(limit: 1).first
+    }
+
+    nonisolated private static func sessionPayload(_ session: OpenCodeSession) -> [String: Any] {
+        return [
+            "source": "opencode",
+            "session_id": session.id,
+            "title": session.title,
+            "directory": session.directory,
+            "updated_at": isoString(session.timeUpdated),
+            "message_count": session.messageCount
+        ]
+    }
+
+    nonisolated private static func statusPayload(
+        _ status: OpenCodeSessionIndexer.ImportStatus,
+        active: [String: Any]?,
+        model: String
+    ) -> [String: Any] {
+        if let active { return active.merging(["model": model]) { current, _ in current } }
+
+        let chunks: Int
+        let vectors: Int
+        let turns: Int
+        let statusString: String
+        let message: String
+        let canSearch: Bool
+        let needsUpdate: Bool
+        let needsRepair: Bool
+
+        switch status {
+        case .notImported:
+            turns = 0; chunks = 0; vectors = 0
+            statusString = "missing"
+            message = "This session is not imported. Ask the user to click Import & Index in Vapor."
+            canSearch = false; needsUpdate = false; needsRepair = false
+        case .ready(let turnCount, let chunkCount, let vectorCount):
+            turns = turnCount; chunks = chunkCount; vectors = vectorCount
+            statusString = "ready"
+            message = "Search is ready."
+            canSearch = true; needsUpdate = false; needsRepair = false
+        case .dirty(let turnCount, let chunkCount, let vectorCount):
+            turns = turnCount; chunks = chunkCount; vectors = vectorCount
+            statusString = vectorCount < chunkCount ? "partial" : "dirty"
+            message = vectorCount < chunkCount
+                ? "Search is usable but incomplete. Ask the user to click Update Search if recall matters."
+                : "The session has newer data. Ask the user to click Update Search in Vapor."
+            canSearch = vectorCount > 0; needsUpdate = true; needsRepair = false
+        case .needsRepair(let turnCount, let chunkCount, let vectorCount):
+            turns = turnCount; chunks = chunkCount; vectors = vectorCount
+            statusString = "repair_needed"
+            message = "Search index is unavailable. Ask the user to click Repair Search in Vapor."
+            canSearch = false; needsUpdate = false; needsRepair = true
+        }
+
+        return [
+            "status": statusString,
+            "usable": canSearch,
+            "can_search": canSearch,
+            "needs_update": needsUpdate,
+            "needs_repair": needsRepair,
+            "turns": turns,
+            "chunks": chunks,
+            "vectors": vectors,
+            "coverage": chunks > 0 ? Double(vectors) / Double(chunks) : 0,
+            "model": model,
+            "message": message
+        ]
+    }
+
+    nonisolated private static func activeIndexInfo(_ state: OpenCodeSessionIndexer.IndexState, sessionID: String) -> [String: Any]? {
+        switch state {
+        case .importing(let id, let current, let total) where id == sessionID:
+            return [
+                "status": "indexing",
+                "usable": false,
+                "can_search": false,
+                "needs_update": false,
+                "needs_repair": false,
+                "progress_current": current,
+                "progress_total": total,
+                "message": total > 0 ? "Importing session: \(current) / \(total)." : "Importing session."
+            ]
+        case .indexing(let id, let current, let total) where id == sessionID:
+            return [
+                "status": "indexing",
+                "usable": false,
+                "can_search": false,
+                "needs_update": false,
+                "needs_repair": false,
+                "progress_current": current,
+                "progress_total": total,
+                "message": total > 0 ? "Updating search index: \(current) / \(total)." : "Updating search index."
+            ]
+        default:
+            return nil
+        }
+    }
+
+    nonisolated private static func isoString(_ date: Date) -> String {
+        ISO8601DateFormatter().string(from: date)
     }
 
     func handleContextCapture(_ json: [String: Any]) {

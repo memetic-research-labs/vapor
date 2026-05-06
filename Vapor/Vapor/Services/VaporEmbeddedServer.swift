@@ -24,7 +24,9 @@ nonisolated final class VaporEmbeddedServer: @unchecked Sendable {
         onContextCapture: @escaping @Sendable ([String: Any]) -> Void,
         contextItemStatusProvider: @escaping @Sendable (String) -> String?,
         onSessionSearch: @escaping @Sendable () -> (String, String?, Int) async -> [[String: Any]] = { { _, _, _ in [] } },
-        onSessionContext: @escaping @Sendable () -> (String, String, Int, Int) async -> [String: Any]? = { { _, _, _, _ in nil } }
+        onSessionContext: @escaping @Sendable () -> (String, String, Int, Int) async -> [String: Any]? = { { _, _, _, _ in nil } },
+        onAgentIndexStatus: @escaping @Sendable () -> (String?, String?, String?) async -> [String: Any] = { { _, _, _ in ["error": "not_available"] } },
+        onAgentCurrentSession: @escaping @Sendable () -> (String?, String?) async -> [String: Any] = { { _, _ in ["error": "not_available"] } }
     ) async throws {
         let alreadyStarted: Bool = lock.withLock {
             guard _channel == nil else { return true }
@@ -48,7 +50,9 @@ nonisolated final class VaporEmbeddedServer: @unchecked Sendable {
                         onContextCapture: onContextCapture,
                         contextItemStatusProvider: contextItemStatusProvider,
                         onSessionSearch: onSessionSearch,
-                        onSessionContext: onSessionContext
+                        onSessionContext: onSessionContext,
+                        onAgentIndexStatus: onAgentIndexStatus,
+                        onAgentCurrentSession: onAgentCurrentSession
                     )
                     return channel.pipeline.configureHTTPServerPipeline(withPipeliningAssistance: true).flatMap { _ in
                         channel.pipeline.addHandler(handler)

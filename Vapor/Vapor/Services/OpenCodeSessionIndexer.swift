@@ -18,7 +18,7 @@ final class OpenCodeSessionIndexer {
         case error(String)
     }
 
-    enum ImportStatus: Equatable {
+    enum ImportStatus: Equatable, Sendable {
         case notImported
         case ready(turnCount: Int, chunkCount: Int, vectorCount: Int)
         case dirty(turnCount: Int, chunkCount: Int, vectorCount: Int)

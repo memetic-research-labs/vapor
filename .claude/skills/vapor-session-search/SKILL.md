@@ -1,110 +1,92 @@
 ---
 name: vapor-session-search
-description: "Search indexed OpenCode agent sessions via Vapor's local HTTP API. Supports semantic vector search across conversation turns and per-session context retrieval."
+description: "Search Vapor's local indexed agent memory for the current session, including conversation turns and indexed tool/reasoning history."
 ---
 
-# Vapor Session Search
+# Vapor Agent Memory Search
 
-Search indexed agent conversation sessions through Vapor's embedded HTTP API on `127.0.0.1:8766`.
+Use this skill when you need to recall prior decisions, errors, implementation details, tool results, or reasoning from the current indexed agent session.
 
-## Prerequisites
+Vapor exposes a local HTTP API on `http://127.0.0.1:8766`. Requests require `VAPOR_API_TOKEN` as a Bearer token.
 
-- Vapor must be running (macOS app with embedded HTTP server on port 8766)
-- Auth token available via `VAPOR_API_TOKEN` environment variable (auto-set by Vapor on launch)
-- Sessions must be indexed via "Import & Index" in the Vapor UI before they are searchable
+## Workflow
+
+1. Check index status before searching.
+2. Search only if `can_search` is `true`.
+3. If `can_search` is `false`, tell the user which Vapor UI action is needed.
+4. Use context expansion before relying on a result.
 
 ## Authentication
 
-All requests require a Bearer token. Use the `VAPOR_API_TOKEN` environment variable:
+```bash
+TOKEN="$VAPOR_API_TOKEN"
+BASE="${VAPOR_API_URL:-http://127.0.0.1:8766}"
+```
+
+## Check Current Session
 
 ```bash
-TOKEN=$VAPOR_API_TOKEN
-curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8766/api/session/search?q=..."
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "$BASE/api/agent/current-session?cwd=$(python3 -c 'import os,urllib.parse; print(urllib.parse.quote(os.getcwd()))')" \
+  | python3 -m json.tool
 ```
 
-## API Endpoints
-
-### Search Sessions
-
-Semantic vector search across indexed conversation turns.
+## Check Index Status
 
 ```bash
-TOKEN=$VAPOR_API_TOKEN
-
-# Search all indexed sessions
-curl -s -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8766/api/session/search?q=implement+authentication&limit=10" | python3 -m json.tool
-
-# Search within a specific session
-curl -s -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8766/api/session/search?q=error+handling&session_id=ses_abc123&limit=5" | python3 -m json.tool
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "$BASE/api/agent/index/status?session_id=ses_abc123" \
+  | python3 -m json.tool
 ```
 
-**Parameters:**
-- `q` (required): Search query text
-- `session_id` (optional): Scope search to a specific session
-- `limit` (optional, default 20): Max results to return
+Status values:
 
-**Response:**
-```json
-{
-  "results": [
-    {
-      "embedding_id": "turn:ses_abc123:msg_def456:0",
-      "distance": 0.42,
-      "chunk_text": "...relevant text from conversation...",
-      "turn_source_id": "msg_def456",
-      "session_id": "ses_abc123",
-      "chunk_index": 0
-    }
-  ],
-  "count": 1
-}
-```
+- `ready`: search is ready.
+- `dirty`: search is usable but session has newer data; ask the user to click **Update Search** in Vapor.
+- `partial`: search is usable but incomplete; ask the user to click **Update Search** if recall matters.
+- `repair_needed`: search is unavailable; ask the user to click **Repair Search** in Vapor.
+- `missing`: session is not imported; ask the user to click **Import & Index** in Vapor.
+- `indexing`: indexing is running; try again shortly.
 
-### Get Session Context
-
-Retrieve search results with full chunk context from surrounding turns.
+## Search Agent Memory
 
 ```bash
-TOKEN=$VAPOR_API_TOKEN
-
-curl -s -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8766/api/session/ses_abc123/context?q=authentication+flow&context_turns=2" | python3 -m json.tool
+QUERY="dictation on local device vs cloud based"
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "$BASE/api/agent/search?q=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "$QUERY")&limit=10" \
+  | python3 -m json.tool
 ```
 
-**Parameters:**
-- `session_id` (required, in URL path): Session to search
-- `q` (required): Search query
-- `context_turns` (optional, default 2): Number of surrounding turns to include
-- `limit` (optional, default 5): Max search results
-
-**Response:**
-```json
-{
-  "session_id": "ses_abc123",
-  "query": "authentication flow",
-  "results": [...],
-  "turn_chunks": [
-    {
-      "embedding_id": "turn:ses_abc123:msg_def456:0",
-      "chunk_text": "...full chunk text...",
-      "turn_source_id": "msg_def456",
-      "session_id": "ses_abc123",
-      "chunk_index": 0
-    }
-  ],
-  "unique_turns": ["msg_def456"]
-}
-```
-
-### Health Check
+Explicit session:
 
 ```bash
-curl -s "http://127.0.0.1:8766/api/status" | python3 -m json.tool
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "$BASE/api/agent/sessions/ses_abc123/search?q=sqlite%20vec%20filtering&limit=10" \
+  | python3 -m json.tool
 ```
 
-## Usage Tips
+## Interpret Results
 
-- Search queries work best with natural language descriptions of what you're looking for
-- The vector search uses MiniLM paraphrase-multilingual-L12-v2 embeddings (semantic similarity, not keyword matching)
-- Sessions must be manually indexed via "Import & Index" in Vapor's session window before they appear in search results
-- Each session's conversation is chunked into 512-character segments with 32-character overlap for granular matching
-- Only user and assistant text turns are indexed (tool calls, reasoning, patches are excluded)
+The score is cosine distance. Lower is better.
+
+- `0.0` is closest.
+- `< 0.30` is typically strong.
+- `< 0.60` is related.
+- Larger values are weaker.
+
+## Expand Context
+
+```bash
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "$BASE/api/session/ses_abc123/context?q=sqlite%20vec%20filtering&context_turns=2" \
+  | python3 -m json.tool
+```
+
+Use context expansion before making claims based on a search result.
+
+## Rules
+
+- Prefer current-session search unless the user asks for cross-session recall.
+- Always check status first if search quality matters.
+- If `can_search` is false, do not claim nothing was found; report the required Vapor action.
+- Do not trigger indexing from the API unless the user explicitly asks and the endpoint supports it.
