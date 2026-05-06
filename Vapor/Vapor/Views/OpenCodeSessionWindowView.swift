@@ -532,10 +532,9 @@ struct OpenCodeSessionWindowView: View {
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .overlay(
             RoundedRectangle(cornerRadius: 6)
-                .stroke(highlightedTurnID == message.id ? Color.accentColor.opacity(isHighlightPulsing ? 0.95 : 0.25) : Color.clear, lineWidth: 2.5)
-                .scaleEffect(highlightedTurnID == message.id && isHighlightPulsing ? 1.012 : 1.0)
-                .shadow(color: highlightedTurnID == message.id ? Color.accentColor.opacity(isHighlightPulsing ? 0.42 : 0.08) : Color.clear, radius: 8)
-                .animation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true), value: isHighlightPulsing)
+                .stroke(highlightedTurnID == message.id ? Color.accentColor.opacity(isHighlightPulsing ? 0.34 : 0.18) : Color.clear, lineWidth: 1)
+                .shadow(color: highlightedTurnID == message.id ? Color.accentColor.opacity(isHighlightPulsing ? 0.12 : 0.04) : Color.clear, radius: 3)
+                .animation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true), value: isHighlightPulsing)
         )
     }
 
@@ -1155,10 +1154,8 @@ extension OpenCodeSessionWindowView {
         }
 
         Task {
-            try? await Task.sleep(for: .seconds(3.5))
+            try? await Task.sleep(for: .seconds(4.5))
             if highlightedTurnID == result.turnSourceID {
-                highlightedTurnID = nil
-                highlightedSearchQuery = ""
                 isHighlightPulsing = false
             }
         }
