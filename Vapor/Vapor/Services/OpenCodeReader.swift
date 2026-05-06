@@ -314,14 +314,15 @@ final class OpenCodeReader: Sendable {
     // MARK: - Session Queries (sidebar browsing)
 
     func fetchSessions(limit: Int = 50, offset: Int = 0, directory: String? = nil) -> [OpenCodeSession] {
-        let whereClause = directory.map { "WHERE s.directory = '\(sqlEscape($0))'" } ?? ""
+        let directoryClause = directory.map { "AND s.directory = '\(sqlEscape($0))'" } ?? ""
         let sql = """
             SELECT s.id, s.project_id, s.directory, s.title, s.slug,
                    s.version, s.time_created, s.time_updated,
                    s.summary_files, s.summary_additions, s.summary_deletions,
                    (SELECT COUNT(*) FROM message m WHERE m.session_id = s.id) as message_count
             FROM session s
-            \(whereClause)
+            WHERE EXISTS (SELECT 1 FROM message m WHERE m.session_id = s.id)
+            \(directoryClause)
             ORDER BY s.time_updated DESC
             LIMIT \(limit) OFFSET \(offset)
             """
@@ -375,9 +376,10 @@ final class OpenCodeReader: Sendable {
 
     func fetchDirectories() -> [(directory: String, sessionCount: Int)] {
         let sql = """
-            SELECT directory, COUNT(*) as cnt
-            FROM session
-            GROUP BY directory
+            SELECT s.directory, COUNT(*) as cnt
+            FROM session s
+            WHERE EXISTS (SELECT 1 FROM message m WHERE m.session_id = s.id)
+            GROUP BY s.directory
             ORDER BY cnt DESC
             """
 
@@ -438,7 +440,7 @@ final class OpenCodeReader: Sendable {
     }
 
     func totalSessionCount() -> Int {
-        let sql = "SELECT COUNT(*) as cnt FROM session"
+        let sql = "SELECT COUNT(*) as cnt FROM session s WHERE EXISTS (SELECT 1 FROM message m WHERE m.session_id = s.id)"
         let rows = query(sql)
         return Int(rows.first?["cnt"] ?? "0") ?? 0
     }

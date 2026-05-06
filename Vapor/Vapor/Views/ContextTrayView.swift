@@ -33,10 +33,6 @@ struct ContextTrayView: View {
     private var filteredSessions: [OpenCodeSession] {
         var result = sessions
 
-        if let directory = selectedDirectory {
-            result = result.filter { $0.directory == directory }
-        }
-
         if !sessionSearchText.isEmpty {
             let query = sessionSearchText.lowercased()
             result = result.filter {
@@ -203,7 +199,7 @@ struct ContextTrayView: View {
                     agentSectionExpanded.toggle()
                 }
                 if agentSectionExpanded && sessions.isEmpty && !isLoadingSessions {
-                    loadSessionData()
+                    loadSessionData(directory: selectedDirectory)
                 }
             } label: {
                 HStack(spacing: 6) {
@@ -255,27 +251,28 @@ struct ContextTrayView: View {
 
     @ViewBuilder
     private var sessionListView: some View {
-        Group {
+        VStack(alignment: .leading, spacing: 0) {
+            sessionSearchField
+
+            if directories.count > 1 {
+                directoryFilterBar
+                Divider()
+            }
+
             if filteredSessions.isEmpty {
                 VStack(spacing: 6) {
                     Spacer()
                     Image(systemName: "terminal")
                         .font(.system(size: 22))
                         .foregroundStyle(.secondary.opacity(0.4))
-                    Text(sessionSearchText.isEmpty ? "No sessions found" : "No matching sessions")
+                    Text(emptySessionsMessage)
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
                     Spacer()
                 }
-                .frame(maxWidth: .infinity)
+                .frame(maxWidth: .infinity, minHeight: 120)
             } else {
-                sessionSearchField
-
-                if directories.count > 1 {
-                    directoryFilterBar
-                    Divider()
-                }
-
                 LazyVStack(alignment: .leading, spacing: 2) {
                     ForEach(filteredSessions) { session in
                         Button {
@@ -316,6 +313,12 @@ struct ContextTrayView: View {
                 .padding(.vertical, 4)
             }
         }
+    }
+
+    private var emptySessionsMessage: String {
+        if !sessionSearchText.isEmpty { return "No matching sessions" }
+        if selectedDirectory != nil { return "No sessions loaded for this project" }
+        return "No sessions found"
     }
 
     private var sessionSearchField: some View {
@@ -393,6 +396,7 @@ struct ContextTrayView: View {
             HStack(spacing: 4) {
                 Button {
                     selectedDirectory = nil
+                    loadSessionData(directory: nil)
                 } label: {
                     Text("All")
                         .font(.system(size: 10))
@@ -409,6 +413,7 @@ struct ContextTrayView: View {
                     let lastComponent = (entry.directory as NSString).lastPathComponent
                     Button {
                         selectedDirectory = entry.directory
+                        loadSessionData(directory: entry.directory)
                     } label: {
                         HStack(spacing: 2) {
                             Text(lastComponent)
@@ -512,12 +517,12 @@ struct ContextTrayView: View {
 
     // MARK: - Helpers
 
-    private func loadSessionData() {
+    private func loadSessionData(directory: String? = nil) {
         guard !isLoadingSessions else { return }
         isLoadingSessions = true
 
-        Task.detached { [reader] in
-            let fetchedSessions = reader.fetchSessions(limit: 100)
+        Task.detached { [reader, directory] in
+            let fetchedSessions = reader.fetchSessions(limit: 100, directory: directory)
             let fetchedDirectories = reader.fetchDirectories()
             let fetchedTotal = reader.totalSessionCount()
 
