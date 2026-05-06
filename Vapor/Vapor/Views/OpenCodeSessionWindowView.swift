@@ -91,8 +91,7 @@ struct OpenCodeSessionWindowView: View {
         isLoadingSession = true
         Task.detached { [sourceID] in
             let reader = OpenCodeReader.shared
-            let fetchedSessions = reader.fetchSessions(limit: 1)
-            let session = fetchedSessions.first { $0.id == sourceID }
+            let session = reader.fetchSession(sessionID: sourceID)
             let fetchedMessages = reader.fetchAllMessages(sessionID: sourceID)
             let cost = fetchedMessages.compactMap(\.cost).reduce(0, +)
 

@@ -344,6 +344,35 @@ final class OpenCodeReader: Sendable {
         }
     }
 
+    func fetchSession(sessionID: String) -> OpenCodeSession? {
+        let sql = """
+            SELECT s.id, s.project_id, s.directory, s.title, s.slug,
+                   s.version, s.time_created, s.time_updated,
+                   s.summary_files, s.summary_additions, s.summary_deletions,
+                   (SELECT COUNT(*) FROM message m WHERE m.session_id = s.id) as message_count
+            FROM session s
+            WHERE s.id = '\(sqlEscape(sessionID))'
+            LIMIT 1
+            """
+
+        return query(sql).first.map { row in
+            OpenCodeSession(
+                id: row["id"] ?? "",
+                projectID: row["project_id"] ?? "",
+                directory: row["directory"] ?? "",
+                title: row["title"] ?? "",
+                slug: row["slug"] ?? "",
+                messageCount: Int(row["message_count"] ?? "0") ?? 0,
+                timeCreated: parseEpochMs(row["time_created"]),
+                timeUpdated: parseEpochMs(row["time_updated"]),
+                version: row["version"],
+                summaryFiles: row["summary_files"].flatMap { Int($0) },
+                summaryAdditions: row["summary_additions"].flatMap { Int($0) },
+                summaryDeletions: row["summary_deletions"].flatMap { Int($0) }
+            )
+        }
+    }
+
     func fetchDirectories() -> [(directory: String, sessionCount: Int)] {
         let sql = """
             SELECT directory, COUNT(*) as cnt
