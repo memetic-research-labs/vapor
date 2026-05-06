@@ -4,9 +4,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-OPENCODE_SKILL_DIR="$HOME/.opencode/skills/vapor-session-search"
-CLAUDE_SKILL_DIR="$HOME/.claude/skills/vapor-session-search"
-SOURCE_SKILL_DIR="$REPO_ROOT/.opencode/skills/vapor-session-search"
+OPENCODE_SKILL_DIR="$HOME/.opencode/skills/vapor-agent-memory"
+CLAUDE_SKILL_DIR="$HOME/.claude/skills/vapor-agent-memory"
+SOURCE_SKILL_DIR="$REPO_ROOT/.opencode/skills/vapor-agent-memory"
 
 install_skill() {
     local target_dir="$1"

@@ -167,13 +167,13 @@ final class BrowserBridge {
                         contextItemStatusProvider: { [weak cache = self.contextStatusCache] jobId in
                             cache?.get(jobId)
                         },
-                        onSessionSearch: { [weak self] in
+                        onAgentSearch: { [weak self] in
                             return { query, sessionID, limit in
                                 guard let vectorization = await MainActor.run(body: { self?.vectorizationService }) else { return [] }
                                 return await vectorization.searchTurnChunks(matching: query, sessionID: sessionID, limit: limit)
                             }
                         },
-                        onSessionContext: { [weak self] in
+                        onAgentContext: { [weak self] in
                             return { sessionID, query, contextTurns, limit in
                                 guard let vectorization = await MainActor.run(body: { self?.vectorizationService }) else { return nil }
                                 let results = await vectorization.searchTurnChunks(matching: query, sessionID: sessionID, limit: limit)

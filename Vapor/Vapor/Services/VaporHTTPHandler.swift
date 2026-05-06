@@ -15,8 +15,8 @@ nonisolated final class VaporHTTPHandler: ChannelInboundHandler, @unchecked Send
     let onExtensionResponse: @Sendable ([String: Any]) -> Void
     let onContextCapture: @Sendable ([String: Any]) -> Void
     let contextItemStatusProvider: @Sendable (String) -> String?
-    let onSessionSearch: @Sendable () -> (String, String?, Int) async -> [[String: Any]]
-    let onSessionContext: @Sendable () -> (String, String, Int, Int) async -> [String: Any]?
+    let onAgentSearch: @Sendable () -> (String, String?, Int) async -> [[String: Any]]
+    let onAgentContext: @Sendable () -> (String, String, Int, Int) async -> [String: Any]?
     let onAgentIndexStatus: @Sendable () -> (String?, String?, String?) async -> [String: Any]
     let onAgentCurrentSession: @Sendable () -> (String?, String?) async -> [String: Any]
 
@@ -31,8 +31,8 @@ nonisolated final class VaporHTTPHandler: ChannelInboundHandler, @unchecked Send
         onExtensionResponse: @escaping @Sendable ([String: Any]) -> Void,
         onContextCapture: @escaping @Sendable ([String: Any]) -> Void,
         contextItemStatusProvider: @escaping @Sendable (String) -> String?,
-        onSessionSearch: @escaping @Sendable () -> (String, String?, Int) async -> [[String: Any]] = { { _, _, _ in [] } },
-        onSessionContext: @escaping @Sendable () -> (String, String, Int, Int) async -> [String: Any]? = { { _, _, _, _ in nil } },
+        onAgentSearch: @escaping @Sendable () -> (String, String?, Int) async -> [[String: Any]] = { { _, _, _ in [] } },
+        onAgentContext: @escaping @Sendable () -> (String, String, Int, Int) async -> [String: Any]? = { { _, _, _, _ in nil } },
         onAgentIndexStatus: @escaping @Sendable () -> (String?, String?, String?) async -> [String: Any] = { { _, _, _ in ["error": "not_available"] } },
         onAgentCurrentSession: @escaping @Sendable () -> (String?, String?) async -> [String: Any] = { { _, _ in ["error": "not_available"] } }
     ) {
@@ -41,8 +41,8 @@ nonisolated final class VaporHTTPHandler: ChannelInboundHandler, @unchecked Send
         self.onExtensionResponse = onExtensionResponse
         self.onContextCapture = onContextCapture
         self.contextItemStatusProvider = contextItemStatusProvider
-        self.onSessionSearch = onSessionSearch
-        self.onSessionContext = onSessionContext
+        self.onAgentSearch = onAgentSearch
+        self.onAgentContext = onAgentContext
         self.onAgentIndexStatus = onAgentIndexStatus
         self.onAgentCurrentSession = onAgentCurrentSession
     }
@@ -95,17 +95,6 @@ nonisolated final class VaporHTTPHandler: ChannelInboundHandler, @unchecked Send
                     }
                     return
                 }
-                if head.method == .GET, requestPath.hasPrefix("/api/session/") {
-                    let remainder = String(requestPath.dropFirst("/api/session/".count))
-                    if remainder.hasPrefix("search") {
-                        handleSessionSearchGET(context: context, head: head)
-                        return
-                    }
-                    if remainder.contains("/context") {
-                        handleSessionContextGET(context: context, head: head, sessionID: String(remainder.split(separator: "/").first ?? Substring(remainder)))
-                        return
-                    }
-                }
                 if head.method == .GET, requestPath == "/api/agent/index/status" {
                     handleAgentIndexStatusGET(context: context, head: head)
                     return
@@ -115,7 +104,7 @@ nonisolated final class VaporHTTPHandler: ChannelInboundHandler, @unchecked Send
                     return
                 }
                 if head.method == .GET, requestPath == "/api/agent/search" {
-                    handleSessionSearchGET(context: context, head: head)
+                    handleAgentSearchGET(context: context, head: head)
                     return
                 }
                 if head.method == .GET, requestPath.hasPrefix("/api/agent/sessions/") {
@@ -123,6 +112,10 @@ nonisolated final class VaporHTTPHandler: ChannelInboundHandler, @unchecked Send
                     let parts = remainder.split(separator: "/").map(String.init)
                     if parts.count == 2, parts[1] == "search" {
                         handleAgentSessionSearchGET(context: context, head: head, sessionID: parts[0])
+                        return
+                    }
+                    if parts.count == 2, parts[1] == "context" {
+                        handleAgentSessionContextGET(context: context, head: head, sessionID: parts[0])
                         return
                     }
                 }
@@ -305,7 +298,7 @@ nonisolated final class VaporHTTPHandler: ChannelInboundHandler, @unchecked Send
         sendJSON(context: context, status: .ok, body: ["status": "accepted", "jobId": jobId])
     }
 
-    private func handleSessionSearchGET(context: ChannelHandlerContext, head: HTTPRequestHead) {
+    private func handleAgentSearchGET(context: ChannelHandlerContext, head: HTTPRequestHead) {
         let queryItems = head.uri.split(separator: "?", maxSplits: 1).last
             .flatMap { URLComponents(string: "?\($0)") }?.queryItems ?? []
         let query = queryItems.first(where: { $0.name == "q" })?.value ?? ""
@@ -319,13 +312,13 @@ nonisolated final class VaporHTTPHandler: ChannelInboundHandler, @unchecked Send
         }
 
         Task {
-            let searchFn = onSessionSearch()
+            let searchFn = onAgentSearch()
             let results = await searchFn(query, sessionID, limit)
             sendJSON(context: context, status: .ok, body: ["results": results, "count": results.count])
         }
     }
 
-    private func handleSessionContextGET(context: ChannelHandlerContext, head: HTTPRequestHead, sessionID: String) {
+    private func handleAgentSessionContextGET(context: ChannelHandlerContext, head: HTTPRequestHead, sessionID: String) {
         let queryItems = head.uri.split(separator: "?", maxSplits: 1).last
             .flatMap { URLComponents(string: "?\($0)") }?.queryItems ?? []
         let query = queryItems.first(where: { $0.name == "q" })?.value ?? ""
@@ -338,7 +331,7 @@ nonisolated final class VaporHTTPHandler: ChannelInboundHandler, @unchecked Send
         }
 
         Task {
-            let contextFn = onSessionContext()
+            let contextFn = onAgentContext()
             if let result = await contextFn(sessionID, query, contextTurns, 5) {
                 sendJSON(context: context, status: .ok, body: result)
             } else {
@@ -360,7 +353,7 @@ nonisolated final class VaporHTTPHandler: ChannelInboundHandler, @unchecked Send
         }
 
         Task {
-            let searchFn = onSessionSearch()
+            let searchFn = onAgentSearch()
             let results = await searchFn(query, sessionID, limit)
             sendJSON(context: context, status: .ok, body: ["results": results, "count": results.count, "session_id": sessionID])
         }

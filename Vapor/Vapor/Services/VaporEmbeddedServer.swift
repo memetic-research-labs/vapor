@@ -23,8 +23,8 @@ nonisolated final class VaporEmbeddedServer: @unchecked Sendable {
         onResponse: @escaping @Sendable ([String: Any]) -> Void,
         onContextCapture: @escaping @Sendable ([String: Any]) -> Void,
         contextItemStatusProvider: @escaping @Sendable (String) -> String?,
-        onSessionSearch: @escaping @Sendable () -> (String, String?, Int) async -> [[String: Any]] = { { _, _, _ in [] } },
-        onSessionContext: @escaping @Sendable () -> (String, String, Int, Int) async -> [String: Any]? = { { _, _, _, _ in nil } },
+        onAgentSearch: @escaping @Sendable () -> (String, String?, Int) async -> [[String: Any]] = { { _, _, _ in [] } },
+        onAgentContext: @escaping @Sendable () -> (String, String, Int, Int) async -> [String: Any]? = { { _, _, _, _ in nil } },
         onAgentIndexStatus: @escaping @Sendable () -> (String?, String?, String?) async -> [String: Any] = { { _, _, _ in ["error": "not_available"] } },
         onAgentCurrentSession: @escaping @Sendable () -> (String?, String?) async -> [String: Any] = { { _, _ in ["error": "not_available"] } }
     ) async throws {
@@ -49,8 +49,8 @@ nonisolated final class VaporEmbeddedServer: @unchecked Sendable {
                         onExtensionResponse: onResponse,
                         onContextCapture: onContextCapture,
                         contextItemStatusProvider: contextItemStatusProvider,
-                        onSessionSearch: onSessionSearch,
-                        onSessionContext: onSessionContext,
+                        onAgentSearch: onAgentSearch,
+                        onAgentContext: onAgentContext,
                         onAgentIndexStatus: onAgentIndexStatus,
                         onAgentCurrentSession: onAgentCurrentSession
                     )

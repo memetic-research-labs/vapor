@@ -1,5 +1,5 @@
 ---
-name: vapor-session-search
+name: vapor-agent-memory
 description: "Search Vapor's local indexed agent memory for the current session, including conversation turns and indexed tool/reasoning history."
 ---
 
@@ -31,6 +31,8 @@ curl -s -H "Authorization: Bearer $TOKEN" \
   | python3 -m json.tool
 ```
 
+Response includes `session_id`, title, directory, and `index_status`.
+
 ## Check Index Status
 
 ```bash
@@ -48,7 +50,17 @@ Status values:
 - `missing`: session is not imported; ask the user to click **Import & Index** in Vapor.
 - `indexing`: indexing is running; try again shortly.
 
+Important fields:
+
+- `can_search`: true if search can be used.
+- `chunks`: number of indexed metadata chunks.
+- `vectors`: number of available searchable vectors.
+- `coverage`: `vectors / chunks`.
+- `message`: user-facing guidance.
+
 ## Search Agent Memory
+
+Current/inferred session:
 
 ```bash
 QUERY="dictation on local device vs cloud based"
@@ -74,11 +86,20 @@ The score is cosine distance. Lower is better.
 - `< 0.60` is related.
 - Larger values are weaker.
 
+Results include:
+
+- `embedding_id`
+- `distance`
+- `chunk_text`
+- `turn_source_id`
+- `session_id`
+- `chunk_index`
+
 ## Expand Context
 
 ```bash
 curl -s -H "Authorization: Bearer $TOKEN" \
-  "$BASE/api/session/ses_abc123/context?q=sqlite%20vec%20filtering&context_turns=2" \
+  "$BASE/api/agent/sessions/ses_abc123/context?q=sqlite%20vec%20filtering&context_turns=2" \
   | python3 -m json.tool
 ```
 
