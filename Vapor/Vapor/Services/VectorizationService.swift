@@ -12,11 +12,14 @@ nonisolated(unsafe) private var sharedVectorDatabase: Database?
 final class VectorizationService {
     static let shared = VectorizationService()
 
-    private static let tableName = "vec_items_minilm_l12_multilingual_v2"
+    private static let tableName = "vec_items_minilm_l6_v2"
+    private static let turnTableName = "vec_turn_chunks_minilm_l6_v2"
+    private static let turnChunksTableName = "turn_chunks"
     private static let contextEmbeddingPrefix = "ctx:"
     private static let promptEmbeddingPrefix = "prompt:"
+    private static let turnEmbeddingPrefix = "turn:"
 
-    private let embeddingService = MiniLMEmbeddingService()
+    nonisolated(unsafe) private let embeddingService = MiniLMEmbeddingService()
 
     private(set) var isInitializing = false
     private(set) var isReady = false
@@ -26,7 +29,7 @@ final class VectorizationService {
     private init() {}
 
     var providerDisplayName: String {
-        "MiniLM paraphrase-multilingual-L12-v2"
+        "MiniLM all-MiniLM-L6-v2"
     }
 
     func initialize() async {
@@ -122,6 +125,250 @@ final class VectorizationService {
         } catch {
             vectorLogger.error("Failed to delete embedding \(id, privacy: .public): \(error.localizedDescription, privacy: .public)")
             lastError = error.localizedDescription
+        }
+    }
+
+    func storeEmbedding(embeddingID: String, text: String) async throws {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        let embedding = try await generateEmbedding(for: trimmed)
+        try await upsert(embedding: embedding, id: embeddingID)
+    }
+
+    func removeTurnEmbeddings(turnSourceID: String) async {
+        let database = try? await Self.sharedDatabase()
+        guard let database else { return }
+        let pattern = "%:\(turnSourceID):%"
+        do {
+            let rows = try await database.query(
+                "SELECT embedding_id FROM \(Self.turnTableName) WHERE embedding_id LIKE ?",
+                params: [pattern]
+            )
+            for row in rows {
+                if let id = row["embedding_id"] as? String {
+                    try await database.execute("DELETE FROM \(Self.turnTableName) WHERE embedding_id = ?", params: [id])
+                    try await database.execute("DELETE FROM \(Self.tableName) WHERE embedding_id = ?", params: [id])
+                    try await database.execute("DELETE FROM \(Self.turnChunksTableName) WHERE embedding_id = ?", params: [id])
+                }
+            }
+            await refreshVectorCount()
+        } catch {
+            vectorLogger.error("Failed to remove turn embeddings for \(turnSourceID, privacy: .public): \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    func storeTurnChunk(embeddingID: String, text: String, turnSourceID: String, sessionID: String, chunkIndex: Int) async throws {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        let embedding = try await generateEmbedding(for: trimmed)
+        let database = try await Self.sharedDatabase()
+        try await Self.upsertTurn(embedding: embedding, id: embeddingID, database: database)
+
+        try await database.execute(
+            "INSERT OR REPLACE INTO \(Self.turnChunksTableName) (embedding_id, chunk_text, turn_source_id, session_id, chunk_index) VALUES (?, ?, ?, ?, ?)",
+            params: [embeddingID, trimmed, turnSourceID, sessionID, chunkIndex]
+        )
+    }
+
+    nonisolated func hasTurnChunks(turnSourceID: String) async -> Bool {
+        do {
+            let database = try await Self.sharedDatabase()
+            let rows = try await database.query(
+                "SELECT COUNT(*) AS count FROM \(Self.turnChunksTableName) WHERE turn_source_id = ?",
+                params: [turnSourceID]
+            )
+            if let count = rows.first?["count"] {
+                return Self.integerValue(from: count) > 0
+            }
+            return false
+        } catch {
+            return false
+        }
+    }
+
+    nonisolated func hasTurnVectors(turnSourceID: String) async -> Bool {
+        do {
+            let database = try await Self.sharedDatabase()
+            return await turnStore(database: database).hasTurnVectors(turnSourceID: turnSourceID)
+        } catch {
+            return false
+        }
+    }
+
+    nonisolated func clearTurnVectors(sessionID: String) async throws {
+        let database = try await Self.sharedDatabase()
+        let rows = try await database.query(
+            "SELECT embedding_id FROM \(Self.turnTableName) WHERE embedding_id LIKE ?",
+            params: ["\(Self.turnEmbeddingPrefix)\(sessionID):%"]
+        )
+        for row in rows {
+            if let id = row["embedding_id"] as? String {
+                try await database.execute("DELETE FROM \(Self.turnTableName) WHERE embedding_id = ?", params: [id])
+            }
+        }
+    }
+
+    nonisolated func embedAndStoreBatch(
+        chunks: [(embeddingID: String, text: String, turnSourceID: String, sessionID: String, chunkIndex: Int)]
+    ) async throws -> Int {
+        let database = try await Self.sharedDatabase()
+        let vectorChunks = chunks.map {
+            TurnVectorChunk(
+                embeddingID: $0.embeddingID,
+                text: $0.text,
+                turnSourceID: $0.turnSourceID,
+                sessionID: $0.sessionID,
+                chunkIndex: $0.chunkIndex
+            )
+        }
+        return try await turnStore(database: database).embedAndStore(vectorChunks)
+    }
+
+    func searchTurnChunks(matching query: String, sessionID: String? = nil, limit: Int = 20) async -> [[String: Any]] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+
+        await initialize()
+        guard isReady else { return [] }
+
+        do {
+            let startedAt = CFAbsoluteTimeGetCurrent()
+            let embedding = try await generateEmbedding(for: trimmed)
+            let database = try await Self.sharedDatabase()
+
+            let prefixFilter: String
+            var metadataCount = 0
+            var vectorCount = 0
+            if let sessionID {
+                prefixFilter = "turn:\(sessionID):%"
+                metadataCount = await turnChunkCount(sessionID: sessionID)
+                vectorCount = await turnVectorCount(sessionID: sessionID)
+            } else {
+                prefixFilter = "turn:%"
+                let metadataRows = try await database.query("SELECT COUNT(*) AS count FROM \(Self.turnChunksTableName)")
+                let vectorRows = try await database.query("SELECT COUNT(*) AS count FROM \(Self.turnTableName)")
+                metadataCount = metadataRows.first?["count"].map(Self.integerValue(from:)) ?? 0
+                vectorCount = vectorRows.first?["count"].map(Self.integerValue(from:)) ?? 0
+            }
+            let searchLimit = min(max(metadataCount, vectorCount, limit * 250, 5_000), max(vectorCount, 1))
+
+            let sql = "SELECT embedding_id, vec_distance_cosine(embedding, ?) AS distance FROM \(Self.turnTableName) ORDER BY distance ASC LIMIT ?"
+            vectorLogger.debug("Turn chunk search SQL: \(sql, privacy: .public)")
+            vectorLogger.info("Turn chunk search start: prefix=\(prefixFilter.prefix(60), privacy: .public), embedding_dims=\(embedding.count), k=\(searchLimit), metadata=\(metadataCount), vectors=\(vectorCount), query=\(trimmed.prefix(80), privacy: .public)")
+
+            guard vectorCount > 0 else {
+                vectorLogger.warning("Turn chunk search skipped: no turn vectors available for prefix \(prefixFilter.prefix(60), privacy: .public)")
+                return []
+            }
+
+            let knnRows = try await database.query(sql, params: [embedding, searchLimit])
+
+            guard !knnRows.isEmpty else {
+                vectorLogger.info("Turn chunk search complete: raw=0 filtered=0 elapsed=\(String(format: "%.3f", CFAbsoluteTimeGetCurrent() - startedAt))s")
+                return []
+            }
+
+            var matchingIDs: [String] = []
+            var distanceMap: [String: Double] = [:]
+            for row in knnRows {
+                guard let id = row["embedding_id"] as? String, id.hasPrefix(prefixFilter.dropLast()) else { continue }
+                let dist: Double
+                if let distanceVal = row["distance"] as? Double {
+                    dist = distanceVal
+                } else if let distanceVal = row["distance"] as? Int {
+                    dist = Double(distanceVal)
+                } else {
+                    continue
+                }
+                matchingIDs.append(id)
+                distanceMap[id] = dist
+                if matchingIDs.count >= limit { break }
+            }
+
+            guard !matchingIDs.isEmpty else {
+                vectorLogger.info("Turn chunk search complete: raw=\(knnRows.count) filtered=0 elapsed=\(String(format: "%.3f", CFAbsoluteTimeGetCurrent() - startedAt))s")
+                return []
+            }
+
+            let placeholders = matchingIDs.map { _ in "?" }.joined(separator: ",")
+            let chunkRows = try await database.query(
+                "SELECT embedding_id, chunk_text, turn_source_id, session_id, chunk_index FROM \(Self.turnChunksTableName) WHERE embedding_id IN (\(placeholders))",
+                params: matchingIDs
+            )
+
+            let results: [[String: Any]] = chunkRows.compactMap { row in
+                guard let embeddingID = row["embedding_id"] as? String,
+                      let distance = distanceMap[embeddingID] else { return nil }
+                return [
+                    "embedding_id": embeddingID,
+                    "distance": distance,
+                    "chunk_text": row["chunk_text"] as? String ?? "",
+                    "turn_source_id": row["turn_source_id"] as? String ?? "",
+                    "session_id": row["session_id"] as? String ?? "",
+                    "chunk_index": row["chunk_index"] ?? 0
+                ] as [String: Any]
+            }
+            .sorted { left, right in
+                let leftDistance = left["distance"] as? Double ?? .greatestFiniteMagnitude
+                let rightDistance = right["distance"] as? Double ?? .greatestFiniteMagnitude
+                return leftDistance < rightDistance
+            }
+
+            vectorLogger.info("Turn chunk search complete: raw=\(knnRows.count), filtered=\(matchingIDs.count), metadataRows=\(chunkRows.count), results=\(results.count), elapsed=\(String(format: "%.3f", CFAbsoluteTimeGetCurrent() - startedAt))s")
+            return results
+        } catch {
+            vectorLogger.error("Turn chunk search failed: \(error.localizedDescription, privacy: .public)")
+            lastError = error.localizedDescription
+            return []
+        }
+    }
+
+    func fetchChunkTexts(turnSourceID: String) async -> [[String: Any]] {
+        do {
+            let database = try await Self.sharedDatabase()
+            return try await database.query(
+                "SELECT embedding_id, chunk_text, turn_source_id, session_id, chunk_index FROM \(Self.turnChunksTableName) WHERE turn_source_id = ? ORDER BY chunk_index ASC",
+                params: [turnSourceID]
+            )
+        } catch {
+            vectorLogger.error("Failed to fetch chunk texts: \(error.localizedDescription, privacy: .public)")
+            return []
+        }
+    }
+
+    func turnChunkCount(sessionID: String) async -> Int {
+        do {
+            let database = try await Self.sharedDatabase()
+            let rows = try await database.query(
+                "SELECT COUNT(*) AS count FROM \(Self.turnChunksTableName) WHERE session_id = ?",
+                params: [sessionID]
+            )
+            if let count = rows.first?["count"] {
+                return Self.integerValue(from: count)
+            }
+            return 0
+        } catch {
+            vectorLogger.error("Failed to count turn chunks: \(error.localizedDescription, privacy: .public)")
+            return 0
+        }
+    }
+
+    func turnVectorCount(sessionID: String) async -> Int {
+        do {
+            let database = try await Self.sharedDatabase()
+            let rows = try await database.query(
+                "SELECT COUNT(*) AS count FROM \(Self.turnTableName) WHERE embedding_id LIKE ?",
+                params: ["\(Self.turnEmbeddingPrefix)\(sessionID):%"]
+            )
+            if let count = rows.first?["count"] {
+                return Self.integerValue(from: count)
+            }
+            return 0
+        } catch {
+            vectorLogger.error("Failed to count turn vectors: \(error.localizedDescription, privacy: .public)")
+            return 0
         }
     }
 
@@ -290,6 +537,14 @@ final class VectorizationService {
         }
     }
 
+    nonisolated private static func upsertTurn(embedding: [Float], id: String, database: Database) async throws {
+        try await database.execute("DELETE FROM \(turnTableName) WHERE embedding_id = ?", params: [id])
+        try await database.execute(
+            "INSERT INTO \(turnTableName)(embedding, embedding_id) VALUES (?, ?)",
+            params: [embedding, id]
+        )
+    }
+
     private func embeddingExists(id: String) async throws -> Bool {
         let database = try await Self.sharedDatabase()
         for candidateID in Self.candidateEmbeddingIDs(for: id) {
@@ -330,6 +585,18 @@ final class VectorizationService {
 
         let joined = segments.joined(separator: "\n\n").trimmingCharacters(in: .whitespacesAndNewlines)
         return joined.isEmpty ? nil : joined
+    }
+
+    nonisolated private func turnStore(database: Database) -> TurnVectorStore {
+        TurnVectorStore(
+            database: database,
+            turnTableName: Self.turnTableName,
+            chunksTableName: Self.turnChunksTableName,
+            dimensions: MiniLMEmbeddingService.dimensions,
+            embed: { [embeddingService] text in
+                try await embeddingService.embed(text: text)
+            }
+        )
     }
 
     private static func sharedDatabase() async throws -> Database {
@@ -388,6 +655,48 @@ final class VectorizationService {
                 "CREATE VIRTUAL TABLE \(tableName) USING vec0(embedding float[\(MiniLMEmbeddingService.dimensions)], embedding_id TEXT)"
             )
         }
+
+        do {
+            let tableInfo = try await database.query("PRAGMA table_info(\(turnTableName))")
+            if tableInfo.isEmpty {
+                try await database.execute(
+                    "CREATE VIRTUAL TABLE \(turnTableName) USING vec0(embedding float[\(MiniLMEmbeddingService.dimensions)], embedding_id TEXT)"
+                )
+            }
+        } catch {
+            try await database.execute(
+                "CREATE VIRTUAL TABLE \(turnTableName) USING vec0(embedding float[\(MiniLMEmbeddingService.dimensions)], embedding_id TEXT)"
+            )
+        }
+
+        do {
+            let tableInfo = try await database.query("PRAGMA table_info(\(turnChunksTableName))")
+            if tableInfo.isEmpty {
+                try await database.execute(
+                    """
+                    CREATE TABLE \(turnChunksTableName) (
+                        embedding_id TEXT PRIMARY KEY,
+                        chunk_text TEXT NOT NULL,
+                        turn_source_id TEXT NOT NULL,
+                        session_id TEXT NOT NULL,
+                        chunk_index INTEGER NOT NULL
+                    )
+                    """
+                )
+            }
+        } catch {
+            try await database.execute(
+                """
+                CREATE TABLE \(turnChunksTableName) (
+                    embedding_id TEXT PRIMARY KEY,
+                    chunk_text TEXT NOT NULL,
+                    turn_source_id TEXT NOT NULL,
+                    session_id TEXT NOT NULL,
+                    chunk_index INTEGER NOT NULL
+                )
+                """
+            )
+        }
     }
 
     nonisolated private static func vectorDatabaseDirectory() throws -> URL {
@@ -397,7 +706,7 @@ final class VectorizationService {
         return appSupportURL.appendingPathComponent("Vapor", isDirectory: true)
     }
 
-    private static func integerValue(from value: Any) -> Int {
+    nonisolated private static func integerValue(from value: Any) -> Int {
         switch value {
         case let int as Int: int
         case let int64 as Int64: Int(int64)

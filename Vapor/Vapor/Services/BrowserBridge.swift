@@ -73,6 +73,7 @@ final class BrowserBridge {
     private static let tokenKey = "browserBridgeAuthToken"
     private static let selectedTargetKey = "browserBridgeSelectedTarget"
     private var contextQueueService: ContextQueueService?
+    private var vectorizationService: VectorizationService?
     let contextStatusCache = ContextStatusCache()
     private var pendingPromptRequest: PendingPromptRequest?
 
@@ -84,18 +85,25 @@ final class BrowserBridge {
         self.contextQueueService = service
     }
 
+    func setVectorizationService(_ service: VectorizationService) {
+        self.vectorizationService = service
+    }
+
     nonisolated func authToken() -> String {
         if let token = UserDefaults.standard.string(forKey: Self.tokenKey), !token.isEmpty {
+            setenv("VAPOR_API_TOKEN", token, 0)
             return token
         }
         let token = UUID().uuidString
         UserDefaults.standard.set(token, forKey: Self.tokenKey)
+        setenv("VAPOR_API_TOKEN", token, 0)
         return token
     }
 
     nonisolated func resetAuthToken() -> String {
         let token = UUID().uuidString
         UserDefaults.standard.set(token, forKey: Self.tokenKey)
+        setenv("VAPOR_API_TOKEN", token, 1)
         Task { @MainActor [weak self] in
             await self?.restartAfterTokenReset()
         }
@@ -158,6 +166,32 @@ final class BrowserBridge {
                         },
                         contextItemStatusProvider: { [weak cache = self.contextStatusCache] jobId in
                             cache?.get(jobId)
+                        },
+                        onSessionSearch: { [weak self] in
+                            return { query, sessionID, limit in
+                                guard let vectorization = await MainActor.run(body: { self?.vectorizationService }) else { return [] }
+                                return await vectorization.searchTurnChunks(matching: query, sessionID: sessionID, limit: limit)
+                            }
+                        },
+                        onSessionContext: { [weak self] in
+                            return { sessionID, query, contextTurns, limit in
+                                guard let vectorization = await MainActor.run(body: { self?.vectorizationService }) else { return nil }
+                                let results = await vectorization.searchTurnChunks(matching: query, sessionID: sessionID, limit: limit)
+                                guard !results.isEmpty else { return nil }
+                                let turnSourceIDs = Array(Set(results.compactMap { $0["turn_source_id"] as? String }))
+                                var allChunks: [[String: Any]] = []
+                                for sourceID in turnSourceIDs {
+                                    let chunks = await vectorization.fetchChunkTexts(turnSourceID: sourceID)
+                                    allChunks.append(contentsOf: chunks)
+                                }
+                                return [
+                                    "session_id": sessionID,
+                                    "query": query,
+                                    "results": results,
+                                    "turn_chunks": allChunks,
+                                    "unique_turns": turnSourceIDs
+                                ] as [String: Any]
+                            }
                         }
                     )
                     guard !Task.isCancelled else {

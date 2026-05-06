@@ -155,14 +155,17 @@ struct VaporApp: App {
         .modelContainer(sharedModelContainer)
         .environment(contextExplorerStore)
         .windowStyle(.titleBar)
-        .defaultSize(width: 560, height: 600)
+        .defaultSize(width: 940, height: 720)
 
-        WindowGroup("Context Explorer", id: "context-explorer") {
-            ContextExplorerView()
-                .environment(contextExplorerStore)
-                .environment(vectorizationService)
+        WindowGroup("Agent Session", for: AgentSessionPayload.self) { $payload in
+            Group {
+                if let payload, let sourceID = $payload.wrappedValue?.sourceID {
+                    OpenCodeSessionWindowView(sourceID: sourceID)
+                }
+            }
         }
         .modelContainer(sharedModelContainer)
+        .environment(vectorizationService)
         .windowStyle(.titleBar)
         .defaultSize(width: 940, height: 720)
 
@@ -187,12 +190,16 @@ struct VaporApp: App {
                 .environment(StatusBarService.shared)
                 .onAppear {
                     browserBridge.setContextQueueService(contextQueueService)
+                    browserBridge.setVectorizationService(vectorizationService)
                     contextQueueService.setModelContext(sharedModelContainer.mainContext)
+                    OpenCodeSessionIndexer.shared.setModelContainer(sharedModelContainer)
                     screenshotShelfStore.setModelContext(sharedModelContainer.mainContext)
                     screenshotShelfStore.setContextQueueService(contextQueueService)
                     screenshotShelfStore.setMaxImageDimension(preferences.maxImageDimension.rawValue)
                     screenshotShelfStore.start()
-                    Task { @MainActor in await vectorizationService.initialize() }
+                    Task { @MainActor in
+                        await vectorizationService.initialize()
+                    }
                     setupBrowserBridge()
                     KeyboardShortcuts.onKeyUp(for: .toggleVapor) { windowManager.focus() }
                     windowManager.setupWindowOnAppear()

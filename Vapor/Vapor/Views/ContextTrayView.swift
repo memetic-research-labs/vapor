@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 
 struct ContextTrayView: View {
     @Environment(ContextQueueService.self) private var contextQueue
@@ -8,6 +9,44 @@ struct ContextTrayView: View {
     @State private var searchText = ""
     @State private var showReadyOnly = false
     @State private var selectedItemID: UUID?
+
+    @State private var browserExpanded = false
+    @State private var agentSectionExpanded = false
+    @State private var selectedDirectory: String?
+
+    @State private var sessions: [OpenCodeSession] = []
+    @State private var directories: [(directory: String, sessionCount: Int)] = []
+    @State private var totalSessionCount: Int = 0
+    @State private var isLoadingSessions = false
+    @State private var sessionSearchText = ""
+
+    private var reader: OpenCodeReader { .shared }
+
+    private var hasOpenCodeDB: Bool {
+        reader.isAvailable
+    }
+
+    private var hasConversations: Bool {
+        hasOpenCodeDB
+    }
+
+    private var filteredSessions: [OpenCodeSession] {
+        var result = sessions
+
+        if let directory = selectedDirectory {
+            result = result.filter { $0.directory == directory }
+        }
+
+        if !sessionSearchText.isEmpty {
+            let query = sessionSearchText.lowercased()
+            result = result.filter {
+                $0.title.lowercased().contains(query) ||
+                $0.directory.lowercased().contains(query)
+            }
+        }
+
+        return result
+    }
 
     private var filteredItems: [ContextItem] {
         var items = showReadyOnly ? contextQueue.ready : contextQueue.ready + contextQueue.queue + contextQueue.processing + contextQueue.failed
@@ -24,18 +63,50 @@ struct ContextTrayView: View {
     var body: some View {
         VStack(spacing: 0) {
             headerBar
-
             Divider()
 
-            searchBar
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    browserSection
+                    if hasConversations {
+                        agentSection
+                    }
+                }
+                .padding(.vertical, 2)
+            }
 
             Divider()
+            footerBar
+        }
+        .frame(width: 248)
+        .background(Color(nsColor: .windowBackgroundColor))
+    }
 
-            if filteredItems.isEmpty {
-                emptyState
-            } else {
-                ScrollViewReader { proxy in
-                    ScrollView {
+    // MARK: - Captured Section
+
+    @ViewBuilder
+    private var browserSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            sectionHeader(
+                title: "Browser",
+                systemImage: "safari",
+                badge: contextQueue.ready.count,
+                isExpanded: browserExpanded,
+                onTap: {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        browserExpanded.toggle()
+                    }
+                }
+            )
+            .padding(.horizontal, 8)
+
+            if browserExpanded {
+                searchBar
+
+                if filteredItems.isEmpty {
+                    emptyState
+                } else {
+                    ScrollViewReader { proxy in
                         LazyVStack(alignment: .leading, spacing: 2) {
                             ForEach(filteredItems) { item in
                                 Button {
@@ -68,22 +139,16 @@ struct ContextTrayView: View {
                             }
                         }
                         .padding(.vertical, 4)
-                    }
-                    .onChange(of: selectedItemID) { _, id in
-                        guard focusStore.activeZone == .contextTray, let id else { return }
-                        withAnimation(.easeInOut(duration: 0.12)) {
-                            proxy.scrollTo(id, anchor: .center)
+                        .onChange(of: selectedItemID) { _, id in
+                            guard focusStore.activeZone == .contextTray, let id else { return }
+                            withAnimation(.easeInOut(duration: 0.12)) {
+                                proxy.scrollTo(id, anchor: .center)
+                            }
                         }
                     }
                 }
             }
-
-            Divider()
-
-            footerBar
         }
-        .frame(width: 248)
-        .background(Color(nsColor: .windowBackgroundColor))
         .onReceive(NotificationCenter.default.publisher(for: .vaporFocusContextTray)) { _ in
             focusStore.focus(.contextTray)
             if selectedItemID == nil {
@@ -128,24 +193,243 @@ struct ContextTrayView: View {
         }
     }
 
+    // MARK: - Agent Sessions Section
+
+    @ViewBuilder
+    private var agentSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    agentSectionExpanded.toggle()
+                }
+                if agentSectionExpanded && sessions.isEmpty && !isLoadingSessions {
+                    loadSessionData()
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: agentSectionExpanded ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 12)
+
+                    Image(systemName: "terminal")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+
+                    Text("Sessions")
+                        .font(.system(size: 12, weight: .semibold))
+
+                    Spacer()
+
+                    if totalSessionCount > 0 {
+                        Text("\(totalSessionCount)")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(Capsule().fill(Color.secondary.opacity(0.1)))
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+            .padding(.vertical, 6)
+            .padding(.horizontal, 8)
+
+            if agentSectionExpanded {
+                if isLoadingSessions {
+                    HStack(spacing: 6) {
+                        ProgressView()
+                            .scaleEffect(0.5)
+                        Text("Loading sessions...")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                } else {
+                    sessionListView
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var sessionListView: some View {
+        Group {
+            if filteredSessions.isEmpty {
+                VStack(spacing: 6) {
+                    Spacer()
+                    Image(systemName: "terminal")
+                        .font(.system(size: 22))
+                        .foregroundStyle(.secondary.opacity(0.4))
+                    Text(sessionSearchText.isEmpty ? "No sessions found" : "No matching sessions")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity)
+            } else {
+                sessionSearchField
+
+                if directories.count > 1 {
+                    directoryFilterBar
+                    Divider()
+                }
+
+                LazyVStack(alignment: .leading, spacing: 2) {
+                    ForEach(filteredSessions) { session in
+                        Button {
+                            openWindow(value: AgentSessionPayload(sourceID: session.id))
+                        } label: {
+                            HStack(spacing: 6) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(session.title.isEmpty ? "Untitled session" : session.title)
+                                        .font(.system(size: 11, weight: .medium))
+                                        .lineLimit(1)
+                                    HStack(spacing: 6) {
+                                        if session.messageCount > 0 {
+                                            Text("\(session.messageCount) msgs")
+                                                .font(.system(size: 9))
+                                                .foregroundStyle(.secondary)
+                                                .monospacedDigit()
+                                        }
+
+                                        Text(session.projectDisplayName)
+                                            .font(.system(size: 9))
+                                            .foregroundStyle(.secondary.opacity(0.7))
+                                            .lineLimit(1)
+                                            .truncationMode(.middle)
+
+                                        Text(session.timeUpdated, style: .relative)
+                                            .font(.system(size: 9))
+                                            .foregroundStyle(.secondary.opacity(0.6))
+                                    }
+                                }
+                            }
+                            .padding(.vertical, 5)
+                            .padding(.horizontal, 6)
+                        }
+                        .buttonStyle(.plain)
+                        .contentShape(Rectangle())
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+        }
+    }
+
+    private var sessionSearchField: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass")
+                .foregroundColor(.secondary)
+                .font(.system(size: 10))
+            TextField("Search sessions...", text: $sessionSearchText)
+                .textFieldStyle(.plain)
+                .font(.system(size: 10))
+            if !sessionSearchText.isEmpty {
+                Button { sessionSearchText = "" } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(.secondary)
+                        .font(.system(size: 9))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+    }
+
+    // MARK: - Shared Views
+
     private var headerBar: some View {
-        HStack {
+        HStack(spacing: 6) {
+            Image(systemName: "tray")
+                .font(.system(size: 11))
             Text("Context")
                 .font(.system(size: 13, weight: .semibold))
-
             Spacer()
-
-            Text("\(contextQueue.ready.count)")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(.secondary)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(Capsule().fill(Color.secondary.opacity(0.12)))
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 8)
         .frame(height: 44)
         .background(.bar)
+    }
+
+    private func sectionHeader(title: String, systemImage: String, badge: Int, isExpanded: Bool, onTap: (() -> Void)?) -> some View {
+        Button {
+            onTap?()
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 12)
+
+                Image(systemName: systemImage)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+
+                Text(title)
+                    .font(.system(size: 12, weight: .semibold))
+
+                Spacer()
+
+                Text("\(badge)")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .background(Capsule().fill(Color.secondary.opacity(0.1)))
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.vertical, 6)
+    }
+
+    @ViewBuilder
+    private var directoryFilterBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 4) {
+                Button {
+                    selectedDirectory = nil
+                } label: {
+                    Text("All")
+                        .font(.system(size: 10))
+                        .fontWeight(selectedDirectory == nil ? .semibold : .regular)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(
+                            Capsule().fill(selectedDirectory == nil ? Color.accentColor.opacity(0.15) : Color.clear)
+                        )
+                }
+                .buttonStyle(.plain)
+
+                ForEach(directories, id: \.directory) { entry in
+                    let lastComponent = (entry.directory as NSString).lastPathComponent
+                    Button {
+                        selectedDirectory = entry.directory
+                    } label: {
+                        HStack(spacing: 2) {
+                            Text(lastComponent)
+                                .font(.system(size: 10))
+                                .fontWeight(selectedDirectory == entry.directory ? .semibold : .regular)
+                            Text("\(entry.sessionCount)")
+                                .font(.system(size: 9))
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(
+                            Capsule().fill(selectedDirectory == entry.directory ? Color.accentColor.opacity(0.15) : Color.clear)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+        }
     }
 
     private var searchBar: some View {
@@ -224,6 +508,26 @@ struct ContextTrayView: View {
         .padding(.vertical, 6)
         .frame(height: 36)
         .background(.bar)
+    }
+
+    // MARK: - Helpers
+
+    private func loadSessionData() {
+        guard !isLoadingSessions else { return }
+        isLoadingSessions = true
+
+        Task.detached { [reader] in
+            let fetchedSessions = reader.fetchSessions(limit: 100)
+            let fetchedDirectories = reader.fetchDirectories()
+            let fetchedTotal = reader.totalSessionCount()
+
+            await MainActor.run {
+                self.sessions = fetchedSessions
+                self.directories = fetchedDirectories
+                self.totalSessionCount = fetchedTotal
+                self.isLoadingSessions = false
+            }
+        }
     }
 
     private func openDetail(item: ContextItem) {

@@ -14,6 +14,9 @@ enum VaporSchemaV1: VersionedSchema {
             ContextItemEntityLink.self,
             ImageAsset.self,
             ContextItemImageLink.self,
+            AgentConversation.self,
+            AgentTurn.self,
+            TurnContent.self,
         ]
     }
 }

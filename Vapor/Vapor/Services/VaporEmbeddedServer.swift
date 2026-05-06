@@ -22,7 +22,9 @@ nonisolated final class VaporEmbeddedServer: @unchecked Sendable {
         authTokenProvider: @escaping @Sendable () -> String,
         onResponse: @escaping @Sendable ([String: Any]) -> Void,
         onContextCapture: @escaping @Sendable ([String: Any]) -> Void,
-        contextItemStatusProvider: @escaping @Sendable (String) -> String?
+        contextItemStatusProvider: @escaping @Sendable (String) -> String?,
+        onSessionSearch: @escaping @Sendable () -> (String, String?, Int) async -> [[String: Any]] = { { _, _, _ in [] } },
+        onSessionContext: @escaping @Sendable () -> (String, String, Int, Int) async -> [String: Any]? = { { _, _, _, _ in nil } }
     ) async throws {
         let alreadyStarted: Bool = lock.withLock {
             guard _channel == nil else { return true }
@@ -44,7 +46,9 @@ nonisolated final class VaporEmbeddedServer: @unchecked Sendable {
                         authTokenProvider: authTokenProvider,
                         onExtensionResponse: onResponse,
                         onContextCapture: onContextCapture,
-                        contextItemStatusProvider: contextItemStatusProvider
+                        contextItemStatusProvider: contextItemStatusProvider,
+                        onSessionSearch: onSessionSearch,
+                        onSessionContext: onSessionContext
                     )
                     return channel.pipeline.configureHTTPServerPipeline(withPipeliningAssistance: true).flatMap { _ in
                         channel.pipeline.addHandler(handler)

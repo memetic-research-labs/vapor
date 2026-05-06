@@ -15,6 +15,8 @@ nonisolated final class VaporHTTPHandler: ChannelInboundHandler, @unchecked Send
     let onExtensionResponse: @Sendable ([String: Any]) -> Void
     let onContextCapture: @Sendable ([String: Any]) -> Void
     let contextItemStatusProvider: @Sendable (String) -> String?
+    let onSessionSearch: @Sendable () -> (String, String?, Int) async -> [[String: Any]]
+    let onSessionContext: @Sendable () -> (String, String, Int, Int) async -> [String: Any]?
 
     private var requestHead: HTTPRequestHead?
     private var requestPath: String = ""
@@ -26,13 +28,17 @@ nonisolated final class VaporHTTPHandler: ChannelInboundHandler, @unchecked Send
         authTokenProvider: @escaping @Sendable () -> String,
         onExtensionResponse: @escaping @Sendable ([String: Any]) -> Void,
         onContextCapture: @escaping @Sendable ([String: Any]) -> Void,
-        contextItemStatusProvider: @escaping @Sendable (String) -> String?
+        contextItemStatusProvider: @escaping @Sendable (String) -> String?,
+        onSessionSearch: @escaping @Sendable () -> (String, String?, Int) async -> [[String: Any]] = { { _, _, _ in [] } },
+        onSessionContext: @escaping @Sendable () -> (String, String, Int, Int) async -> [String: Any]? = { { _, _, _, _ in nil } }
     ) {
         self.sseHub = sseHub
         self.authTokenProvider = authTokenProvider
         self.onExtensionResponse = onExtensionResponse
         self.onContextCapture = onContextCapture
         self.contextItemStatusProvider = contextItemStatusProvider
+        self.onSessionSearch = onSessionSearch
+        self.onSessionContext = onSessionContext
     }
 
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
@@ -58,7 +64,8 @@ nonisolated final class VaporHTTPHandler: ChannelInboundHandler, @unchecked Send
                 sendJSON(context: context, status: .ok, body: [
                     "status": "ok",
                     "version": "1.0",
-                    "connectedClients": sseHub.clientCount
+                    "connectedClients": sseHub.clientCount,
+                    "authEnabled": !authTokenProvider().isEmpty
                 ])
                 return
             }
@@ -81,6 +88,17 @@ nonisolated final class VaporHTTPHandler: ChannelInboundHandler, @unchecked Send
                         sendJSON(context: context, status: .notFound, body: ["error": "Not found"])
                     }
                     return
+                }
+                if head.method == .GET, requestPath.hasPrefix("/api/session/") {
+                    let remainder = String(requestPath.dropFirst("/api/session/".count))
+                    if remainder.hasPrefix("search") {
+                        handleSessionSearchGET(context: context, head: head)
+                        return
+                    }
+                    if remainder.contains("/context") {
+                        handleSessionContextGET(context: context, head: head, sessionID: String(remainder.split(separator: "/").first ?? Substring(remainder)))
+                        return
+                    }
                 }
                 sendJSON(context: context, status: .notFound, body: ["error": "Not found"])
             }
@@ -259,6 +277,48 @@ nonisolated final class VaporHTTPHandler: ChannelInboundHandler, @unchecked Send
         onContextCapture(json)
         let jobId = json["jobId"] as? String ?? "unknown"
         sendJSON(context: context, status: .ok, body: ["status": "accepted", "jobId": jobId])
+    }
+
+    private func handleSessionSearchGET(context: ChannelHandlerContext, head: HTTPRequestHead) {
+        let queryItems = head.uri.split(separator: "?", maxSplits: 1).last
+            .flatMap { URLComponents(string: "?\($0)") }?.queryItems ?? []
+        let query = queryItems.first(where: { $0.name == "q" })?.value ?? ""
+        let sessionID = queryItems.first(where: { $0.name == "session_id" })?.value
+        let limitStr = queryItems.first(where: { $0.name == "limit" })?.value ?? "20"
+        let limit = Int(limitStr) ?? 20
+
+        guard !query.isEmpty else {
+            sendJSON(context: context, status: .badRequest, body: ["error": "Missing 'q' parameter"])
+            return
+        }
+
+        Task {
+            let searchFn = onSessionSearch()
+            let results = await searchFn(query, sessionID, limit)
+            sendJSON(context: context, status: .ok, body: ["results": results, "count": results.count])
+        }
+    }
+
+    private func handleSessionContextGET(context: ChannelHandlerContext, head: HTTPRequestHead, sessionID: String) {
+        let queryItems = head.uri.split(separator: "?", maxSplits: 1).last
+            .flatMap { URLComponents(string: "?\($0)") }?.queryItems ?? []
+        let query = queryItems.first(where: { $0.name == "q" })?.value ?? ""
+        let contextTurnsStr = queryItems.first(where: { $0.name == "context_turns" })?.value ?? "2"
+        let contextTurns = Int(contextTurnsStr) ?? 2
+
+        guard !query.isEmpty else {
+            sendJSON(context: context, status: .badRequest, body: ["error": "Missing 'q' parameter"])
+            return
+        }
+
+        Task {
+            let contextFn = onSessionContext()
+            if let result = await contextFn(sessionID, query, contextTurns, 5) {
+                sendJSON(context: context, status: .ok, body: result)
+            } else {
+                sendJSON(context: context, status: .notFound, body: ["error": "No results found"])
+            }
+        }
     }
 
     func errorCaught(context: ChannelHandlerContext, error: Error) {
