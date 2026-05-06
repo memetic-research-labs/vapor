@@ -525,6 +525,7 @@ struct OpenCodeSessionWindowView: View {
     private func turnCard(_ message: OpenCodeMessage) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             turnHeader(message)
+            actionSummaryView(for: message)
             turnContent(message)
         }
         .padding(12)
@@ -605,11 +606,51 @@ struct OpenCodeSessionWindowView: View {
 
     private func roleBadgeInfo(_ role: String) -> (String, Color) {
         switch role {
-        case "user": return ("You", .blue)
+        case "user": return ("User", .blue)
         case "assistant": return ("AI", .green)
         case "system": return ("System", .orange)
         default: return (role.capitalized, .secondary)
         }
+    }
+
+    @ViewBuilder
+    private func actionSummaryView(for message: OpenCodeMessage) -> some View {
+        let summary = actionSummary(for: message)
+        if let summary {
+            HStack(spacing: 6) {
+                Image(systemName: summary.failed > 0 ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                    .font(.caption2)
+                    .foregroundStyle(summary.failed > 0 ? .orange : .green)
+                Text(summary.label)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Color(nsColor: .textBackgroundColor).opacity(0.7))
+            .clipShape(RoundedRectangle(cornerRadius: 4))
+        }
+    }
+
+    private func actionSummary(for message: OpenCodeMessage) -> (label: String, failed: Int)? {
+        guard message.role == "assistant" else { return nil }
+        let parts = partsCache[message.id] ?? []
+        let tools = parts.compactMap { part -> String? in
+            if case .tool(_, _, let status, _, _, _) = part.kind { return status }
+            return nil
+        }
+        guard !tools.isEmpty else { return nil }
+
+        let failed = tools.filter { $0 == "error" || $0 == "failed" }.count
+        let running = tools.filter { $0 == "running" }.count
+        let completed = tools.filter { $0 == "completed" }.count
+
+        var segments = ["Actions: \(tools.count) tool\(tools.count == 1 ? "" : "s")"]
+        if completed > 0 { segments.append("\(completed) succeeded") }
+        if failed > 0 { segments.append("\(failed) failed") }
+        if running > 0 { segments.append("\(running) running") }
+        return (segments.joined(separator: " · "), failed)
     }
 
     // MARK: - Turn Content
@@ -656,7 +697,7 @@ struct OpenCodeSessionWindowView: View {
                         Image(systemName: "ellipsis")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
-                        Text("show tools & details")
+                        Text("show actions & details")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -716,7 +757,8 @@ struct OpenCodeSessionWindowView: View {
     @ViewBuilder
     private func toolCallView(name: String, status: String, input: String?, output: String?, title: String?, partID: String) -> some View {
         let isExpanded = expandedToolCalls.contains(partID)
-        let displayTitle = title ?? name
+        let displayTitle = toolSummary(name: name, status: status, input: input, output: output, title: title)
+        let isFailure = status == "error" || status == "failed"
 
         VStack(alignment: .leading, spacing: 0) {
             Button {
@@ -729,14 +771,14 @@ struct OpenCodeSessionWindowView: View {
                 }
             } label: {
                 HStack(spacing: 6) {
-                    Image(systemName: "wrench.fill")
+                    Image(systemName: toolIcon(name: name, status: status))
                         .font(.caption)
-                        .foregroundStyle(.purple)
+                        .foregroundStyle(isFailure ? .red : .purple)
 
                     Text(displayTitle)
                         .font(.caption)
                         .fontWeight(.medium)
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(isFailure ? .red : .primary)
                         .lineLimit(1)
 
                     statusIndicator(status)
@@ -764,8 +806,66 @@ struct OpenCodeSessionWindowView: View {
             }
         }
         .padding(8)
-        .background(Color.purple.opacity(0.05))
+        .background((isFailure ? Color.red : Color.purple).opacity(0.05))
         .clipShape(RoundedRectangle(cornerRadius: 4))
+        .overlay(
+            RoundedRectangle(cornerRadius: 4)
+                .stroke(isFailure ? Color.red.opacity(0.22) : Color.clear, lineWidth: 1)
+        )
+    }
+
+    private func toolIcon(name: String, status: String) -> String {
+        if status == "error" || status == "failed" { return "exclamationmark.triangle.fill" }
+        switch name.lowercased() {
+        case "bash": return "terminal"
+        case "read", "glob", "grep": return "doc.text.magnifyingglass"
+        case "edit", "write", "apply_patch": return "pencil.and.outline"
+        default: return "wrench.fill"
+        }
+    }
+
+    private func toolSummary(name: String, status: String, input: String?, output: String?, title: String?) -> String {
+        if let title, !title.isEmpty { return title }
+        let lowerName = name.lowercased()
+        let inputText = input ?? ""
+        let prefix = status == "error" || status == "failed" ? "Failed" : toolVerb(for: lowerName)
+
+        if lowerName == "bash", let command = toolJSONValue(inputText, key: "command") {
+            return "\(prefix) `\(shorten(command))`"
+        }
+        if ["read", "edit", "write"].contains(lowerName), let filePath = toolJSONValue(inputText, key: "filePath") {
+            return "\(prefix) \((filePath as NSString).lastPathComponent)"
+        }
+        if ["grep", "glob"].contains(lowerName), let pattern = toolJSONValue(inputText, key: "pattern") {
+            return "\(prefix) \(name) `\(shorten(pattern))`"
+        }
+        if status == "error" || status == "failed", let output, !output.isEmpty {
+            return "Failed \(name): \(shorten(output))"
+        }
+        return "\(prefix) \(name)"
+    }
+
+    private func toolVerb(for toolName: String) -> String {
+        switch toolName {
+        case "bash": return "Ran"
+        case "read": return "Read"
+        case "edit", "write", "apply_patch": return "Edited"
+        case "grep", "glob": return "Searched"
+        default: return "Used"
+        }
+    }
+
+    private func toolJSONValue(_ input: String, key: String) -> String? {
+        guard let data = input.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let value = json[key] as? String,
+              !value.isEmpty else { return nil }
+        return value
+    }
+
+    private func shorten(_ text: String, limit: Int = 80) -> String {
+        if text.count <= limit { return text }
+        return String(text.prefix(limit - 1)) + "…"
     }
 
     @ViewBuilder
@@ -832,6 +932,10 @@ struct OpenCodeSessionWindowView: View {
                     .font(.caption2)
                     .foregroundStyle(.quaternary)
                 if isExpanded {
+                    Text("AI reasoning")
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .foregroundStyle(.tertiary)
                     Text(text)
                         .font(.caption)
                         .foregroundStyle(.tertiary)
@@ -839,7 +943,7 @@ struct OpenCodeSessionWindowView: View {
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
-                    Text("reasoning")
+                    Text("AI reasoning")
                         .font(.caption)
                         .foregroundStyle(.quaternary)
                         .italic()
