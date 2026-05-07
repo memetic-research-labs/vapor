@@ -254,6 +254,7 @@ final class OpenCodeSessionIndexer {
 
             let embedStart = CFAbsoluteTimeGetCurrent()
             let textParts = rawParts.filter { ($0["data"] ?? "").contains("\"type\":\"text\"") }
+            let textPartsByMessageID = Dictionary(grouping: textParts) { $0["message_id"] ?? "" }
             let totalTurns = importedTurns.count
 
             onProgress(.indexing(sourceID: sourceID, current: 0, total: totalTurns))
@@ -262,20 +263,13 @@ final class OpenCodeSessionIndexer {
             var processed = 0
 
             for (index, turnSourceID) in importedTurns.enumerated() {
-                let alreadyHas = await vectorizationService.hasTurnVectors(turnSourceID: turnSourceID)
-                if alreadyHas {
-                    processed += 1
-                    if processed % 100 == 0 {
-                        onProgress(.indexing(sourceID: sourceID, current: index + 1, total: totalTurns))
-                    }
-                    continue
-                }
-
-                let turnParts = textParts.filter { $0["message_id"] == turnSourceID }
+                let turnParts = textPartsByMessageID[turnSourceID] ?? []
                 let textContent = turnParts.compactMap { Self.parseTextFromDataJSON($0["data"]) }.joined(separator: "\n\n")
                 let hasText = !textContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 
                 processed += 1
+
+                await vectorizationService.removeTurnEmbeddings(turnSourceID: turnSourceID)
 
                 if hasText {
                     let chunks = TextChunker.chunk(textContent)
@@ -351,6 +345,7 @@ final class OpenCodeSessionIndexer {
             }
 
             let textParts = rawParts.filter { ($0["data"] ?? "").contains("\"type\":\"text\"") }
+            let textPartsByMessageID = Dictionary(grouping: textParts) { $0["message_id"] ?? "" }
             let totalTurns = importedTurns.count
 
             onProgress(.indexing(sourceID: sourceID, current: 0, total: totalTurns))
@@ -359,7 +354,7 @@ final class OpenCodeSessionIndexer {
             var processed = 0
 
             for (index, turnSourceID) in importedTurns.enumerated() {
-                let turnParts = textParts.filter { $0["message_id"] == turnSourceID }
+                let turnParts = textPartsByMessageID[turnSourceID] ?? []
                 let textContent = turnParts.compactMap { Self.parseTextFromDataJSON($0["data"]) }.joined(separator: "\n\n")
                 let hasText = !textContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 

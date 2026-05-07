@@ -303,8 +303,10 @@ nonisolated final class VaporHTTPHandler: ChannelInboundHandler, @unchecked Send
             .flatMap { URLComponents(string: "?\($0)") }?.queryItems ?? []
         let query = queryItems.first(where: { $0.name == "q" })?.value ?? ""
         let sessionID = queryItems.first(where: { $0.name == "session_id" })?.value
-        let limitStr = queryItems.first(where: { $0.name == "limit" })?.value ?? "20"
-        let limit = Int(limitStr) ?? 20
+        guard let limit = positiveIntQuery(queryItems, name: "limit", defaultValue: 20, maxValue: 100) else {
+            sendJSON(context: context, status: .badRequest, body: ["error": "Invalid 'limit' parameter"])
+            return
+        }
 
         guard !query.isEmpty else {
             sendJSON(context: context, status: .badRequest, body: ["error": "Missing 'q' parameter"])
@@ -322,8 +324,11 @@ nonisolated final class VaporHTTPHandler: ChannelInboundHandler, @unchecked Send
         let queryItems = head.uri.split(separator: "?", maxSplits: 1).last
             .flatMap { URLComponents(string: "?\($0)") }?.queryItems ?? []
         let query = queryItems.first(where: { $0.name == "q" })?.value ?? ""
-        let contextTurnsStr = queryItems.first(where: { $0.name == "context_turns" })?.value ?? "2"
-        let contextTurns = Int(contextTurnsStr) ?? 2
+        guard let contextTurns = positiveIntQuery(queryItems, name: "context_turns", defaultValue: 2, maxValue: 10),
+              let limit = positiveIntQuery(queryItems, name: "limit", defaultValue: 5, maxValue: 100) else {
+            sendJSON(context: context, status: .badRequest, body: ["error": "Invalid context query parameter"])
+            return
+        }
 
         guard !query.isEmpty else {
             sendJSON(context: context, status: .badRequest, body: ["error": "Missing 'q' parameter"])
@@ -332,7 +337,7 @@ nonisolated final class VaporHTTPHandler: ChannelInboundHandler, @unchecked Send
 
         Task {
             let contextFn = onAgentContext()
-            if let result = await contextFn(sessionID, query, contextTurns, 5) {
+            if let result = await contextFn(sessionID, query, contextTurns, limit) {
                 sendJSON(context: context, status: .ok, body: result)
             } else {
                 sendJSON(context: context, status: .notFound, body: ["error": "No results found"])
@@ -344,8 +349,10 @@ nonisolated final class VaporHTTPHandler: ChannelInboundHandler, @unchecked Send
         let queryItems = head.uri.split(separator: "?", maxSplits: 1).last
             .flatMap { URLComponents(string: "?\($0)") }?.queryItems ?? []
         let query = queryItems.first(where: { $0.name == "q" })?.value ?? ""
-        let limitStr = queryItems.first(where: { $0.name == "limit" })?.value ?? "20"
-        let limit = Int(limitStr) ?? 20
+        guard let limit = positiveIntQuery(queryItems, name: "limit", defaultValue: 20, maxValue: 100) else {
+            sendJSON(context: context, status: .badRequest, body: ["error": "Invalid 'limit' parameter"])
+            return
+        }
 
         guard !query.isEmpty else {
             sendJSON(context: context, status: .badRequest, body: ["error": "Missing 'q' parameter"])
@@ -386,6 +393,14 @@ nonisolated final class VaporHTTPHandler: ChannelInboundHandler, @unchecked Send
             let hasError = result["error"] != nil
             sendJSON(context: context, status: hasError ? .notFound : .ok, body: result)
         }
+    }
+
+    private func positiveIntQuery(_ queryItems: [URLQueryItem], name: String, defaultValue: Int, maxValue: Int) -> Int? {
+        guard let raw = queryItems.first(where: { $0.name == name })?.value else {
+            return defaultValue
+        }
+        guard let value = Int(raw), value > 0 else { return nil }
+        return min(value, maxValue)
     }
 
     func errorCaught(context: ChannelHandlerContext, error: Error) {

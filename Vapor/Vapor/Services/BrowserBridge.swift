@@ -178,18 +178,39 @@ final class BrowserBridge {
                                 guard let vectorization = await MainActor.run(body: { self?.vectorizationService }) else { return nil }
                                 let results = await vectorization.searchTurnChunks(matching: query, sessionID: sessionID, limit: limit)
                                 guard !results.isEmpty else { return nil }
-                                let turnSourceIDs = Array(Set(results.compactMap { $0["turn_source_id"] as? String }))
-                                var allChunks: [[String: Any]] = []
-                                for sourceID in turnSourceIDs {
-                                    let chunks = await vectorization.fetchChunkTexts(turnSourceID: sourceID)
-                                    allChunks.append(contentsOf: chunks)
+                                let reader = OpenCodeReader.shared
+                                let messages = reader.fetchAllMessages(sessionID: sessionID)
+                                let orderedTurnIDs = messages.map(\.id)
+                                let matchedTurnIDs = Self.uniqueOrdered(results.compactMap { $0["turn_source_id"] as? String })
+                                var contextTurnIDs: [String] = []
+                                for turnID in matchedTurnIDs {
+                                    guard let index = orderedTurnIDs.firstIndex(of: turnID) else {
+                                        contextTurnIDs.append(turnID)
+                                        continue
+                                    }
+                                    let lower = max(0, index - contextTurns)
+                                    let upper = min(orderedTurnIDs.count - 1, index + contextTurns)
+                                    contextTurnIDs.append(contentsOf: orderedTurnIDs[lower...upper])
+                                }
+                                contextTurnIDs = Self.uniqueOrdered(contextTurnIDs)
+
+                                var chunksByTurn: [[String: Any]] = []
+                                for turnID in contextTurnIDs {
+                                    let chunks = await vectorization.fetchChunkTexts(turnSourceID: turnID)
+                                    chunksByTurn.append([
+                                        "turn_source_id": turnID,
+                                        "chunks": chunks,
+                                        "is_match": matchedTurnIDs.contains(turnID)
+                                    ])
                                 }
                                 return [
                                     "session_id": sessionID,
                                     "query": query,
+                                    "context_turns": contextTurns,
                                     "results": results,
-                                    "turn_chunks": allChunks,
-                                    "unique_turns": turnSourceIDs
+                                    "turns": chunksByTurn,
+                                    "matched_turns": matchedTurnIDs,
+                                    "context_turn_ids": contextTurnIDs
                                 ] as [String: Any]
                             }
                         },
@@ -726,6 +747,16 @@ final class BrowserBridge {
             return lhs.matchesKnownAIHost && !rhs.matchesKnownAIHost
         }
         return lhs.displayTitle.localizedCaseInsensitiveCompare(rhs.displayTitle) == .orderedAscending
+    }
+
+    nonisolated private static func uniqueOrdered(_ values: [String]) -> [String] {
+        var seen = Set<String>()
+        var result: [String] = []
+        for value in values where !seen.contains(value) {
+            seen.insert(value)
+            result.append(value)
+        }
+        return result
     }
 
     private static func parseDiscoveredSource(_ json: [String: Any]) -> DiscoveredSource? {

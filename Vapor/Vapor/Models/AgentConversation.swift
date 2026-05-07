@@ -48,7 +48,7 @@ final class AgentConversation {
         self.summaryDeletions = summaryDeletions
         self.timeCreated = timeCreated
         self.timeUpdated = timeUpdated
-        self.lastImportedAt = Date()
+        self.lastImportedAt = nil
     }
 
     var projectDisplayName: String {

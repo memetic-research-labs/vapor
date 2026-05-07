@@ -134,15 +134,12 @@ struct TurnVectorStore: Sendable {
         guard !trimmed.isEmpty else { return [] }
 
         let queryEmbedding = try await embed(trimmed)
-        let idPrefix: String
         let metadataCount: Int
         let vectorCount: Int
         if let sessionID {
-            idPrefix = "turn:\(sessionID):"
             metadataCount = await turnChunkCount(sessionID: sessionID)
             vectorCount = await turnVectorCount(sessionID: sessionID)
         } else {
-            idPrefix = "turn:"
             let metadataRows = try await database.query("SELECT COUNT(*) AS count FROM \(chunksTableName)")
             let vectorRows = try await database.query("SELECT COUNT(*) AS count FROM \(turnTableName)")
             metadataCount = metadataRows.first?["count"].map(Self.integerValue(from:)) ?? 0
@@ -151,15 +148,30 @@ struct TurnVectorStore: Sendable {
 
         guard vectorCount > 0 else { return [] }
         let searchLimit = min(max(metadataCount, vectorCount, limit * 250, 5_000), max(vectorCount, 1))
-        let rows = try await database.query(
-            "SELECT embedding_id, vec_distance_cosine(embedding, ?) AS distance FROM \(turnTableName) ORDER BY distance ASC LIMIT ?",
-            params: [queryEmbedding, searchLimit]
-        )
+        let rows: [[String: any Sendable]]
+        if let sessionID {
+            rows = try await database.query(
+                """
+                SELECT v.embedding_id, vec_distance_cosine(v.embedding, ?) AS distance
+                FROM \(turnTableName) v
+                JOIN \(chunksTableName) c ON c.embedding_id = v.embedding_id
+                WHERE c.session_id = ?
+                ORDER BY distance ASC
+                LIMIT ?
+                """,
+                params: [queryEmbedding, sessionID, searchLimit]
+            )
+        } else {
+            rows = try await database.query(
+                "SELECT embedding_id, vec_distance_cosine(embedding, ?) AS distance FROM \(turnTableName) ORDER BY distance ASC LIMIT ?",
+                params: [queryEmbedding, searchLimit]
+            )
+        }
 
         var matchingIDs: [String] = []
         var distanceMap: [String: Double] = [:]
         for row in rows {
-            guard let id = row["embedding_id"] as? String, id.hasPrefix(idPrefix) else { continue }
+            guard let id = row["embedding_id"] as? String else { continue }
             guard let distance = Self.doubleValue(from: row["distance"]) else { continue }
             matchingIDs.append(id)
             distanceMap[id] = distance

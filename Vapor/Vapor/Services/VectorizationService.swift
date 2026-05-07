@@ -208,6 +208,7 @@ final class VectorizationService {
                 try await database.execute("DELETE FROM \(Self.turnTableName) WHERE embedding_id = ?", params: [id])
             }
         }
+        try await database.execute("DELETE FROM \(Self.turnChunksTableName) WHERE session_id = ?", params: [sessionID])
     }
 
     nonisolated func embedAndStoreBatch(
@@ -235,88 +236,39 @@ final class VectorizationService {
 
         do {
             let startedAt = CFAbsoluteTimeGetCurrent()
-            let embedding = try await generateEmbedding(for: trimmed)
             let database = try await Self.sharedDatabase()
-
-            let prefixFilter: String
-            var metadataCount = 0
-            var vectorCount = 0
+            let store = turnStore(database: database)
+            let metadataCount: Int
+            let vectorCount: Int
             if let sessionID {
-                prefixFilter = "turn:\(sessionID):%"
-                metadataCount = await turnChunkCount(sessionID: sessionID)
-                vectorCount = await turnVectorCount(sessionID: sessionID)
+                metadataCount = await store.turnChunkCount(sessionID: sessionID)
+                vectorCount = await store.turnVectorCount(sessionID: sessionID)
             } else {
-                prefixFilter = "turn:%"
                 let metadataRows = try await database.query("SELECT COUNT(*) AS count FROM \(Self.turnChunksTableName)")
                 let vectorRows = try await database.query("SELECT COUNT(*) AS count FROM \(Self.turnTableName)")
                 metadataCount = metadataRows.first?["count"].map(Self.integerValue(from:)) ?? 0
                 vectorCount = vectorRows.first?["count"].map(Self.integerValue(from:)) ?? 0
             }
-            let searchLimit = min(max(metadataCount, vectorCount, limit * 250, 5_000), max(vectorCount, 1))
-
-            let sql = "SELECT embedding_id, vec_distance_cosine(embedding, ?) AS distance FROM \(Self.turnTableName) ORDER BY distance ASC LIMIT ?"
-            vectorLogger.debug("Turn chunk search SQL: \(sql, privacy: .public)")
-            vectorLogger.info("Turn chunk search start: prefix=\(prefixFilter.prefix(60), privacy: .public), embedding_dims=\(embedding.count), k=\(searchLimit), metadata=\(metadataCount), vectors=\(vectorCount), query=\(trimmed.prefix(80), privacy: .public)")
+            vectorLogger.info("Turn chunk search start: session=\(sessionID ?? "all", privacy: .public), metadata=\(metadataCount), vectors=\(vectorCount), query=\(trimmed.prefix(80), privacy: .public)")
 
             guard vectorCount > 0 else {
-                vectorLogger.warning("Turn chunk search skipped: no turn vectors available for prefix \(prefixFilter.prefix(60), privacy: .public)")
+                vectorLogger.warning("Turn chunk search skipped: no turn vectors available")
                 return []
             }
 
-            let knnRows = try await database.query(sql, params: [embedding, searchLimit])
-
-            guard !knnRows.isEmpty else {
-                vectorLogger.info("Turn chunk search complete: raw=0 filtered=0 elapsed=\(String(format: "%.3f", CFAbsoluteTimeGetCurrent() - startedAt))s")
-                return []
-            }
-
-            var matchingIDs: [String] = []
-            var distanceMap: [String: Double] = [:]
-            for row in knnRows {
-                guard let id = row["embedding_id"] as? String, id.hasPrefix(prefixFilter.dropLast()) else { continue }
-                let dist: Double
-                if let distanceVal = row["distance"] as? Double {
-                    dist = distanceVal
-                } else if let distanceVal = row["distance"] as? Int {
-                    dist = Double(distanceVal)
-                } else {
-                    continue
-                }
-                matchingIDs.append(id)
-                distanceMap[id] = dist
-                if matchingIDs.count >= limit { break }
-            }
-
-            guard !matchingIDs.isEmpty else {
-                vectorLogger.info("Turn chunk search complete: raw=\(knnRows.count) filtered=0 elapsed=\(String(format: "%.3f", CFAbsoluteTimeGetCurrent() - startedAt))s")
-                return []
-            }
-
-            let placeholders = matchingIDs.map { _ in "?" }.joined(separator: ",")
-            let chunkRows = try await database.query(
-                "SELECT embedding_id, chunk_text, turn_source_id, session_id, chunk_index FROM \(Self.turnChunksTableName) WHERE embedding_id IN (\(placeholders))",
-                params: matchingIDs
-            )
-
-            let results: [[String: Any]] = chunkRows.compactMap { row in
-                guard let embeddingID = row["embedding_id"] as? String,
-                      let distance = distanceMap[embeddingID] else { return nil }
+            let matches = try await store.search(matching: trimmed, sessionID: sessionID, limit: limit)
+            let results: [[String: Any]] = matches.map { match in
                 return [
-                    "embedding_id": embeddingID,
-                    "distance": distance,
-                    "chunk_text": row["chunk_text"] as? String ?? "",
-                    "turn_source_id": row["turn_source_id"] as? String ?? "",
-                    "session_id": row["session_id"] as? String ?? "",
-                    "chunk_index": row["chunk_index"] ?? 0
+                    "embedding_id": match.embeddingID,
+                    "distance": match.distance,
+                    "chunk_text": match.chunkText,
+                    "turn_source_id": match.turnSourceID,
+                    "session_id": match.sessionID,
+                    "chunk_index": match.chunkIndex
                 ] as [String: Any]
             }
-            .sorted { left, right in
-                let leftDistance = left["distance"] as? Double ?? .greatestFiniteMagnitude
-                let rightDistance = right["distance"] as? Double ?? .greatestFiniteMagnitude
-                return leftDistance < rightDistance
-            }
 
-            vectorLogger.info("Turn chunk search complete: raw=\(knnRows.count), filtered=\(matchingIDs.count), metadataRows=\(chunkRows.count), results=\(results.count), elapsed=\(String(format: "%.3f", CFAbsoluteTimeGetCurrent() - startedAt))s")
+            vectorLogger.info("Turn chunk search complete: results=\(results.count), elapsed=\(String(format: "%.3f", CFAbsoluteTimeGetCurrent() - startedAt))s")
             return results
         } catch {
             vectorLogger.error("Turn chunk search failed: \(error.localizedDescription, privacy: .public)")

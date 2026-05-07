@@ -102,6 +102,50 @@ final class OpenCodeVectorSearchTests: XCTestCase {
         XCTAssertTrue(hasVectors)
     }
 
+    func testTurnVectorStoreSearchScopesBeforeRanking() async throws {
+        try SQLiteVec.initialize()
+        let database = try Database(.inMemory)
+        let store = TurnVectorStore(
+            database: database,
+            turnTableName: "test_turn_vectors_scope",
+            chunksTableName: "test_turn_chunks_scope",
+            dimensions: 4,
+            embed: Self.fakeEmbedding(for:)
+        )
+        try await TurnVectorStore.initializeSchema(
+            database: database,
+            turnTableName: "test_turn_vectors_scope",
+            chunksTableName: "test_turn_chunks_scope",
+            dimensions: 4
+        )
+
+        var chunks: [TurnVectorChunk] = [
+            TurnVectorChunk(
+                embeddingID: "turn:session-a:turn-quaker:0",
+                text: "Discussed Quaker archive notes and historical records.",
+                turnSourceID: "turn-quaker",
+                sessionID: "session-a",
+                chunkIndex: 0
+            )
+        ]
+        for index in 0..<20 {
+            chunks.append(TurnVectorChunk(
+                embeddingID: "turn:session-b:turn-auth-\(index):0",
+                text: "Authentication bearer token refresh implementation details.",
+                turnSourceID: "turn-auth-\(index)",
+                sessionID: "session-b",
+                chunkIndex: 0
+            ))
+        }
+        _ = try await store.embedAndStore(chunks)
+
+        let results = try await store.search(matching: "authentication token", sessionID: "session-a", limit: 1)
+
+        XCTAssertEqual(results.count, 1)
+        XCTAssertEqual(results.first?.sessionID, "session-a")
+        XCTAssertEqual(results.first?.turnSourceID, "turn-quaker")
+    }
+
     func testRealMiniLMFindsDictationCloudFallbackPhrase() async throws {
         try SQLiteVec.initialize()
         let embeddingService = MiniLMEmbeddingService()

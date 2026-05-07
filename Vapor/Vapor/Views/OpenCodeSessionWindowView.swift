@@ -22,6 +22,7 @@ struct OpenCodeSessionWindowView: View {
     @State private var searchQuery = ""
     @State private var searchResults: [TurnSearchResult] = []
     @State private var isSearching = false
+    @State private var searchTask: Task<Void, Never>?
     @State private var highlightedTurnID: String?
     @State private var highlightedSearchQuery = ""
     @State private var isHighlightPulsing = false
@@ -1034,12 +1035,12 @@ extension OpenCodeSessionWindowView {
                 .font(.body)
                 .focused($isSearchFieldFocused)
                 .disabled(!canSearchCurrentSession)
-                .onSubmit { performSearch() }
+                .onSubmit {
+                    searchTask?.cancel()
+                    performSearch()
+                }
                 .onChange(of: searchQuery) { _, _ in
-                    Task {
-                        try? await Task.sleep(for: .milliseconds(250))
-                        await MainActor.run { performSearch() }
-                    }
+                    scheduleSearch()
                 }
 
             if !searchQuery.isEmpty {
@@ -1165,8 +1166,8 @@ extension OpenCodeSessionWindowView {
                       let text = row["chunk_text"] as? String,
                       let turnSourceID = row["turn_source_id"] as? String,
                       let sessionID = row["session_id"] as? String,
-                      let chunkIndex = row["chunk_index"] as? Int,
-                      let distance = row["distance"] as? Double else { return nil }
+                      let chunkIndex = intValue(row["chunk_index"]),
+                      let distance = doubleValue(row["distance"]) else { return nil }
                 return TurnSearchResult(
                     id: id,
                     turnSourceID: turnSourceID,
@@ -1177,8 +1178,22 @@ extension OpenCodeSessionWindowView {
                 )
             }
             await MainActor.run {
+                guard query == searchQuery.trimmingCharacters(in: .whitespacesAndNewlines) else { return }
                 searchResults = results
                 isSearching = false
+            }
+        }
+    }
+
+    private func scheduleSearch() {
+        searchTask?.cancel()
+        let scheduledQuery = searchQuery
+        searchTask = Task {
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                guard scheduledQuery == searchQuery else { return }
+                performSearch()
             }
         }
     }
@@ -1235,6 +1250,8 @@ extension OpenCodeSessionWindowView {
             isSearchPresented = false
         }
         isSearchFieldFocused = false
+        searchTask?.cancel()
+        searchTask = nil
         searchQuery = ""
         searchResults = []
         isSearching = false
@@ -1307,6 +1324,28 @@ extension OpenCodeSessionWindowView {
             .map(String.init)
             .filter { $0.count >= 3 }
         return Array(Set(cleaned)).sorted { $0.count > $1.count }
+    }
+
+    private func intValue(_ value: Any?) -> Int? {
+        switch value {
+        case let int as Int: return int
+        case let int64 as Int64: return Int(int64)
+        case let int32 as Int32: return Int(int32)
+        case let double as Double: return Int(double)
+        case let string as String: return Int(string)
+        default: return nil
+        }
+    }
+
+    private func doubleValue(_ value: Any?) -> Double? {
+        switch value {
+        case let double as Double: return double
+        case let int as Int: return Double(int)
+        case let int64 as Int64: return Double(int64)
+        case let int32 as Int32: return Double(int32)
+        case let string as String: return Double(string)
+        default: return nil
+        }
     }
 
     private var canSearchCurrentSession: Bool {
