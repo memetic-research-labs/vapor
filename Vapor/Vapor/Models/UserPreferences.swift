@@ -12,6 +12,29 @@ enum MaxImageDimension: Int, Codable, CaseIterable, Sendable {
     }
 }
 
+enum AgentSessionRefreshInterval: Double, Codable, CaseIterable, Sendable {
+    case off = 0
+    case tenSeconds = 10
+    case thirtySeconds = 30
+    case oneMinute = 60
+    case fiveMinutes = 300
+
+    var displayName: String {
+        switch self {
+        case .off: "Off"
+        case .tenSeconds: "Every 10 seconds"
+        case .thirtySeconds: "Every 30 seconds"
+        case .oneMinute: "Every 1 minute"
+        case .fiveMinutes: "Every 5 minutes"
+        }
+    }
+
+    var duration: Duration? {
+        guard rawValue > 0 else { return nil }
+        return .seconds(rawValue)
+    }
+}
+
 @MainActor
 @Observable
 final class UserPreferences {
@@ -55,6 +78,9 @@ final class UserPreferences {
     var maxImageDimension: MaxImageDimension {
         didSet { UserDefaults.standard.set(maxImageDimension.rawValue, forKey: Keys.maxImageDimension) }
     }
+    var agentSessionRefreshInterval: AgentSessionRefreshInterval {
+        didSet { UserDefaults.standard.set(agentSessionRefreshInterval.rawValue, forKey: Keys.agentSessionRefreshInterval) }
+    }
 
     struct Keys {
         static let windowExpanded = "windowExpanded"
@@ -70,6 +96,7 @@ final class UserPreferences {
         static let autoSubmitToAI = "autoSubmitToAI"
         static let embeddedServerPort = "embeddedServerPort"
         static let maxImageDimension = "maxImageDimension"
+        static let agentSessionRefreshInterval = "agentSessionRefreshInterval"
     }
 
     init() {
@@ -86,6 +113,12 @@ final class UserPreferences {
         self.embeddedServerPort = UserDefaults.standard.object(forKey: Keys.embeddedServerPort) as? Int ?? 8766
         self.maxImageDimension = UserDefaults.standard.object(forKey: Keys.maxImageDimension)
             .flatMap { MaxImageDimension(rawValue: ($0 as? Int) ?? 0) } ?? .d768
+        self.agentSessionRefreshInterval = UserDefaults.standard.object(forKey: Keys.agentSessionRefreshInterval)
+            .flatMap { value in
+                if let double = value as? Double { return AgentSessionRefreshInterval(rawValue: double) }
+                if let int = value as? Int { return AgentSessionRefreshInterval(rawValue: Double(int)) }
+                return nil
+            } ?? .oneMinute
     }
 
     func saveWindowPosition(_ point: CGPoint) {

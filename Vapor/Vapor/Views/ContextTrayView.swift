@@ -4,6 +4,7 @@ import SwiftData
 struct ContextTrayView: View {
     @Environment(ContextQueueService.self) private var contextQueue
     @Environment(MainWindowFocusStore.self) private var focusStore
+    @Environment(UserPreferences.self) private var preferences
     @Environment(\.openWindow) private var openWindow
 
     @State private var searchText = ""
@@ -19,6 +20,8 @@ struct ContextTrayView: View {
     @State private var totalSessionCount: Int = 0
     @State private var isLoadingSessions = false
     @State private var sessionSearchText = ""
+    @State private var sessionRefreshTask: Task<Void, Never>?
+    @State private var lastSessionSignature: String?
 
     private var reader: OpenCodeReader { .shared }
 
@@ -76,6 +79,14 @@ struct ContextTrayView: View {
         }
         .frame(width: 248)
         .background(Color(nsColor: .windowBackgroundColor))
+        .onDisappear { stopSessionPolling() }
+        .onChange(of: preferences.agentSessionRefreshInterval) { _, _ in
+            restartSessionPollingIfNeeded()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            guard agentSectionExpanded else { return }
+            refreshSessionsIfNeeded()
+        }
     }
 
     // MARK: - Captured Section
@@ -198,8 +209,13 @@ struct ContextTrayView: View {
                 withAnimation(.easeInOut(duration: 0.15)) {
                     agentSectionExpanded.toggle()
                 }
-                if agentSectionExpanded && sessions.isEmpty && !isLoadingSessions {
-                    loadSessionData(directory: selectedDirectory)
+                if agentSectionExpanded {
+                    if sessions.isEmpty && !isLoadingSessions {
+                        loadSessionData(directory: selectedDirectory)
+                    }
+                    startSessionPolling()
+                } else {
+                    stopSessionPolling()
                 }
             } label: {
                 HStack(spacing: 6) {
@@ -216,6 +232,18 @@ struct ContextTrayView: View {
                         .font(.system(size: 12, weight: .semibold))
 
                     Spacer()
+
+                    if agentSectionExpanded {
+                        Button {
+                            loadSessionData(directory: selectedDirectory, force: true)
+                        } label: {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Refresh sessions")
+                    }
 
                     if totalSessionCount > 0 {
                         Text("\(totalSessionCount)")
@@ -396,7 +424,7 @@ struct ContextTrayView: View {
             HStack(spacing: 4) {
                 Button {
                     selectedDirectory = nil
-                    loadSessionData(directory: nil)
+                    loadSessionData(directory: nil, force: true)
                 } label: {
                     Text("All")
                         .font(.system(size: 10))
@@ -413,7 +441,7 @@ struct ContextTrayView: View {
                     let lastComponent = (entry.directory as NSString).lastPathComponent
                     Button {
                         selectedDirectory = entry.directory
-                        loadSessionData(directory: entry.directory)
+                        loadSessionData(directory: entry.directory, force: true)
                     } label: {
                         HStack(spacing: 2) {
                             Text(lastComponent)
@@ -517,20 +545,59 @@ struct ContextTrayView: View {
 
     // MARK: - Helpers
 
-    private func loadSessionData(directory: String? = nil) {
+    private func loadSessionData(directory: String? = nil, force: Bool = false) {
         guard !isLoadingSessions else { return }
         isLoadingSessions = true
+        if force { lastSessionSignature = nil }
 
         Task.detached { [reader, directory] in
+            let signature = reader.sessionListSignature(directory: directory)
             let fetchedSessions = reader.fetchSessions(limit: 100, directory: directory)
             let fetchedDirectories = reader.fetchDirectories()
             let fetchedTotal = reader.totalSessionCount()
 
             await MainActor.run {
+                self.lastSessionSignature = signature
                 self.sessions = fetchedSessions
                 self.directories = fetchedDirectories
                 self.totalSessionCount = fetchedTotal
                 self.isLoadingSessions = false
+            }
+        }
+    }
+
+    private func startSessionPolling() {
+        guard sessionRefreshTask == nil,
+              let interval = preferences.agentSessionRefreshInterval.duration else { return }
+
+        sessionRefreshTask = Task { @MainActor in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: interval)
+                guard !Task.isCancelled else { break }
+                refreshSessionsIfNeeded()
+            }
+        }
+    }
+
+    private func stopSessionPolling() {
+        sessionRefreshTask?.cancel()
+        sessionRefreshTask = nil
+    }
+
+    private func restartSessionPollingIfNeeded() {
+        stopSessionPolling()
+        guard agentSectionExpanded else { return }
+        startSessionPolling()
+    }
+
+    private func refreshSessionsIfNeeded() {
+        guard agentSectionExpanded, !isLoadingSessions else { return }
+        let directory = selectedDirectory
+        Task.detached { [reader, directory, lastSessionSignature] in
+            let signature = reader.sessionListSignature(directory: directory)
+            guard signature != lastSessionSignature else { return }
+            await MainActor.run {
+                loadSessionData(directory: directory)
             }
         }
     }

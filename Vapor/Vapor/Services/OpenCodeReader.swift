@@ -388,6 +388,18 @@ final class OpenCodeReader: Sendable {
         }
     }
 
+    func sessionListSignature(directory: String? = nil) -> String {
+        let directoryClause = directory.map { "AND s.directory = '\(sqlEscape($0))'" } ?? ""
+        let sql = """
+            SELECT COUNT(*) || ':' || COALESCE(MAX(s.time_updated), 0) AS signature
+            FROM session s
+            WHERE EXISTS (SELECT 1 FROM message m WHERE m.session_id = s.id)
+            \(directoryClause)
+            """
+        let rows = query(sql)
+        return rows.first?["signature"] ?? "0:0"
+    }
+
     func fetchMessages(sessionID: String, limit: Int = 100) -> [OpenCodeMessage] {
         let sql = """
             SELECT id, session_id, data, time_created, time_updated
