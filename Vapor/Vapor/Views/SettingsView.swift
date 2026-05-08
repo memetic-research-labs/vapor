@@ -299,6 +299,25 @@ struct SettingsView: View {
                     }
                     .padding(8)
                 }
+
+                GroupBox("Agent Sessions") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Picker("Refresh session list", selection: Binding(
+                            get: { preferences.agentSessionRefreshInterval },
+                            set: { preferences.agentSessionRefreshInterval = $0 }
+                        )) {
+                            ForEach(AgentSessionRefreshInterval.allCases, id: \.self) { interval in
+                                Text(interval.displayName).tag(interval)
+                            }
+                        }
+                        .pickerStyle(.menu)
+
+                        Text("How often Vapor checks OpenCode for new or updated sessions while the Sessions section is open. Manual refresh is always available in the sidebar.")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(8)
+                }
             }
             .padding(20)
         }

@@ -62,6 +62,10 @@ Vapor auto-detects new screenshots on your Desktop. Open the shelf with ⌘⇧S,
 
 Captured pages, articles, browser research in one searchable sidebar. Open with ⌘⌥C, search by keyword, and insert context directly into your prompts. Everything you capture is processed through a pipeline that extracts entities, generates summaries, and builds citations.
 
+### Agent Memory API
+
+Vapor can index local agent sessions and expose them through an authenticated localhost API so agents can search prior conversation history and tool context. See [`docs/agent-memory-api.md`](docs/agent-memory-api.md).
+
 ### Research Interrogation
 
 Scan live browser tabs for structured data: tables, JSON, XHR feeds, articles. Vapor discovers data sources on the pages you have open and captures them into context automatically.

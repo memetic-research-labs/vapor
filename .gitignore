@@ -15,6 +15,7 @@ xcuserdata/
 *.perspectivev3
 !default.perspectivev3
 .DS_Store
+.venv-coreml/
 *.swp
 *~
 Vapor/Resources/ollama

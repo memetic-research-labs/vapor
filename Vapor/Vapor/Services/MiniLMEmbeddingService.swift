@@ -29,7 +29,7 @@ enum MiniLMEmbeddingError: LocalizedError {
 
 final class MiniLMEmbeddingService {
     static let dimensions = 384
-    static let identifier = "minilm_l12_multilingual_v2"
+    static let identifier = "minilm_l6_v2"
 
     private var model: MLModel?
     private var tokenizer: MiniLMTokenizer?
@@ -41,24 +41,51 @@ final class MiniLMEmbeddingService {
     func initialize() async throws {
         if model != nil, tokenizer != nil { return }
 
-        if tokenizer == nil {
-            tokenizer = try MiniLMTokenizer()
-        }
+        let loadedTokenizer = try MiniLMTokenizer()
 
         guard let modelURL = resolveModelURL() else {
             miniLMLogger.error("MiniLM model not found in bundle or fallback locations")
             throw MiniLMEmbeddingError.modelNotFound
         }
 
-        model = try loadModel(from: modelURL)
+        let loadedModel = try await Self.loadModelAsync(from: modelURL)
+
+        self.tokenizer = loadedTokenizer
+        self.model = loadedModel
         miniLMLogger.info("Loaded MiniLM model from \(modelURL.path, privacy: .public)")
     }
 
+    private static func loadModelAsync(from modelURL: URL) async throws -> MLModel {
+        try await Task.detached {
+            Result { try Self.loadModelFile(from: modelURL) }
+        }.value.get()
+    }
+
+    private static func loadModelFile(from modelURL: URL) throws -> MLModel {
+        let configuration = MLModelConfiguration()
+        configuration.computeUnits = .cpuOnly
+
+        if modelURL.pathExtension == "mlmodel" || modelURL.pathExtension == "mlpackage" {
+            let compiledURL = try MLModel.compileModel(at: modelURL)
+            return try MLModel(contentsOf: compiledURL, configuration: configuration)
+        }
+
+        return try MLModel(contentsOf: modelURL, configuration: configuration)
+    }
+
     private func resolveModelURL() -> URL? {
-        let modelName = "paraphrase-multilingual-MiniLM-L12-v2-512tokens"
+        let modelName = "all-MiniLM-L6-v2"
+
+        if let sourcePackage = candidateModelURLs().first(where: { $0.pathExtension == "mlpackage" && FileManager.default.fileExists(atPath: $0.path) }) {
+            return sourcePackage
+        }
 
         if let compiledURL = Bundle.main.url(forResource: modelName, withExtension: "mlmodelc") {
             return compiledURL
+        }
+
+        if let packageURL = Bundle.main.url(forResource: modelName, withExtension: "mlpackage") {
+            return packageURL
         }
 
         if let sourceURL = Bundle.main.url(forResource: modelName, withExtension: "mlmodel") {
@@ -69,19 +96,11 @@ final class MiniLMEmbeddingService {
     }
 
     private func loadModel(from modelURL: URL) throws -> MLModel {
-        let configuration = MLModelConfiguration()
-        configuration.computeUnits = .all
-
-        if modelURL.pathExtension == "mlmodel" {
-            let compiledURL = try MLModel.compileModel(at: modelURL)
-            return try MLModel(contentsOf: compiledURL, configuration: configuration)
-        }
-
-        return try MLModel(contentsOf: modelURL, configuration: configuration)
+        try Self.loadModelFile(from: modelURL)
     }
 
     private func candidateModelURLs() -> [URL] {
-        let modelName = "paraphrase-multilingual-MiniLM-L12-v2-512tokens"
+        let modelName = "all-MiniLM-L6-v2"
         let environment = ProcessInfo.processInfo.environment
         var candidates: [URL] = []
 
@@ -102,6 +121,7 @@ final class MiniLMEmbeddingService {
 
         for directory in resourceDirectories.compactMap({ $0 }) {
             candidates.append(directory.appendingPathComponent("\(modelName).mlmodelc", isDirectory: true))
+            candidates.append(directory.appendingPathComponent("\(modelName).mlpackage", isDirectory: true))
             candidates.append(directory.appendingPathComponent("\(modelName).mlmodel"))
         }
 
@@ -132,20 +152,25 @@ final class MiniLMEmbeddingService {
             throw MiniLMEmbeddingError.invalidModelOutput
         }
 
-        return l2Normalize(floatArray(from: embeddings))
+        let shapeDescription = String(describing: embeddings.shape.map { $0.intValue })
+        miniLMLogger.debug("MiniLM embeddings shape: \(shapeDescription, privacy: .public), count: \(embeddings.count), type: \(String(describing: embeddings.dataType), privacy: .public)")
+
+        let vector = floatArray(from: embeddings)
+        guard vector.count == Self.dimensions else {
+            miniLMLogger.error("MiniLM embedding dimension mismatch: expected \(Self.dimensions), got \(vector.count)")
+            throw MiniLMEmbeddingError.invalidModelOutput
+        }
+
+        return l2Normalize(vector)
     }
 
     private func extractEmbeddings(from output: MLFeatureProvider) -> MLMultiArray? {
         if let embeddings = output.featureValue(for: "embeddings")?.multiArrayValue {
+            miniLMLogger.info("Using MiniLM output feature embeddings")
             return embeddings
         }
 
-        for featureName in output.featureNames.sorted() {
-            if let multiArray = output.featureValue(for: featureName)?.multiArrayValue {
-                miniLMLogger.info("Using MiniLM output feature \(featureName, privacy: .public)")
-                return multiArray
-            }
-        }
+        miniLMLogger.error("MiniLM embeddings output missing. Available features: \(output.featureNames.sorted().joined(separator: ", "), privacy: .public)")
 
         return nil
     }
@@ -339,13 +364,13 @@ private extension MLMultiArray {
 
         let multiArray: MLMultiArray
         do {
-            multiArray = try MLMultiArray(shape: shape as [NSNumber], dataType: .int32)
+            multiArray = try MLMultiArray(shape: shape as [NSNumber], dataType: .float32)
         } catch {
             fatalError("Failed to create MLMultiArray for MiniLM input: \(error.localizedDescription)")
         }
-        let pointer = UnsafeMutablePointer<Int32>(OpaquePointer(multiArray.dataPointer))
+        let pointer = multiArray.dataPointer.bindMemory(to: Float.self, capacity: values.count)
         for (index, value) in values.enumerated() {
-            pointer[index] = Int32(value)
+            pointer[index] = Float(value)
         }
         return multiArray
     }
