@@ -296,7 +296,8 @@ fi
 
 echo "[4/4] Done!"
 echo ""
-echo "Install (the full token is required; 'vapor' alone resolves elsewhere):"
+echo "Install (Homebrew 6 requires an explicit tap; 'vapor' alone resolves elsewhere):"
+echo "  brew tap memetic-research-labs/vapor"
 echo "  brew install --cask memetic-research-labs/vapor/vapor"
 echo ""
 echo "Upgrade existing installs:"
