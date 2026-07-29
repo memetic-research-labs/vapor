@@ -182,7 +182,23 @@ else
     --body "Automated cask bump for [${TAG}](https://github.com/${VAPOR_REPO}/releases/tag/${TAG})."
 
   echo ""
-  echo "  Waiting for cask install checks..."
+  echo "  Waiting for cask install checks to register..."
+  # `gh pr checks` cannot tell "not started yet" from "failed": both exit 1.
+  # Wait for the run to appear before watching it, so a slow scheduler cannot
+  # be mistaken for a failure after the release is already public.
+  CHECKS_REGISTERED=""
+  for _ in $(seq 1 30); do
+    if [ "$(gh pr view "$BRANCH" --repo "$TAP_REPO" --json statusCheckRollup --jq '.statusCheckRollup | length')" -gt 0 ]; then
+      CHECKS_REGISTERED="yes"
+      break
+    fi
+    sleep 10
+  done
+
+  [ -n "$CHECKS_REGISTERED" ] ||
+    die "Cask checks never started. Review $BRANCH in $TAP_REPO before merging."
+
+  echo "  Waiting for cask install checks to finish..."
   gh pr checks "$BRANCH" --repo "$TAP_REPO" --watch --interval 15 ||
     die "Cask checks failed; the tap was not updated. Review the PR before merging."
 
