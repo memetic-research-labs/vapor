@@ -26,7 +26,7 @@ DERIVED_DATA="$REPO_ROOT/.build/DerivedData"
 ARCHIVE_PATH="$REPO_ROOT/.build/archives/Vapor.xcarchive"
 EXPORT_DIR="$REPO_ROOT/.build/export"
 OUTPUT_DIR="${1:-${OUTPUT_DIR:-$REPO_ROOT/dist}}"
-EXPORT_OPTIONS="$REPO_ROOT/scripts/ExportOptions.plist"
+EXPORT_OPTIONS="$REPO_ROOT/.build/ExportOptions.plist"
 
 APPLE_TEAM_ID="${APPLE_TEAM_ID:-YRQLJYMX5S}"
 
@@ -34,13 +34,39 @@ APPLE_TEAM_ID="${APPLE_TEAM_ID:-YRQLJYMX5S}"
 : "${APPLE_ID:?APPLE_ID is required for notarization}"
 : "${APPLE_APP_SPECIFIC_PASSWORD:?APPLE_APP_SPECIFIC_PASSWORD is required for notarization}"
 
+# Catch a bad override here rather than in an opaque xcodebuild export failure.
+if ! printf '%s' "$APPLE_TEAM_ID" | grep -Eq '^[A-Z0-9]{10}$'; then
+  echo "ERROR: APPLE_TEAM_ID must be 10 uppercase letters or digits (got: $APPLE_TEAM_ID)" >&2
+  exit 1
+fi
+
 echo "=== Vapor Release Build ==="
 echo "Repo:     $REPO_ROOT"
 echo "Output:   $OUTPUT_DIR"
 echo "Team ID:  $APPLE_TEAM_ID"
 echo ""
 
-mkdir -p "$OUTPUT_DIR" "$DERIVED_DATA"
+mkdir -p "$OUTPUT_DIR" "$DERIVED_DATA" "$(dirname "$EXPORT_OPTIONS")"
+
+# --- 0. Export options ---
+# Generated from APPLE_TEAM_ID so the archive and the export cannot disagree
+# about which team signs the app.
+cat > "$EXPORT_OPTIONS" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>destination</key>
+	<string>export</string>
+	<key>method</key>
+	<string>developer-id</string>
+	<key>signingStyle</key>
+	<string>automatic</string>
+	<key>teamID</key>
+	<string>${APPLE_TEAM_ID}</string>
+</dict>
+</plist>
+PLIST
 
 # --- 1. Archive (Release, universal binary) ---
 echo "[1/6] Archiving $SCHEME (Release)..."
