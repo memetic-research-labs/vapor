@@ -8,6 +8,17 @@
 
 Vapor is a macOS floating app that turns your voice, screenshots, and browser research into context-rich prompts, and sends them directly into any AI chat. Capture context, compose, and inject without leaving your workflow.
 
+## Install
+
+```bash
+brew install --cask memetic-research-labs/vapor/vapor
+```
+
+The full token is required: Homebrew already ships an unrelated `vapor` formula
+and a `vapor-app` cask, so plain `brew install --cask vapor` installs different
+software. You can also download the notarized DMG from
+[Releases](https://github.com/memetic-research-labs/vapor/releases).
+
 ## Screenshots
 
 <p align="center">
@@ -138,6 +149,34 @@ open Vapor.xcodeproj
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed build instructions.
+
+## Releasing
+
+`MARKETING_VERSION` is the user-facing version and `CURRENT_PROJECT_VERSION` is
+the build number. Both live on the **Vapor app target**; the test targets carry
+their own unrelated values, so never read versions from them.
+
+Bump `MARKETING_VERSION` for a normal release. If you rebuild a version that was
+already published, bump `CURRENT_PROJECT_VERSION` instead — Homebrew compares
+`<marketing>,<build>`, so reusing both would leave existing users on the old app.
+
+```bash
+# 0. set the version on the app target
+make bump-version VERSION=1.0.8            # new release, build resets to 1
+make bump-version VERSION=1.0.7 BUILD=2    # rebuild of a published version
+
+# 1. build, sign, notarize, and staple (requires Apple credentials)
+APPLE_ID=... APPLE_APP_SPECIFIC_PASSWORD=... scripts/build-release.sh
+
+# 2. rehearse the publish; validates everything, changes nothing
+scripts/publish-release.sh dist/Vapor-<version>-<build>.dmg v<version> --dry-run
+
+# 3. publish the release and open the Homebrew cask bump
+scripts/publish-release.sh dist/Vapor-<version>-<build>.dmg v<version>
+```
+
+The tag must match the DMG's marketing version. The cask bump is merged only
+after the tap's install checks pass.
 
 ## Code of Conduct
 
