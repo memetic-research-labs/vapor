@@ -11,12 +11,14 @@ Vapor is a macOS floating app that turns your voice, screenshots, and browser re
 ## Install
 
 ```bash
+brew tap memetic-research-labs/vapor
 brew install --cask memetic-research-labs/vapor/vapor
 ```
 
-The full token is required: Homebrew already ships an unrelated `vapor` formula
-and a `vapor-app` cask, so plain `brew install --cask vapor` installs different
-software. You can also download the notarized DMG from
+Homebrew 6 requires third-party taps to be added explicitly. The full cask token
+is also required because Homebrew ships an unrelated `vapor` formula and a
+`vapor-app` cask; plain `brew install --cask vapor` installs different software.
+You can also download the notarized DMG from
 [Releases](https://github.com/memetic-research-labs/vapor/releases).
 
 ## Screenshots
