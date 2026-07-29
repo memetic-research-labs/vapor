@@ -24,7 +24,8 @@ set -euo pipefail
 
 VAPOR_REPO="memetic-research-labs/vapor"
 TAP_REPO="memetic-research-labs/homebrew-vapor"
-TAP_DIR=""
+TAP_PARENT=""
+MOUNT_POINT=""
 
 usage() {
   echo "Usage: scripts/publish-release.sh <dmg-path> <tag> [--dry-run]"
@@ -40,8 +41,15 @@ usage() {
 }
 
 cleanup() {
-  if [ -n "$TAP_DIR" ] && [ -d "$TAP_DIR" ]; then
-    rm -rf "$TAP_DIR"
+  # Runs on every exit path, so a failed version check cannot leave the DMG
+  # mounted or scratch directories behind.
+  if [ -n "$MOUNT_POINT" ] && [ -d "$MOUNT_POINT" ]; then
+    hdiutil detach "$MOUNT_POINT" -quiet 2> /dev/null ||
+      hdiutil detach "$MOUNT_POINT" -force -quiet 2> /dev/null || true
+    rmdir "$MOUNT_POINT" 2> /dev/null || true
+  fi
+  if [ -n "$TAP_PARENT" ] && [ -d "$TAP_PARENT" ]; then
+    rm -rf "$TAP_PARENT"
   fi
 }
 trap cleanup EXIT
@@ -107,6 +115,7 @@ APP_SHORT_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionStri
 APP_BUILD_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$MOUNT_POINT/Vapor.app/Contents/Info.plist")"
 hdiutil detach "$MOUNT_POINT" -quiet
 rmdir "$MOUNT_POINT"
+MOUNT_POINT=""
 
 [ "$APP_SHORT_VERSION" = "$MARKETING_VERSION" ] && [ "$APP_BUILD_VERSION" = "$BUILD_VERSION" ] ||
   die "DMG name says ${MARKETING_VERSION}-${BUILD_VERSION} but the app inside is ${APP_SHORT_VERSION}-${APP_BUILD_VERSION}"
@@ -164,8 +173,17 @@ echo "[2/4] Verifying published asset..."
 if [ -n "$DRY_RUN" ]; then
   echo "  [dry run] would download $DOWNLOAD_URL and confirm it hashes to $SHA256"
 else
-  REMOTE_SHA256="$(curl -fsSL "$DOWNLOAD_URL" | shasum -a 256 | awk '{print $1}')" ||
-    die "Could not download $DOWNLOAD_URL"
+  # The asset is large enough that a transient network error here is plausible,
+  # and the release is already public, so retry before declaring failure.
+  REMOTE_SHA256=""
+  for attempt in 1 2 3; do
+    REMOTE_SHA256="$(curl -fsSL --retry 3 --retry-delay 5 "$DOWNLOAD_URL" | shasum -a 256 | awk '{print $1}')" || REMOTE_SHA256=""
+    [ -n "$REMOTE_SHA256" ] && break
+    echo "  Download attempt $attempt failed; retrying..."
+    sleep 5
+  done
+
+  [ -n "$REMOTE_SHA256" ] || die "Could not download $DOWNLOAD_URL"
   [ "$REMOTE_SHA256" = "$SHA256" ] ||
     die "Published asset sha256 ($REMOTE_SHA256) does not match local DMG ($SHA256)"
   echo "  Download URL serves the expected bytes."
@@ -175,7 +193,8 @@ echo ""
 # --- 3. Bump Homebrew Cask via pull request ---
 echo "[3/4] Bumping Homebrew Cask in $TAP_REPO..."
 
-TAP_DIR="$(mktemp -d)/homebrew-vapor"
+TAP_PARENT="$(mktemp -d)"
+TAP_DIR="$TAP_PARENT/homebrew-vapor"
 gh repo clone "$TAP_REPO" "$TAP_DIR" -- --quiet
 
 CASK_FILE="$TAP_DIR/Casks/vapor.rb"
