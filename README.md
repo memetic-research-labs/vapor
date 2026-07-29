@@ -168,6 +168,11 @@ make bump-version VERSION=1.0.7 BUILD=2    # rebuild of a published version
 # 1. build, sign, notarize, and staple (requires Apple credentials)
 APPLE_ID=... APPLE_APP_SPECIFIC_PASSWORD=... scripts/build-release.sh
 
+# ...or store the credentials once and skip the environment variables:
+#   xcrun notarytool store-credentials vapor-notary \
+#     --apple-id <apple-id> --team-id YRQLJYMX5S --password <app-specific-password>
+NOTARY_KEYCHAIN_PROFILE=vapor-notary scripts/build-release.sh
+
 # 2. rehearse the publish; validates everything, changes nothing
 scripts/publish-release.sh dist/Vapor-<version>-<build>.dmg v<version> --dry-run
 
@@ -177,6 +182,9 @@ scripts/publish-release.sh dist/Vapor-<version>-<build>.dmg v<version>
 
 The tag must match the DMG's marketing version. The cask bump is merged only
 after the tap's install checks pass.
+
+The DMG contains `Vapor.app`, the `Browser Extension` folder loaded into Chrome,
+and a versioned `README.html` generated from `scripts/dmg-readme.html.template`.
 
 ## Code of Conduct
 

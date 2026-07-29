@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Vapor __VERSION__ (__BUILD__)</title>
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+    max-width: 720px;
+    margin: 40px auto;
+    padding: 0 24px;
+    color: #1d1d1f;
+    line-height: 1.6;
+  }
+  h1 { font-size: 24px; font-weight: 600; margin-bottom: 4px; }
+  .version { color: #6e6e73; font-size: 14px; margin-bottom: 24px; }
+  h2 { font-size: 18px; font-weight: 600; margin-top: 32px; margin-bottom: 8px; }
+  h3 { font-size: 15px; font-weight: 600; margin-top: 20px; margin-bottom: 6px; }
+  p { margin: 8px 0; font-size: 14px; }
+  code {
+    background: #f5f5f7;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 13px;
+  }
+  .step { margin: 12px 0; padding-left: 20px; }
+  .step strong { display: block; margin-bottom: 2px; }
+  .note {
+    background: #f5f5f7;
+    border-left: 3px solid #007aff;
+    padding: 12px 16px;
+    margin: 16px 0;
+    border-radius: 4px;
+    font-size: 13px;
+  }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 13px; }
+  th { text-align: left; padding: 6px 10px; background: #f5f5f7; font-weight: 600; }
+  td { padding: 6px 10px; border-bottom: 1px solid #e5e5ea; }
+  kbd {
+    background: #f5f5f7;
+    border: 1px solid #d2d2d7;
+    border-radius: 4px;
+    padding: 1px 5px;
+    font-size: 12px;
+    font-family: inherit;
+  }
+  a { color: #007aff; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  ul { padding-left: 20px; margin: 8px 0; }
+  li { margin: 4px 0; font-size: 14px; }
+  .tag { display: inline-block; background: #e8f5e9; color: #1b5e20; font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 3px; margin-left: 6px; }
+</style>
+</head>
+<body>
+
+<h1>Vapor</h1>
+<div class="version">Version __VERSION__ (__BUILD__)</div>
+<p>Voice-to-text dictation &amp; AI prompt compression for macOS.</p>
+
+<h2>Installing the App</h2>
+<div class="step">
+  <strong>1. Drag Vapor.app to your Applications folder.</strong>
+  <p>On first launch, macOS may prompt you to confirm you downloaded the app from a trusted source. Click Open.</p>
+</div>
+
+<h2>Quick Start</h2>
+<p>Vapor works immediately with Apple's on-device AI. No downloads or API keys required.</p>
+<div class="step">
+  <strong>1. Grant permissions</strong>
+  <p>On first launch, Vapor asks for <strong>Microphone</strong> and <strong>Speech Recognition</strong> access. Both are processed entirely on-device.</p>
+</div>
+<div class="step">
+  <strong>2. Dictate a prompt</strong>
+  <p>Hold the <kbd>Fn</kbd> key and speak. Release to commit the text to the editor.</p>
+</div>
+<div class="step">
+  <strong>3. Compress &amp; copy</strong>
+  <p>Press <kbd>Cmd</kbd>+<kbd>Return</kbd> to compress the prompt and copy it to the clipboard. Paste into any AI chat interface.</p>
+</div>
+
+<h2>Compression Backends</h2>
+<p>Choose a compression backend in <strong>Settings &gt; Compression</strong>:</p>
+<table>
+  <tr><th>Backend</th><th>Setup</th><th>Cost</th></tr>
+  <tr><td><strong>Foundation Models</strong> <span class="tag">DEFAULT</span></td><td>None — built into macOS 26+</td><td>Free</td></tr>
+  <tr><td><strong>Local LLM (Qwen 2.5-7B)</strong></td><td>One-click download (4.7 GB) in Settings</td><td>Free</td></tr>
+  <tr><td><strong>Ollama</strong></td><td>Pull models from Settings &gt; Ollama Models</td><td>Free</td></tr>
+  <tr><td><strong>OpenRouter</strong></td><td>Paste API key from openrouter.ai</td><td>~$0.01/1M tokens</td></tr>
+  <tr><td><strong>Rule-Based</strong></td><td>None — always available as fallback</td><td>Free</td></tr>
+</table>
+
+<h3>Best quality on-device: Local LLM</h3>
+<p>In Settings &gt; Compression, select "Local LLM (On-Device)" and click "Download Qwen 2.5-7B (4.7 GB)". Requires ~5 GB disk and a Metal GPU (any Apple Silicon Mac).</p>
+
+<h3>Best quality overall: OpenRouter</h3>
+<p>Get an API key from <a href="https://openrouter.ai">openrouter.ai</a>. Paste it in Settings &gt; Cloud. Then select "OpenRouter" in Settings &gt; Compression and pick a model.</p>
+
+<h3>Using Ollama models</h3>
+<p>Vapor bundles Ollama and manages it automatically. Go to Settings &gt; Ollama Models and click "Pull" on a recommended model. Recommended: <code>gemma4:e4b</code> (3.2 GB, best balance of speed and quality).</p>
+
+<h2>Keyboard Shortcuts</h2>
+<table>
+  <tr><th>Shortcut</th><th>Action</th></tr>
+  <tr><td><kbd>Fn</kbd> (hold)</td><td>Dictate</td></tr>
+  <tr><td><kbd>Cmd</kbd>+<kbd>Return</kbd></td><td>Compress &amp; copy</td></tr>
+  <tr><td><kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd></td><td>Copy original</td></tr>
+  <tr><td><kbd>Cmd</kbd>+<kbd>K</kbd></td><td>Copy &amp; clear</td></tr>
+  <tr><td><kbd>Ctrl</kbd>+<kbd>Opt</kbd>+<kbd>Space</kbd></td><td>Focus Vapor from any app</td></tr>
+  <tr><td><kbd>Cmd</kbd>+<kbd>\</kbd></td><td>Toggle compact / full</td></tr>
+  <tr><td><kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd></td><td>Focus screenshot shelf</td></tr>
+  <tr><td><kbd>Cmd</kbd>+<kbd>Option</kbd>+<kbd>C</kbd></td><td>Focus context tray</td></tr>
+  <tr><td><kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd></td><td>Context explorer</td></tr>
+  <tr><td><kbd>Cmd</kbd>+<kbd>Y</kbd></td><td>Prompt history</td></tr>
+</table>
+
+<h2>Browser Extension (Optional)</h2>
+<p>Inject compressed prompts directly into AI chat interfaces in Chrome.</p>
+<div class="note">
+  <strong>Important:</strong> Before loading the extension, copy the <code>Browser Extension</code> folder from this DMG to a permanent location on your Mac (e.g. your Documents folder). Chrome cannot load extensions directly from a disk image — the folder must reside on a local drive.
+</div>
+<div class="step">
+  <strong>1. Copy the extension to your Mac</strong>
+  <p>Drag the <code>Browser Extension</code> folder from this DMG to <code>~/Documents/Vapor Browser Extension/</code> (or anywhere on your local drive).</p>
+</div>
+<div class="step">
+  <strong>2. Open Chrome and go to <code>chrome://extensions/</code></strong>
+</div>
+<div class="step">
+  <strong>3. Enable Developer mode</strong>
+  <p>Toggle "Developer mode" in the top-right corner.</p>
+</div>
+<div class="step">
+  <strong>4. Load the extension</strong>
+  <p>Click "Load unpacked" and select the <code>Vapor Browser Extension</code> folder you copied in step 1.</p>
+</div>
+<div class="note">
+  The browser extension requires Vapor to be running. It communicates with the app on <code>localhost:8766</code>. Enable browser integration in Vapor's Settings &gt; Browser.
+</div>
+
+<h2>More Help</h2>
+<ul>
+  <li>Full setup guide and model recommendations: see the <strong>Help</strong> menu in the app</li>
+  <li>Replay the setup walkthrough: <strong>Settings &gt; General &gt; Show Onboarding</strong></li>
+  <li>Questions or issues: <a href="mailto:support@app-dist.com">support@app-dist.com</a></li>
+</ul>
+
+</body>
+</html>
