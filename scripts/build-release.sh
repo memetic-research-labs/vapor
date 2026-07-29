@@ -34,6 +34,12 @@ APPLE_TEAM_ID="${APPLE_TEAM_ID:-YRQLJYMX5S}"
 : "${APPLE_ID:?APPLE_ID is required for notarization}"
 : "${APPLE_APP_SPECIFIC_PASSWORD:?APPLE_APP_SPECIFIC_PASSWORD is required for notarization}"
 
+# Catch a bad override here rather than in an opaque xcodebuild export failure.
+if ! printf '%s' "$APPLE_TEAM_ID" | grep -Eq '^[A-Z0-9]{10}$'; then
+  echo "ERROR: APPLE_TEAM_ID must be 10 uppercase letters or digits (got: $APPLE_TEAM_ID)" >&2
+  exit 1
+fi
+
 echo "=== Vapor Release Build ==="
 echo "Repo:     $REPO_ROOT"
 echo "Output:   $OUTPUT_DIR"

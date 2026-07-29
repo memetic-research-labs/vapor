@@ -176,11 +176,20 @@ else
   # The asset is large enough that a transient network error here is plausible,
   # and the release is already public, so retry before declaring failure.
   REMOTE_SHA256=""
-  for attempt in 1 2 3; do
-    REMOTE_SHA256="$(curl -fsSL --retry 3 --retry-delay 5 "$DOWNLOAD_URL" | shasum -a 256 | awk '{print $1}')" || REMOTE_SHA256=""
-    [ -n "$REMOTE_SHA256" ] && break
-    echo "  Download attempt $attempt failed; retrying..."
-    sleep 5
+  DOWNLOAD_ATTEMPTS=3
+  for attempt in $(seq 1 "$DOWNLOAD_ATTEMPTS"); do
+    if REMOTE_SHA256="$(curl -fsSL --retry 3 --retry-delay 5 "$DOWNLOAD_URL" | shasum -a 256 | awk '{print $1}')" &&
+      [ -n "$REMOTE_SHA256" ]; then
+      break
+    fi
+
+    REMOTE_SHA256=""
+    if [ "$attempt" -lt "$DOWNLOAD_ATTEMPTS" ]; then
+      echo "  Download attempt $attempt failed; retrying..."
+      sleep 5
+    else
+      echo "  Download attempt $attempt failed; giving up."
+    fi
   done
 
   [ -n "$REMOTE_SHA256" ] || die "Could not download $DOWNLOAD_URL"
