@@ -150,6 +150,31 @@ open Vapor.xcodeproj
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed build instructions.
 
+## Releasing
+
+Versions are set by hand on the **Vapor app target** in Xcode before building.
+`MARKETING_VERSION` is the user-facing version and `CURRENT_PROJECT_VERSION` is
+the build number; the test targets carry their own unrelated values, so read
+them from the app target only.
+
+Bump `MARKETING_VERSION` for a normal release. If you rebuild a version that was
+already published, bump `CURRENT_PROJECT_VERSION` instead — Homebrew compares
+`<marketing>,<build>`, so reusing both would leave existing users on the old app.
+
+```bash
+# 1. build, sign, notarize, and staple (requires Apple credentials)
+APPLE_ID=... APPLE_APP_SPECIFIC_PASSWORD=... scripts/build-release.sh
+
+# 2. rehearse the publish; validates everything, changes nothing
+scripts/publish-release.sh dist/Vapor-<version>-<build>.dmg v<version> --dry-run
+
+# 3. publish the release and open the Homebrew cask bump
+scripts/publish-release.sh dist/Vapor-<version>-<build>.dmg v<version>
+```
+
+The tag must match the DMG's marketing version. The cask bump is merged only
+after the tap's install checks pass.
+
 ## Code of Conduct
 
 This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md). By participating, you agree to uphold it.

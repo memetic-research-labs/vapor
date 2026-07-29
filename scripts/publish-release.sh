@@ -3,10 +3,11 @@
 # Publishes a built Vapor DMG to GitHub Releases and bumps the Homebrew Cask.
 #
 # Usage:
-#   scripts/publish-release.sh <dmg-path> <tag>
+#   scripts/publish-release.sh <dmg-path> <tag> [--dry-run]
 #
 # Examples:
 #   scripts/publish-release.sh dist/Vapor-1.0.8-8.dmg v1.0.8
+#   scripts/publish-release.sh dist/Vapor-1.0.8-8.dmg v1.0.8 --dry-run
 #
 # Prerequisites:
 #   - gh CLI authenticated with push access to memetic-research-labs/vapor
@@ -15,6 +16,9 @@
 #
 # The Cask stores the version as "<marketing>,<build>" and derives its download
 # URL from that version, so only the version and sha256 lines are rewritten.
+#
+# --dry-run runs every validation and shows the exact Cask change, but does not
+# create the release, upload assets, push a branch, open a PR, or merge.
 
 set -euo pipefail
 
@@ -23,11 +27,15 @@ TAP_REPO="memetic-research-labs/homebrew-vapor"
 TAP_DIR=""
 
 usage() {
-  echo "Usage: scripts/publish-release.sh <dmg-path> <tag>"
+  echo "Usage: scripts/publish-release.sh <dmg-path> <tag> [--dry-run]"
   echo ""
   echo "Arguments:"
-  echo "  dmg-path  Path to the built DMG (e.g. dist/Vapor-1.0.8-8.dmg)"
-  echo "  tag       Git tag for the release (e.g. v1.0.8)"
+  echo "  dmg-path   Path to the built DMG (e.g. dist/Vapor-1.0.8-8.dmg)"
+  echo "  tag        Git tag for the release (e.g. v1.0.8)"
+  echo ""
+  echo "Options:"
+  echo "  --dry-run  Validate everything and preview the Cask change without"
+  echo "             publishing the release or touching the tap"
   exit 1
 }
 
@@ -44,8 +52,19 @@ die() {
 }
 
 # --- Parse args ---
-DMG_PATH="${1:-}"
-TAG="${2:-}"
+DRY_RUN=""
+POSITIONAL=()
+for arg in "$@"; do
+  case "$arg" in
+    --dry-run) DRY_RUN="yes" ;;
+    -h|--help) usage ;;
+    -*) die "Unknown option: $arg" ;;
+    *) POSITIONAL+=("$arg") ;;
+  esac
+done
+
+DMG_PATH="${POSITIONAL[0]:-}"
+TAG="${POSITIONAL[1]:-}"
 
 if [ -z "$DMG_PATH" ] || [ -z "$TAG" ]; then
   usage
@@ -107,6 +126,7 @@ ACTUAL_SHA256="$(shasum -a 256 "$DMG_PATH" | awk '{print $1}')"
 DOWNLOAD_URL="https://github.com/${VAPOR_REPO}/releases/download/${TAG}/${DMG_NAME}"
 
 echo "=== Vapor Release Publisher ==="
+[ -n "$DRY_RUN" ] && echo "  Mode:      DRY RUN (nothing will be published)"
 echo "  Tag:       $TAG"
 echo "  DMG:       $DMG_NAME"
 echo "  Version:   $MARKETING_VERSION (build $BUILD_VERSION)"
@@ -118,27 +138,38 @@ echo ""
 # --- 1. Create GitHub Release ---
 echo "[1/4] Creating GitHub Release $TAG..."
 
-if gh release view "$TAG" --repo "$VAPOR_REPO" &> /dev/null; then
+if [ -n "$DRY_RUN" ]; then
+  if gh release view "$TAG" --repo "$VAPOR_REPO" &> /dev/null; then
+    echo "  [dry run] release $TAG exists; would upload $DMG_NAME and $(basename "$SHASUM_PATH") with --clobber"
+  else
+    echo "  [dry run] would create release $TAG with $DMG_NAME and $(basename "$SHASUM_PATH")"
+  fi
+elif gh release view "$TAG" --repo "$VAPOR_REPO" &> /dev/null; then
   echo "  Release $TAG already exists; uploading assets..."
   gh release upload "$TAG" "$DMG_PATH" "$SHASUM_PATH" --repo "$VAPOR_REPO" --clobber
+  echo "  Release published: https://github.com/${VAPOR_REPO}/releases/tag/${TAG}"
 else
   gh release create "$TAG" \
     --repo "$VAPOR_REPO" \
     --title "$TAG" \
     --generate-notes \
     "$DMG_PATH" "$SHASUM_PATH"
+  echo "  Release published: https://github.com/${VAPOR_REPO}/releases/tag/${TAG}"
 fi
 
-echo "  Release published: https://github.com/${VAPOR_REPO}/releases/tag/${TAG}"
 echo ""
 
 # --- 2. Verify the published asset is downloadable and intact ---
 echo "[2/4] Verifying published asset..."
-REMOTE_SHA256="$(curl -fsSL "$DOWNLOAD_URL" | shasum -a 256 | awk '{print $1}')" ||
-  die "Could not download $DOWNLOAD_URL"
-[ "$REMOTE_SHA256" = "$SHA256" ] ||
-  die "Published asset sha256 ($REMOTE_SHA256) does not match local DMG ($SHA256)"
-echo "  Download URL serves the expected bytes."
+if [ -n "$DRY_RUN" ]; then
+  echo "  [dry run] would download $DOWNLOAD_URL and confirm it hashes to $SHA256"
+else
+  REMOTE_SHA256="$(curl -fsSL "$DOWNLOAD_URL" | shasum -a 256 | awk '{print $1}')" ||
+    die "Could not download $DOWNLOAD_URL"
+  [ "$REMOTE_SHA256" = "$SHA256" ] ||
+    die "Published asset sha256 ($REMOTE_SHA256) does not match local DMG ($SHA256)"
+  echo "  Download URL serves the expected bytes."
+fi
 echo ""
 
 # --- 3. Bump Homebrew Cask via pull request ---
@@ -154,6 +185,18 @@ CASK_FILE="$TAP_DIR/Casks/vapor.rb"
 grep -q 'version.csv.first' "$CASK_FILE" ||
   die "Cask no longer derives its URL from the version; update this script."
 
+# Homebrew decides an install is outdated by comparing version strings, so
+# shipping new bytes under a version that is already published would leave
+# every existing user on the old app.
+CURRENT_CASK_VERSION="$(sed -n 's|^  version "\(.*\)"$|\1|p' "$CASK_FILE")"
+CURRENT_CASK_SHA256="$(sed -n 's|^  sha256 "\(.*\)"$|\1|p' "$CASK_FILE")"
+
+if [ "$CURRENT_CASK_VERSION" = "$CASK_VERSION" ] && [ "$CURRENT_CASK_SHA256" != "$SHA256" ]; then
+  die "Cask is already at $CASK_VERSION but with different bytes.
+  Existing users would never be offered this build. Bump CURRENT_PROJECT_VERSION
+  (or MARKETING_VERSION) in Xcode, rebuild, and publish again."
+fi
+
 sed -i '' "s|^  version \".*\"|  version \"${CASK_VERSION}\"|" "$CASK_FILE"
 sed -i '' "s|^  sha256 \".*\"|  sha256 \"${SHA256}\"|" "$CASK_FILE"
 
@@ -167,6 +210,12 @@ cd "$TAP_DIR"
 
 if git diff --quiet; then
   echo "  Cask already up to date; nothing to publish."
+elif [ -n "$DRY_RUN" ]; then
+  echo "  [dry run] would open and merge a cask bump with this change:"
+  echo ""
+  git --no-pager diff -- Casks/vapor.rb
+  echo ""
+  echo "  [dry run] the tap's install checks would gate the merge"
 else
   BRANCH="bump-${TAG}-${BUILD_VERSION}"
   git switch -c "$BRANCH" --quiet
@@ -209,6 +258,14 @@ fi
 echo ""
 
 # --- 4. Done ---
+if [ -n "$DRY_RUN" ]; then
+  echo "[4/4] Dry run complete. Nothing was published."
+  echo ""
+  echo "Every validation passed. Re-run without --dry-run to publish:"
+  echo "  scripts/publish-release.sh $DMG_PATH $TAG"
+  exit 0
+fi
+
 echo "[4/4] Done!"
 echo ""
 echo "Install (the full token is required; 'vapor' alone resolves elsewhere):"
