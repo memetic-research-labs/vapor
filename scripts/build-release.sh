@@ -5,17 +5,22 @@
 # Usage:
 #   scripts/build-release.sh [output-dir]
 #
-# Required environment variables:
-#   APPLE_ID                          Apple ID for notarization
+# Notarization credentials, either:
+#   NOTARY_KEYCHAIN_PROFILE            Profile from `xcrun notarytool store-credentials`
+# or:
+#   APPLE_ID                           Apple ID for notarization
 #   APPLE_APP_SPECIFIC_PASSWORD        App-specific password (appleid.apple.com)
-#   APPLE_TEAM_ID                      Developer Team ID (default: YRQLJYMX5S)
 #
 # Optional:
-#   OUTPUT_DIR  Directory for the final DMG (default: ./dist)
+#   APPLE_TEAM_ID  Developer Team ID (default: YRQLJYMX5S)
+#   OUTPUT_DIR     Directory for the final DMG (default: ./dist)
 #
 # Outputs:
 #   $OUTPUT_DIR/Vapor-<version>-<build>.dmg
 #   $OUTPUT_DIR/Vapor-<version>-<build>.sha256
+#
+# The DMG ships Vapor.app, the Chrome extension, and a versioned README,
+# matching the layout users have been installing from.
 
 set -euo pipefail
 
@@ -27,12 +32,22 @@ ARCHIVE_PATH="$REPO_ROOT/.build/archives/Vapor.xcarchive"
 EXPORT_DIR="$REPO_ROOT/.build/export"
 OUTPUT_DIR="${1:-${OUTPUT_DIR:-$REPO_ROOT/dist}}"
 EXPORT_OPTIONS="$REPO_ROOT/.build/ExportOptions.plist"
+STAGING_DIR="$REPO_ROOT/.build/dmg-staging"
+EXTENSION_SRC="$REPO_ROOT/vapor-extension"
+README_TEMPLATE="$REPO_ROOT/scripts/dmg-readme.html.template"
 
 APPLE_TEAM_ID="${APPLE_TEAM_ID:-YRQLJYMX5S}"
+NOTARY_KEYCHAIN_PROFILE="${NOTARY_KEYCHAIN_PROFILE:-}"
 
 # --- Validate env ---
-: "${APPLE_ID:?APPLE_ID is required for notarization}"
-: "${APPLE_APP_SPECIFIC_PASSWORD:?APPLE_APP_SPECIFIC_PASSWORD is required for notarization}"
+# Either a stored keychain profile or an Apple ID plus app-specific password.
+if [ -z "$NOTARY_KEYCHAIN_PROFILE" ]; then
+  : "${APPLE_ID:?APPLE_ID (or NOTARY_KEYCHAIN_PROFILE) is required for notarization}"
+  : "${APPLE_APP_SPECIFIC_PASSWORD:?APPLE_APP_SPECIFIC_PASSWORD (or NOTARY_KEYCHAIN_PROFILE) is required for notarization}"
+fi
+
+[ -d "$EXTENSION_SRC" ] || { echo "ERROR: Browser extension not found at $EXTENSION_SRC" >&2; exit 1; }
+[ -f "$README_TEMPLATE" ] || { echo "ERROR: DMG README template not found at $README_TEMPLATE" >&2; exit 1; }
 
 # Catch a bad override here rather than in an opaque xcodebuild export failure.
 if ! printf '%s' "$APPLE_TEAM_ID" | grep -Eq '^[A-Z0-9]{10}$'; then
@@ -109,31 +124,55 @@ DMG_PATH="$OUTPUT_DIR/$DMG_NAME"
 echo "  Version: $MARKETING_VERSION (build $BUILD_VERSION)"
 echo "  DMG:     $DMG_NAME"
 
-# --- 4. Create DMG ---
-echo "[3/6] Creating DMG..."
+# --- 4. Stage DMG contents ---
+# Vapor.app alone is not enough: users load the Chrome extension from the DMG,
+# and the README explains how.
+echo "[3/6] Staging DMG contents..."
+rm -rf "$STAGING_DIR"
+mkdir -p "$STAGING_DIR"
+
+cp -R "$APP_PATH" "$STAGING_DIR/Vapor.app"
+cp -R "$EXTENSION_SRC" "$STAGING_DIR/Browser Extension"
+sed -e "s|__VERSION__|${MARKETING_VERSION}|g" -e "s|__BUILD__|${BUILD_VERSION}|g" \
+  "$README_TEMPLATE" > "$STAGING_DIR/README.html"
+
+# Copying can drag along local noise; keep the image reproducible.
+find "$STAGING_DIR/Browser Extension" -name '.DS_Store' -delete
+rm -rf "$STAGING_DIR/Browser Extension/node_modules"
+
+echo "  Vapor.app, Browser Extension, README.html"
+
+# --- 5. Create DMG ---
+echo "[4/6] Creating DMG..."
 rm -f "$DMG_PATH"
 hdiutil create \
   -volname "Vapor" \
-  -srcfolder "$APP_PATH" \
+  -srcfolder "$STAGING_DIR" \
   -ov \
   -format UDZO \
   "$DMG_PATH"
 
-# --- 5. Notarize ---
-echo "[4/6] Submitting for notarization..."
-xcrun notarytool submit "$DMG_PATH" \
-  --apple-id "$APPLE_ID" \
-  --password "$APPLE_APP_SPECIFIC_PASSWORD" \
-  --team-id "$APPLE_TEAM_ID" \
-  --wait
+# --- 6. Notarize ---
+echo "[5/6] Submitting for notarization..."
+if [ -n "$NOTARY_KEYCHAIN_PROFILE" ]; then
+  xcrun notarytool submit "$DMG_PATH" \
+    --keychain-profile "$NOTARY_KEYCHAIN_PROFILE" \
+    --wait
+else
+  xcrun notarytool submit "$DMG_PATH" \
+    --apple-id "$APPLE_ID" \
+    --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+    --team-id "$APPLE_TEAM_ID" \
+    --wait
+fi
 
-# --- 6. Staple ---
-echo "[5/6] Stapling notarization ticket..."
+# --- 7. Staple ---
+echo "[6/6] Stapling notarization ticket..."
 xcrun stapler staple "$DMG_PATH"
 xcrun stapler validate "$DMG_PATH"
 
-# --- 7. SHA256 ---
-echo "[6/6] Computing SHA256..."
+# --- 8. SHA256 ---
+echo "Computing SHA256..."
 SHASUM_PATH="$OUTPUT_DIR/${DMG_NAME%.dmg}.sha256"
 shasum -a 256 "$DMG_PATH" | awk '{print $1}' > "$SHASUM_PATH"
 
