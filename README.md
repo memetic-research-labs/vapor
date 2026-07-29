@@ -8,6 +8,17 @@
 
 Vapor is a macOS floating app that turns your voice, screenshots, and browser research into context-rich prompts, and sends them directly into any AI chat. Capture context, compose, and inject without leaving your workflow.
 
+## Install
+
+```bash
+brew install --cask memetic-research-labs/vapor/vapor
+```
+
+The full token is required: Homebrew already ships an unrelated `vapor` formula
+and a `vapor-app` cask, so plain `brew install --cask vapor` installs different
+software. You can also download the notarized DMG from
+[Releases](https://github.com/memetic-research-labs/vapor/releases).
+
 ## Screenshots
 
 <p align="center">
