@@ -152,16 +152,19 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed build instructions.
 
 ## Releasing
 
-Versions are set by hand on the **Vapor app target** in Xcode before building.
 `MARKETING_VERSION` is the user-facing version and `CURRENT_PROJECT_VERSION` is
-the build number; the test targets carry their own unrelated values, so read
-them from the app target only.
+the build number. Both live on the **Vapor app target**; the test targets carry
+their own unrelated values, so never read versions from them.
 
 Bump `MARKETING_VERSION` for a normal release. If you rebuild a version that was
 already published, bump `CURRENT_PROJECT_VERSION` instead — Homebrew compares
 `<marketing>,<build>`, so reusing both would leave existing users on the old app.
 
 ```bash
+# 0. set the version on the app target
+make bump-version VERSION=1.0.8            # new release, build resets to 1
+make bump-version VERSION=1.0.7 BUILD=2    # rebuild of a published version
+
 # 1. build, sign, notarize, and staple (requires Apple credentials)
 APPLE_ID=... APPLE_APP_SPECIFIC_PASSWORD=... scripts/build-release.sh
 
