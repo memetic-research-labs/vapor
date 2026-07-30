@@ -711,36 +711,14 @@ private struct OpenRouterSetupStepView: View {
             title: "OpenRouter (Cloud)",
             description: "Use a cloud LLM for compression and entity extraction. Works on any Mac — no GPU or local model needed. This is a fully standalone option."
         ) {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(spacing: 6) {
-                    SecureField("Enter your OpenRouter API key", text: $store.openRouterApiKey)
-                        .frame(maxWidth: 320)
-                    Button {
-                        store.testOpenRouterAPIKey()
-                    } label: {
-                        if store.isTestingOpenRouter {
-                            ProgressView()
-                                .scaleEffect(0.6)
-                                .frame(width: 16, height: 16)
-                        } else {
-                            Text("Test")
-                                .font(.system(size: 11))
-                        }
+            VStack(alignment: .leading, spacing: 16) {
+                OpenRouterConfigView { newKey in
+                    store.openRouterApiKey = newKey
+                    if !newKey.isEmpty {
+                        store.saveOpenRouterConfig()
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .disabled(store.openRouterApiKey.isEmpty || store.isTestingOpenRouter)
                 }
-
-                if let result = store.openRouterTestResult {
-                    Label(result, systemImage: result.contains("Valid") ? "checkmark.circle.fill" : "xmark.circle.fill")
-                        .font(.system(size: 11))
-                        .foregroundStyle(result.contains("Valid") ? .green : .red)
-                }
-
-                Text("Get a free API key at openrouter.ai → Settings → API Keys")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
+                .padding(.horizontal, -8)
 
                 Divider()
 
@@ -805,6 +783,11 @@ private struct OpenRouterSetupStepView: View {
                 }
             }
             .padding(.horizontal, 8)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .vaporOpenRouterKeyChanged)) { notification in
+            if let key = notification.object as? String {
+                store.openRouterApiKey = key
+            }
         }
     }
 }
