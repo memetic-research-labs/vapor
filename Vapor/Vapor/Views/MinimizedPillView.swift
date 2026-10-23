@@ -80,9 +80,10 @@ struct MinimizedPillView: View {
         )
         .clipShape(UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: 12, bottomTrailingRadius: 12, topTrailingRadius: 0))
         .onAppear {
-            withAnimation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true)) {
-                glowPulse = true
-            }
+            updateGlow(for: status)
+        }
+        .onChange(of: status) { _, newStatus in
+            updateGlow(for: newStatus)
         }
         .onChange(of: isCompressing) { wasCompressing, isNowCompressing in
             // Only show "Copied" if compression finished AND there's still content
@@ -282,6 +283,21 @@ struct MinimizedPillView: View {
     }
 
     // MARK: - Glow
+
+    /// Pulses the glow only during active states; settles to a static glow
+    /// when idle so the view doesn't animate (and burn CPU) indefinitely.
+    private func updateGlow(for status: PillStatus) {
+        switch status {
+        case .dictating, .compressing, .copied:
+            withAnimation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true)) {
+                glowPulse = true
+            }
+        case .idle, .modelLoading:
+            withAnimation(.easeInOut(duration: 0.3)) {
+                glowPulse = false
+            }
+        }
+    }
 
     private var glowColor: Color {
         switch status {
